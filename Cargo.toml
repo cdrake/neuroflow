@@ -1,0 +1,7 @@
+[workspace]
+members = [
+  "crates/neuroflow-core",
+  "crates/neuroflow-wasm",
+  "src-tauri"
+]
+resolver = "2"

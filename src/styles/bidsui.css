@@ -1,0 +1,191 @@
+/* BIDSvue-aligned theme variables.
+ *
+ * Source model: /Users/chrisdrake/Dev/bidsui/src/lib/styles/theme.css
+ * NeuroFlow keeps these variables in a plain CSS file so the React/Tauri
+ * scaffold can share the BIDSvue visual language without coupling to Svelte.
+ */
+
+:root {
+  color-scheme: light dark;
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
+
+  --bg-base: #ffffff;
+  --bg-sidebar: #f4f5f7;
+  --bg-elevated: #fafbfc;
+  --bg-statusbar: #ededef;
+  --bg-titlebar-tint: #e9eaec;
+
+  --border-subtle: rgba(15, 17, 21, 0.08);
+  --border-strong: rgba(15, 17, 21, 0.12);
+
+  --fg-base: #1a1c20;
+  --fg-muted: rgba(15, 17, 21, 0.62);
+  --fg-faint: rgba(15, 17, 21, 0.42);
+
+  --selection-bg: #a3c1ad;
+  --selection-bg-hover: #87a892;
+  --selection-text: #1a2620;
+
+  --accent: var(--selection-bg);
+  --accent-hover: var(--selection-bg-hover);
+  --accent-text: var(--selection-text);
+  --accent-soft: rgba(163, 193, 173, 0.16);
+
+  --nf-bg: var(--bg-elevated);
+  --nf-panel: var(--bg-base);
+  --nf-panel-2: var(--bg-sidebar);
+  --nf-ink: var(--fg-base);
+  --nf-muted: var(--fg-muted);
+  --nf-border: var(--border-subtle);
+  --nf-border-strong: var(--border-strong);
+  --nf-accent: var(--accent);
+  --nf-accent-strong: var(--accent-hover);
+  --nf-accent-text: var(--accent-text);
+  --nf-green: #4f7e5c;
+  --nf-amber: #bf5700;
+  --nf-red: #c43838;
+  --nf-lilac: #6d6f91;
+  --nf-grid: color-mix(in srgb, var(--fg-faint) 32%, transparent);
+  --nf-shadow: none;
+  --nf-radius: 8px;
+
+  accent-color: var(--selection-bg);
+  color: var(--fg-base);
+  background: var(--bg-base);
+}
+
+:root[data-theme="dark"] {
+  --bg-base: #1c1d20;
+  --bg-sidebar: #17181b;
+  --bg-elevated: #202125;
+  --bg-statusbar: #131418;
+  --bg-titlebar-tint: #232428;
+
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+
+  --fg-base: #ecedef;
+  --fg-muted: rgba(236, 237, 239, 0.65);
+  --fg-faint: rgba(236, 237, 239, 0.4);
+
+  --selection-bg: #a3c1ad;
+  --selection-bg-hover: #87a892;
+  --selection-text: #0d1014;
+
+  --accent: var(--selection-bg);
+  --accent-hover: var(--selection-bg-hover);
+  --accent-text: var(--selection-text);
+  --accent-soft: rgba(163, 193, 173, 0.22);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --bg-base: #1c1d20;
+    --bg-sidebar: #17181b;
+    --bg-elevated: #202125;
+    --bg-statusbar: #131418;
+    --bg-titlebar-tint: #232428;
+
+    --border-subtle: rgba(255, 255, 255, 0.08);
+    --border-strong: rgba(255, 255, 255, 0.14);
+
+    --fg-base: #ecedef;
+    --fg-muted: rgba(236, 237, 239, 0.65);
+    --fg-faint: rgba(236, 237, 239, 0.4);
+
+    --selection-bg: #a3c1ad;
+    --selection-bg-hover: #87a892;
+    --selection-text: #0d1014;
+
+    --accent: var(--selection-bg);
+    --accent-hover: var(--selection-bg-hover);
+    --accent-text: var(--selection-text);
+    --accent-soft: rgba(163, 193, 173, 0.22);
+  }
+}
+
+:root[data-accent="garnet"] {
+  --selection-bg: #73000a;
+  --selection-bg-hover: #5e0008;
+  --selection-text: #ffffff;
+  --accent: var(--selection-bg);
+  --accent-hover: var(--selection-bg-hover);
+  --accent-text: var(--selection-text);
+  --accent-soft: rgba(115, 0, 10, 0.16);
+}
+
+:root[data-accent="periwinkle"] {
+  --selection-bg: #88a9f1;
+  --selection-bg-hover: #6d90e0;
+  --selection-text: #1a2620;
+  --accent: var(--selection-bg);
+  --accent-hover: var(--selection-bg-hover);
+  --accent-text: var(--selection-text);
+  --accent-soft: rgba(136, 169, 241, 0.22);
+}
+
+:root[data-accent="orange"] {
+  --selection-bg: #bf5700;
+  --selection-bg-hover: #a44900;
+  --selection-text: #ffffff;
+  --accent: var(--selection-bg);
+  --accent-hover: var(--selection-bg-hover);
+  --accent-text: var(--selection-text);
+  --accent-soft: rgba(191, 87, 0, 0.16);
+}
+
+:root[data-accent="violet"] {
+  --selection-bg: #967dff;
+  --selection-bg-hover: #8269e0;
+  --selection-text: #1a2620;
+  --accent: var(--selection-bg);
+  --accent-hover: var(--selection-bg-hover);
+  --accent-text: var(--selection-text);
+  --accent-soft: rgba(150, 125, 255, 0.16);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  overflow: hidden;
+  border-block-start: 1px solid var(--border-strong);
+  background: var(--bg-base);
+  color: var(--fg-base);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  color: inherit;
+}
+
+:where(button):focus-visible,
+:where([tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

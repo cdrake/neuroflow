@@ -1,0 +1,185 @@
+{
+  "neuroflow": "0.1.0",
+  "kind": "workflow",
+  "id": "niivue.desktop/dicom-to-bids",
+  "version": "2.0.0",
+  "description": "Convert DICOM to a BIDS-compliant dataset.",
+  "inputs": {
+    "dicom_dir": {
+      "type": "neuro:dicom-folder",
+      "description": "DICOM source directory."
+    }
+  },
+  "context": {
+    "description": "BIDS dataset configuration accumulated during the workflow run.",
+    "fields": {
+      "dicom_series": {
+        "type": "core:array<neuro:dicom-series>",
+        "description": "All DICOM series discovered in the source directory.",
+        "heuristic": "list-dicom-series",
+        "dependsOn": ["dicom_dir"]
+      },
+      "selected_series": {
+        "type": "core:array<neuro:dicom-series>",
+        "description": "Subset of dicom_series chosen for conversion.",
+        "default": []
+      },
+      "series_list": {
+        "type": "core:array<neuro:series-mapping>",
+        "description": "Classified series with BIDS datatype, suffix, and metadata.",
+        "heuristic": "bids-classify"
+      },
+      "subjects": {
+        "type": "core:array<neuro:subject>",
+        "description": "Detected subjects and sessions grouped by PatientID and AcquisitionDate.",
+        "heuristic": "detect-subjects"
+      },
+      "skull_strip_config": {
+        "type": "core:object",
+        "description": "Skull stripping configuration.",
+        "default": {}
+      },
+      "dataset_name": {
+        "type": "core:string",
+        "description": "BIDS dataset name.",
+        "default": "My Dataset"
+      },
+      "dataset_version": {
+        "type": "core:string",
+        "description": "BIDS version for dataset_description.json.",
+        "default": "1.9.0"
+      },
+      "license": {
+        "type": "core:string",
+        "description": "Dataset license.",
+        "default": "CC0",
+        "enum": ["CC0", "CC-BY-4.0", "PDDL", "custom"]
+      },
+      "authors": {
+        "type": "core:string",
+        "description": "Dataset authors.",
+        "default": ""
+      },
+      "readme": {
+        "type": "core:string",
+        "description": "Dataset README content.",
+        "default": ""
+      },
+      "output_dir": {
+        "type": "core:directory",
+        "description": "Output directory for the BIDS dataset."
+      },
+      "bids_dir": {
+        "type": "neuro:bids-dataset",
+        "description": "Path to the written BIDS dataset directory."
+      }
+    }
+  },
+  "steps": {
+    "convert": {
+      "tool": "niivue.desktop.tools/dcm2niix",
+      "inputs": {
+        "dicom_dir": {
+          "ref": "inputs.dicom_dir"
+        },
+        "series": {
+          "ref": "context.selected_series"
+        },
+        "bids": {
+          "constant": "y"
+        },
+        "compress": {
+          "constant": "y"
+        },
+        "bids_anon": {
+          "constant": "n"
+        }
+      }
+    },
+    "classify": {
+      "tool": "niivue.desktop.tools/bids-classify",
+      "inputs": {
+        "sidecars": {
+          "ref": "steps.convert.outputs.sidecars"
+        },
+        "overrides": {
+          "ref": "context.series_list"
+        }
+      },
+      "outputMappings": {
+        "mappings": "series_list",
+        "subjects": "subjects"
+      }
+    },
+    "write": {
+      "tool": "niivue.desktop.tools/bids-write",
+      "inputs": {
+        "volumes": {
+          "ref": "steps.convert.outputs.volumes"
+        },
+        "mappings": {
+          "ref": "context.series_list"
+        },
+        "config": {
+          "ref": "context"
+        },
+        "output_dir": {
+          "ref": "context.output_dir"
+        }
+      },
+      "outputMappings": {
+        "bids_dir": "bids_dir"
+      }
+    },
+    "postpass": {
+      "tool": "niivue.desktop.tools/bids-postpass",
+      "inputs": {
+        "bids_dir": {
+          "ref": "steps.write.outputs.bids_dir"
+        }
+      }
+    }
+  },
+  "outputs": {
+    "bids_dir": {
+      "type": "neuro:bids-dataset",
+      "ref": "steps.postpass.outputs.bids_dir"
+    }
+  },
+  "extensions": {
+    "niivue/ui": {
+      "menu": "Import",
+      "form": {
+        "sections": [
+          {
+            "title": "Filter",
+            "fields": ["dicom_series", "selected_series"],
+            "component": "bids-series-filter"
+          },
+          {
+            "title": "BIDS Prep",
+            "fields": ["series_list", "subjects"],
+            "component": "bids-prep-editor"
+          },
+          {
+            "title": "Skull Strip",
+            "fields": ["skull_strip_config", "series_list"],
+            "component": "skull-strip-editor"
+          },
+          {
+            "title": "Write BIDS",
+            "fields": ["dataset_name", "dataset_version", "license", "authors", "readme", "output_dir"],
+            "buttonText": "Write BIDS"
+          },
+          {
+            "title": "BIDS View",
+            "fields": ["bids_dir"],
+            "component": "bids-view-editor",
+            "buttonText": "Finish",
+            "postCompletion": true
+          }
+        ]
+      }
+    }
+  }
+}
