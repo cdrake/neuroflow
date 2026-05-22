@@ -1,5 +1,51 @@
 import type { ToolDefinition, WorkflowDocument, WorkflowLibraryItem } from '../domain/neuroflow'
 
+const REGISTRY_EXTENSION = 'neuroflow/registry'
+
+const NIIVUE_CONSOLE_PROVIDER = {
+  [REGISTRY_EXTENSION]: {
+    provider: {
+      kind: 'console',
+      label: 'NiiVue console app',
+      source: '~/Dev/niivue/niivue/packages/niivue-desktop/workflows/tools',
+      runtime: 'sidecar'
+    }
+  }
+}
+
+const BIDSVUE_CONSOLE_PROVIDER = {
+  [REGISTRY_EXTENSION]: {
+    provider: {
+      kind: 'console',
+      label: 'BIDSvue importer',
+      source: '~/Dev/bidsui/resources/common/importers',
+      runtime: 'sidecar'
+    }
+  }
+}
+
+const NEUROFLOW_PROVIDER = {
+  [REGISTRY_EXTENSION]: {
+    provider: {
+      kind: 'neuroflow',
+      label: 'NeuroFlow component',
+      source: 'NeuroFlow built-in registry',
+      runtime: 'internal'
+    }
+  }
+}
+
+const WEB_FORM_PROVIDER = {
+  [REGISTRY_EXTENSION]: {
+    provider: {
+      kind: 'webForm',
+      label: 'Review form',
+      source: 'NiiVue Desktop form metadata',
+      runtime: 'browser'
+    }
+  }
+}
+
 export const tools: ToolDefinition[] = [
   {
     id: 'niivue.desktop.tools/dcm2niix',
@@ -18,6 +64,7 @@ export const tools: ToolDefinition[] = [
       sidecars: { type: 'core:array<core:json>', description: 'BIDS sidecar JSON files.' },
       outDir: { type: 'core:directory', description: 'Conversion output directory.' }
     },
+    extensions: NIIVUE_CONSOLE_PROVIDER,
     block: [
       {
         id: 'filter-import-dicoms',
@@ -43,6 +90,7 @@ export const tools: ToolDefinition[] = [
       mappings: { type: 'core:array<neuro:series-mapping>', description: 'BIDS series mapping table.' },
       subjects: { type: 'core:array<neuro:subject>', description: 'Detected subjects.' }
     },
+    extensions: WEB_FORM_PROVIDER,
     block: {
       id: 'classify-bids',
       label: 'Classify BIDS',
@@ -67,6 +115,7 @@ export const tools: ToolDefinition[] = [
       bids_dir: { type: 'neuro:bids-dataset', description: 'Written BIDS dataset.' },
       files_copied: { type: 'core:number', description: 'Number of copied files.' }
     },
+    extensions: NEUROFLOW_PROVIDER,
     block: {
       id: 'write-bids',
       label: 'Write BIDS',
@@ -89,6 +138,7 @@ export const tools: ToolDefinition[] = [
       bids_dir: { type: 'neuro:bids-dataset', description: 'Finalized BIDS dataset.' },
       failures: { type: 'core:array<core:json>', description: 'Postpass failures.' }
     },
+    extensions: NEUROFLOW_PROVIDER,
     block: {
       id: 'finalize-bids',
       label: 'Finalize BIDS',
@@ -96,6 +146,186 @@ export const tools: ToolDefinition[] = [
       category: 'Quality',
       icon: 'BadgeCheck',
       exposedFields: ['bids_dir']
+    }
+  },
+  {
+    id: 'bidsvue.importers/heudiconv',
+    name: 'heudiconv',
+    version: '1.0.0',
+    description: 'Convert DICOMs to BIDS with a built-in or custom heudiconv heuristic.',
+    inputs: {
+      dicom_dir: { type: 'neuro:dicom-folder', description: 'DICOM source directory.' },
+      output_dir: { type: 'core:directory', description: 'Output directory for the BIDS dataset.' },
+      heuristic: {
+        type: 'core:string',
+        description: 'Built-in heuristic name or absolute path to a custom Python heuristic.',
+        default: 'reproin'
+      },
+      subject: { type: 'core:string', description: 'BIDS subject label.', optional: true },
+      session: { type: 'core:string', description: 'BIDS session label.', optional: true }
+    },
+    outputs: {
+      bids_dir: { type: 'neuro:bids-dataset', description: 'Converted BIDS dataset.' },
+      log: { type: 'core:string', description: 'Importer log.' }
+    },
+    extensions: {
+      [REGISTRY_EXTENSION]: {
+        provider: {
+          kind: 'console',
+          label: 'BIDSvue external importer',
+          source: '~/Dev/bidsui/resources/common/importers/heudiconv.json',
+          runtime: 'external'
+        }
+      }
+    },
+    block: {
+      id: 'heudiconv-import',
+      label: 'heudiconv Import',
+      description: 'Run heudiconv with a reproin or custom heuristic.',
+      category: 'Import',
+      icon: 'Upload',
+      defaults: { heuristic: 'reproin' },
+      exposedFields: ['dicom_dir', 'output_dir', 'heuristic', 'subject', 'session'],
+      formComponent: 'bidsvue-importer-form'
+    }
+  },
+  {
+    id: 'bidsvue.importers/dcm2bids',
+    name: 'dcm2bids',
+    version: '3.2.0',
+    description: 'Convert DICOMs to BIDS using a per-protocol dcm2bids JSON config.',
+    inputs: {
+      dicom_dir: { type: 'neuro:dicom-folder', description: 'DICOM source directory.' },
+      output_dir: { type: 'core:directory', description: 'Output directory for the BIDS dataset.' },
+      config: { type: 'core:file', description: 'dcm2bids JSON config file.' },
+      subject: { type: 'core:string', description: 'Required BIDS subject label.' },
+      session: { type: 'core:string', description: 'BIDS session label.', optional: true },
+      cleanupUnmatched: {
+        type: 'core:boolean',
+        description: 'Delete the tmp_dcm2bids working directory after conversion.',
+        optional: true,
+        default: true
+      }
+    },
+    outputs: {
+      bids_dir: { type: 'neuro:bids-dataset', description: 'Converted BIDS dataset.' },
+      unmatched: { type: 'core:array<core:file>', description: 'Unmatched source files.' }
+    },
+    extensions: BIDSVUE_CONSOLE_PROVIDER,
+    block: {
+      id: 'dcm2bids-import',
+      label: 'dcm2bids Import',
+      description: 'Use a dcm2bids config to map DICOM series into BIDS.',
+      category: 'Import',
+      icon: 'Upload',
+      defaults: { cleanupUnmatched: true },
+      exposedFields: ['dicom_dir', 'output_dir', 'config', 'subject', 'session', 'cleanupUnmatched'],
+      formComponent: 'bidsvue-importer-form'
+    }
+  },
+  {
+    id: 'openneuro.org/services/dataset-import',
+    name: 'openneuro-dataset',
+    version: '1.0.0',
+    description: 'Resolve an OpenNeuro dataset into a local BIDS dataset workspace.',
+    inputs: {
+      dataset_id: { type: 'core:string', description: 'OpenNeuro dataset accession such as ds000001.' },
+      output_dir: { type: 'core:directory', description: 'Local destination directory.' }
+    },
+    outputs: {
+      bids_dir: { type: 'neuro:bids-dataset', description: 'Resolved BIDS dataset directory.' }
+    },
+    extensions: {
+      [REGISTRY_EXTENSION]: {
+        provider: {
+          kind: 'webService',
+          label: 'OpenNeuro service',
+          source: 'openneuro.org dataset service',
+          runtime: 'service'
+        }
+      }
+    },
+    block: {
+      id: 'openneuro-import',
+      label: 'OpenNeuro Dataset',
+      description: 'Fetch or attach an OpenNeuro-hosted BIDS dataset.',
+      category: 'Import',
+      icon: 'Download',
+      exposedFields: ['dataset_id', 'output_dir'],
+      formComponent: 'dataset-service-form'
+    }
+  },
+  {
+    id: 'niivue.desktop.tools/brainchop',
+    name: 'brainchop',
+    version: '1.0.0',
+    description: 'Skull strip anatomical NIfTI volumes with Brainchop MindGrab inference.',
+    inputs: {
+      nifti_paths: { type: 'core:array<neuro:volume>', description: 'Anatomical volumes to skull strip.' },
+      model: {
+        type: 'core:string',
+        description: 'Brain extraction model.',
+        optional: true,
+        default: 'brain-extract-mindgrab'
+      },
+      dilation: {
+        type: 'core:number',
+        description: 'Brain-mask dilation in millimeters.',
+        optional: true,
+        default: 3,
+        min: 0,
+        max: 10
+      }
+    },
+    outputs: {
+      output_paths: { type: 'core:array<neuro:volume>', description: 'Skull-stripped NIfTI volumes.' }
+    },
+    extensions: WEB_FORM_PROVIDER,
+    block: {
+      id: 'skull-strip',
+      label: 'Skull Strip',
+      description: 'Remove non-brain tissue with the MindGrab model.',
+      category: 'Processing',
+      icon: 'FileText',
+      defaults: { model: 'brain-extract-mindgrab', dilation: 3 },
+      exposedFields: ['nifti_paths', 'dilation'],
+      formComponent: 'skull-strip-editor'
+    }
+  },
+  {
+    id: 'niivue.desktop.tools/niimath',
+    name: 'niimath',
+    version: '1.0.0',
+    description: 'General-purpose NIfTI calculator for smoothing, thresholding, masking, and math ops.',
+    inputs: {
+      nifti_paths: { type: 'core:array<neuro:volume>', description: 'Input NIfTI volumes.' },
+      operation: {
+        type: 'core:string',
+        description: 'NiiMath operation.',
+        default: '-s',
+        enum: ['-s', '-thr', '-uthr', '-bin', '-mul', '-add', '-sub', '-div', '-mas']
+      },
+      operand: {
+        type: 'core:string',
+        description: 'Operand for the selected operation.',
+        optional: true,
+        default: '2'
+      },
+      output_dir: { type: 'core:directory', description: 'Output directory.', optional: true }
+    },
+    outputs: {
+      output_paths: { type: 'core:array<neuro:volume>', description: 'Processed NIfTI volumes.' },
+      output_dir: { type: 'core:directory', description: 'Directory containing outputs.' }
+    },
+    extensions: NIIVUE_CONSOLE_PROVIDER,
+    block: {
+      id: 'niimath',
+      label: 'NiiMath',
+      description: 'Apply common NIfTI image operations.',
+      category: 'Processing',
+      icon: 'FileText',
+      defaults: { operation: '-s', operand: '2' },
+      exposedFields: ['nifti_paths', 'operation', 'operand', 'output_dir']
     }
   }
 ]

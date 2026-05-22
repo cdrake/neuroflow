@@ -137,6 +137,7 @@ export function Inspector({
                 key={name}
                 name={name}
                 type={tool?.inputs[name]?.type ?? 'core:any'}
+                required={tool?.inputs[name]?.optional !== true && tool?.inputs[name]?.default === undefined}
                 binding={step.inputs[name]}
                 refOptions={refOptions}
                 onChange={(binding) => onChangeInput(selectedStep!, name, binding)}
@@ -207,12 +208,14 @@ export function Inspector({
 function InputEditor({
   name,
   type,
+  required,
   binding,
   refOptions,
   onChange
 }: {
   name: string
   type: string
+  required: boolean
   binding: Binding | undefined
   refOptions: RefOption[]
   onChange: (binding: Binding | null) => void
@@ -223,7 +226,7 @@ function InputEditor({
     <div className="nf-binding-row nf-binding-editor">
       <span>
         <strong>{name}</strong>
-        <small>{shortType(type)}</small>
+        <small>{shortType(type)}{required ? ' required' : ''}</small>
       </span>
       <div className="nf-binding-control">
         <select

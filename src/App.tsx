@@ -19,10 +19,14 @@ import { ToolPalette } from './components/ToolPalette'
 import { Inspector } from './components/Inspector'
 import { RunTimeline } from './components/RunTimeline'
 import { library, tools } from './data/sample'
+import {
+  buildToolRegistry,
+  createStepFromRegistryEntry,
+  mergeRegistryContext
+} from './domain/registry'
 import { planWorkflow, validateWorkflow } from './domain/validation'
 import type {
   Binding,
-  BlockDef,
   StepDef,
   ToolDefinition,
   ValidationReport,
@@ -31,7 +35,7 @@ import type {
   WorkflowPlan
 } from './domain/neuroflow'
 import type { NodePositionMap } from './domain/graph'
-import { isConstantBinding, isRefBinding, stableToolName } from './domain/neuroflow'
+import { isRefBinding, stableToolName } from './domain/neuroflow'
 
 const WORKSPACE_STORAGE_KEY = 'neuroflow.workspace.v1'
 const UI_EXTENSION_KEY = 'neuroflow/ui'
@@ -62,6 +66,7 @@ export function App(): JSX.Element {
     }
     return map
   }, [])
+  const registry = useMemo(() => buildToolRegistry(tools), [])
 
   const nodePositions = useMemo(() => getNodePositions(activeWorkflow), [activeWorkflow])
 
@@ -80,7 +85,7 @@ export function App(): JSX.Element {
 
   useEffect(() => {
     let cancelled = false
-    validateWorkflow(activeWorkflow).then((nextReport) => {
+    validateWorkflow(activeWorkflow, tools).then((nextReport) => {
       if (!cancelled) setReport(nextReport)
     })
     planWorkflow(activeWorkflow).then((nextPlan) => {
@@ -130,22 +135,21 @@ export function App(): JSX.Element {
   }
 
   function addToolStep(toolId: string, blockId?: string, position?: XYPosition): void {
-    const tool = toolMap.get(toolId)
-    if (!tool) return
+    const entry = registry.find(
+      (candidate) =>
+        candidate.tool.id === toolId && (!blockId || candidate.block?.id === blockId)
+    ) ?? registry.find((candidate) => candidate.tool.id === toolId)
+    if (!entry) return
 
-    const block = getToolBlocks(tool).find((candidate) => candidate.id === blockId) ?? getToolBlocks(tool)[0]
-    const baseId = slugify(block?.id ?? stableToolName(tool.name))
+    const baseId = slugify(entry.block?.id ?? stableToolName(entry.tool.name))
     const nextId = uniqueStepId(activeWorkflow, baseId)
 
     updateActiveWorkflow((workflow) => {
-      const nextStep: StepDef = {
-        tool: tool.id,
-        inputs: buildDefaultInputs(tool, block)
-      }
+      const nextStep = createStepFromRegistryEntry(entry, workflow, toolMap)
 
       const nextWorkflow = {
         ...workflow,
-        context: mergeBlockContext(workflow, block),
+        context: mergeRegistryContext(workflow, entry),
         steps: {
           ...workflow.steps,
           [nextId]: nextStep
@@ -177,12 +181,15 @@ export function App(): JSX.Element {
   function changeStepTool(stepId: string, toolId: string): void {
     const tool = toolMap.get(toolId)
     if (!tool) return
-    const block = getToolBlocks(tool)[0]
+    const entry = registry.find((candidate) => candidate.tool.id === tool.id)
 
     updateStep(stepId, (step) => ({
       ...step,
       tool: tool.id,
-      inputs: buildDefaultInputs(tool, block, step.inputs),
+      inputs: {
+        ...(entry ? createStepFromRegistryEntry(entry, activeWorkflow, toolMap).inputs : {}),
+        ...step.inputs
+      },
       outputMappings: filterOutputMappings(step.outputMappings, tool)
     }))
   }
@@ -289,7 +296,7 @@ export function App(): JSX.Element {
             <Download size={15} />
             Export JSON
           </button>
-          <button className="nf-action" onClick={() => void validateWorkflow(activeWorkflow).then(setReport)}>
+          <button className="nf-action" onClick={() => void validateWorkflow(activeWorkflow, tools).then(setReport)}>
             <RefreshCw size={15} />
             Validate
           </button>
@@ -311,7 +318,12 @@ export function App(): JSX.Element {
               setSelectedStep(nextWorkflow ? Object.keys(nextWorkflow.steps)[0] ?? null : null)
             }}
           />
-          <ToolPalette tools={tools} onAddTool={addToolStep} />
+          <ToolPalette
+            registry={registry}
+            workflow={activeWorkflow}
+            toolMap={toolMap}
+            onAddTool={addToolStep}
+          />
         </aside>
 
         <section className="nf-canvas-pane">
@@ -372,6 +384,7 @@ export function App(): JSX.Element {
         <span>{Object.keys(activeWorkflow.steps).length} steps</span>
         <span>{Object.keys(activeWorkflow.outputs).length} outputs</span>
         <span>{report.ok ? 'validation clean' : `${issueCount} validation issue(s)`}</span>
+        <span>{registry.length} registry entries</span>
         <span>{plan?.steps.length ?? 0} planned</span>
       </footer>
     </main>
@@ -389,45 +402,6 @@ function loadWorkspaceItems(): WorkflowLibraryItem[] {
 
 function cloneWorkflow<T>(value: T): T {
   return structuredClone(value)
-}
-
-function getToolBlocks(tool: ToolDefinition): BlockDef[] {
-  if (!tool.block) return []
-  return Array.isArray(tool.block) ? tool.block : [tool.block]
-}
-
-function buildDefaultInputs(
-  tool: ToolDefinition,
-  block?: BlockDef,
-  previousInputs: Record<string, Binding> = {}
-): Record<string, Binding> {
-  const nextInputs: Record<string, Binding> = {}
-
-  for (const [name, def] of Object.entries(tool.inputs)) {
-    if (previousInputs[name]) {
-      nextInputs[name] = previousInputs[name]
-      continue
-    }
-
-    const blockDefault = block?.defaults?.[name]
-    if (blockDefault !== undefined) {
-      nextInputs[name] = bindingFromDefault(blockDefault)
-      continue
-    }
-
-    if (def.default !== undefined) {
-      nextInputs[name] = { constant: def.default }
-    }
-  }
-
-  return nextInputs
-}
-
-function bindingFromDefault(value: unknown): Binding {
-  if (isObject(value) && (isRefBinding(value as Binding) || isConstantBinding(value as Binding))) {
-    return value as Binding
-  }
-  return { constant: value }
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -518,17 +492,6 @@ function filterOutputMappings(
     Object.entries(mappings ?? {}).filter(([outputName]) => outputName in tool.outputs)
   )
   return Object.keys(nextMappings).length > 0 ? nextMappings : undefined
-}
-
-function mergeBlockContext(workflow: WorkflowDocument, block?: BlockDef): WorkflowDocument['context'] {
-  if (!block?.contextFields) return workflow.context
-  return {
-    description: workflow.context?.description,
-    fields: {
-      ...(workflow.context?.fields ?? {}),
-      ...block.contextFields
-    }
-  }
 }
 
 function uniqueStepId(workflow: WorkflowDocument, baseId: string): string {

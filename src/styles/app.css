@@ -171,6 +171,93 @@
   gap: 7px;
 }
 
+.nf-search-field {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 6px;
+  align-items: center;
+  min-height: 30px;
+  margin-bottom: 8px;
+  padding: 0 8px;
+  border: 1px solid var(--nf-border);
+  border-radius: 7px;
+  background: var(--bg-base);
+  color: var(--nf-muted);
+}
+
+.nf-search-field input {
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--fg-base);
+  font: inherit;
+  font-size: 12px;
+}
+
+.nf-segmented {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 2px;
+  margin-bottom: 10px;
+  padding: 2px;
+  border: 1px solid var(--nf-border);
+  border-radius: 7px;
+  background: var(--bg-elevated);
+}
+
+.nf-segmented button {
+  min-width: 0;
+  min-height: 26px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--nf-muted);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.nf-segmented button.is-active {
+  color: var(--selection-text);
+  background: var(--selection-bg);
+}
+
+.nf-registry-group {
+  display: grid;
+  gap: 6px;
+}
+
+.nf-registry-group + .nf-registry-group {
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--nf-border);
+}
+
+.nf-registry-group-header,
+.nf-registry-meta,
+.nf-registry-fields {
+  display: flex;
+  align-items: center;
+}
+
+.nf-registry-group-header {
+  justify-content: space-between;
+  color: var(--nf-muted);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.nf-registry-group-header span {
+  display: grid;
+  place-items: center;
+  min-width: 20px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--bg-elevated);
+}
+
 .nf-list-item,
 .nf-block {
   width: 100%;
@@ -184,6 +271,10 @@
   background: transparent;
   text-align: left;
   cursor: pointer;
+}
+
+.nf-registry-card {
+  grid-template-rows: auto auto auto;
 }
 
 .nf-block[draggable="true"] {
@@ -230,6 +321,14 @@
   line-height: 1.35;
 }
 
+.nf-registry-card small {
+  display: -webkit-box;
+  min-height: 30px;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .nf-block-icon,
 .nf-node-icon {
   display: grid;
@@ -250,6 +349,44 @@
   font-style: normal;
   font-weight: 800;
   text-transform: uppercase;
+}
+
+.nf-registry-meta {
+  grid-column: 2 / 4;
+  flex-wrap: wrap;
+  gap: 5px;
+  color: var(--nf-muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.nf-registry-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 19px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--bg-elevated);
+}
+
+.nf-registry-fields {
+  grid-column: 2 / 4;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.nf-registry-fields code {
+  max-width: 118px;
+  overflow: hidden;
+  padding: 3px 5px;
+  border: 1px solid var(--nf-border);
+  border-radius: 5px;
+  color: var(--nf-accent-strong);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .nf-canvas-pane {

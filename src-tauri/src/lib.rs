@@ -1,6 +1,9 @@
 #[tauri::command]
-fn validate_workflow(workflow: serde_json::Value) -> Result<serde_json::Value, String> {
-    let report = neuroflow_core::validate_workflow_value(&workflow);
+fn validate_workflow(
+    workflow: serde_json::Value,
+    tools: Option<serde_json::Value>,
+) -> Result<serde_json::Value, String> {
+    let report = neuroflow_core::validate_workflow_value_with_tools(&workflow, tools.as_ref());
     serde_json::to_value(report).map_err(|err| err.to_string())
 }
 

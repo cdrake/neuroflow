@@ -8,6 +8,7 @@ export interface ParameterDef {
   enum?: unknown[]
   min?: number
   max?: number
+  extensions?: Record<string, unknown>
 }
 
 export interface ContextFieldDef extends ParameterDef {
@@ -25,6 +26,7 @@ export interface BlockDef {
   defaults?: Record<string, unknown>
   exposedFields: string[]
   hiddenFields?: string[]
+  requiredContextFields?: string[]
   contextFields?: Record<string, ContextFieldDef>
   formComponent?: string
   condition?: string
@@ -39,6 +41,7 @@ export interface ToolDefinition {
   inputs: Record<string, ParameterDef>
   outputs: Record<string, ParameterDef>
   block?: BlockDef | BlockDef[]
+  extensions?: Record<string, unknown>
 }
 
 export type Binding = { ref: string } | { constant: unknown }
@@ -48,9 +51,11 @@ export interface StepDef {
   inputs: Record<string, Binding>
   outputMappings?: Record<string, string>
   condition?: string
+  extensions?: Record<string, unknown>
 }
 
 export interface WorkflowDocument {
+  $schema?: string
   neuroflow: string
   kind: 'workflow'
   id: string
