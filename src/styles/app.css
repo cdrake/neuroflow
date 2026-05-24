@@ -118,7 +118,7 @@
 .nf-workspace {
   min-height: 0;
   display: grid;
-  grid-template-columns: 286px minmax(520px, 1fr) 420px;
+  grid-template-columns: 340px minmax(520px, 1fr) 420px;
 }
 
 .nf-sidebar {
@@ -287,7 +287,7 @@
 .nf-block {
   width: 100%;
   display: grid;
-  grid-template-columns: 20px 1fr auto;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
   gap: 9px;
   align-items: center;
   padding: 9px;
@@ -300,6 +300,12 @@
 
 .nf-registry-card {
   grid-template-rows: auto auto auto;
+}
+
+.nf-list-item > span,
+.nf-block > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .nf-block[draggable="true"] {
@@ -344,14 +350,14 @@
   color: var(--nf-muted);
   font-size: 11px;
   line-height: 1.35;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .nf-registry-card small {
-  display: -webkit-box;
-  min-height: 30px;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  display: block;
+  min-height: 0;
+  overflow: visible;
 }
 
 .nf-block-icon,
@@ -368,6 +374,8 @@
 .nf-block em {
   display: inline-flex;
   align-items: center;
+  align-self: start;
+  justify-self: end;
   gap: 3px;
   color: var(--nf-muted);
   font-size: 10px;
@@ -402,7 +410,7 @@
 }
 
 .nf-registry-fields code {
-  max-width: 118px;
+  max-width: 100%;
   overflow: hidden;
   padding: 3px 5px;
   border: 1px solid var(--nf-border);
@@ -410,8 +418,9 @@
   color: var(--nf-accent-strong);
   font-family: "SFMono-Regular", Consolas, monospace;
   font-size: 10px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .nf-canvas-pane {
@@ -494,7 +503,7 @@
 
 .nf-source-node,
 .nf-step-node {
-  width: 244px;
+  width: 300px;
   border: 1px solid var(--border-strong);
   border-radius: var(--nf-radius);
   background: var(--bg-base);
@@ -562,6 +571,7 @@
 .nf-step-node header span:nth-child(2) {
   flex: 1;
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .nf-step-node header em {
@@ -579,6 +589,7 @@
 
 .nf-node-io {
   grid-template-columns: 1fr 1fr;
+  gap: 8px;
   padding: 8px;
 }
 
@@ -595,7 +606,8 @@
   min-height: 24px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
+  flex-wrap: wrap;
   gap: 6px;
   padding: 4px 5px;
   border-radius: 5px;
@@ -603,16 +615,22 @@
   font-size: 11px;
 }
 
+.nf-port-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .nf-port-row code,
 .nf-binding-row code,
 .nf-plan-list code {
-  max-width: 150px;
+  max-width: 100%;
   overflow: hidden;
   color: var(--nf-accent-strong);
   font-family: "SFMono-Regular", Consolas, monospace;
   font-size: 10px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .nf-port-row b {
@@ -842,7 +860,7 @@
 
 @media (max-width: 1180px) {
   .nf-workspace {
-    grid-template-columns: 248px minmax(420px, 1fr);
+    grid-template-columns: 320px minmax(420px, 1fr);
   }
 
   .nf-right-rail {

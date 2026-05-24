@@ -24,9 +24,9 @@ export type NeuroflowNode = Node<SourceNodeData | StepNodeData>
 export type NodePositionMap = Record<string, XYPosition>
 
 const SOURCE_X = 24
-const STEP_X = 360
+const STEP_X = 420
 const STEP_Y = 92
-const STEP_GAP = 184
+const STEP_GAP = 320
 
 export function buildWorkflowGraph(
   workflow: WorkflowDocument,
