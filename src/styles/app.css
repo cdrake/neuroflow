@@ -51,6 +51,7 @@
 .nf-pill,
 .nf-action,
 .nf-panel-header,
+.nf-panel-actions,
 .nf-kv,
 .nf-run-state {
   display: flex;
@@ -148,6 +149,30 @@
 .nf-panel-header {
   justify-content: space-between;
   margin-bottom: 10px;
+}
+
+.nf-panel-actions {
+  gap: 8px;
+}
+
+.nf-mini-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--nf-border);
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  color: var(--fg-base);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.nf-mini-action:hover {
+  border-color: var(--nf-border-strong);
+  background: var(--bg-base);
 }
 
 .nf-eyebrow {
@@ -423,7 +448,48 @@
 }
 
 .nf-flow {
+  position: relative;
   min-height: 0;
+}
+
+.nf-flow-empty {
+  position: absolute;
+  z-index: 5;
+  top: 50%;
+  left: 50%;
+  width: min(320px, calc(100% - 40px));
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  padding: 18px;
+  border: 1px dashed color-mix(in srgb, var(--selection-bg-hover) 58%, var(--nf-border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-base) 88%, transparent);
+  color: var(--nf-muted);
+  pointer-events: none;
+  text-align: center;
+  transform: translate(-50%, -50%);
+}
+
+.nf-flow-empty span {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 7px;
+  background: var(--accent-soft);
+  color: var(--nf-accent-strong);
+}
+
+.nf-flow-empty strong {
+  color: var(--fg-base);
+  font-size: 14px;
+}
+
+.nf-flow-empty small {
+  color: var(--nf-muted);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .nf-source-node,

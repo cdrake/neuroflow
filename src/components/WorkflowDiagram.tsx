@@ -2,7 +2,7 @@
 // source pools for inputs/context, one node per step, handles for each
 // typed input/output, visible edges for refs, and inline badges for constants.
 
-import { useCallback, useEffect, useMemo, type DragEvent } from 'react'
+import { useCallback, useEffect, useMemo, type DragEvent, type ReactNode } from 'react'
 import {
   Background,
   type Connection,
@@ -34,6 +34,11 @@ interface WorkflowDiagramProps {
   workflow: WorkflowDocument
   tools: Map<string, ToolDefinition>
   selectedStep: string | null
+  emptyAction?: {
+    icon: ReactNode
+    title: string
+    detail: string
+  }
   nodePositions: NodePositionMap
   onSelectStep: (id: string) => void
   onBindInput: (stepId: string, inputName: string, ref: string) => void
@@ -50,6 +55,7 @@ export function WorkflowDiagram({
   workflow,
   tools,
   selectedStep,
+  emptyAction,
   nodePositions,
   onSelectStep,
   onBindInput,
@@ -66,6 +72,7 @@ export function WorkflowDiagram({
       <WorkflowDiagramCanvas
         nodes={graph.nodes}
         edges={graph.edges}
+        emptyAction={emptyAction}
         onBindInput={onBindInput}
         onMoveNode={onMoveNode}
         onAddTool={onAddTool}
@@ -77,18 +84,25 @@ export function WorkflowDiagram({
 function WorkflowDiagramCanvas({
   nodes: graphNodes,
   edges,
+  emptyAction,
   onBindInput,
   onMoveNode,
   onAddTool
 }: {
   nodes: NeuroflowNode[]
   edges: ReturnType<typeof buildWorkflowGraph>['edges']
+  emptyAction?: {
+    icon: ReactNode
+    title: string
+    detail: string
+  }
   onBindInput: (stepId: string, inputName: string, ref: string) => void
   onMoveNode: (nodeId: string, position: XYPosition) => void
   onAddTool: (toolId: string, blockId: string | undefined, position: XYPosition) => void
 }): JSX.Element {
   const [nodes, setNodes, onNodesChange] = useNodesState(graphNodes)
   const { screenToFlowPosition } = useReactFlow()
+  const hasSteps = graphNodes.some((node) => node.type === 'step')
 
   useEffect(() => {
     setNodes(graphNodes)
@@ -126,6 +140,13 @@ function WorkflowDiagramCanvas({
       }}
       onDrop={handleDrop}
     >
+      {emptyAction && !hasSteps && (
+        <div className="nf-flow-empty" aria-hidden="true">
+          <span>{emptyAction.icon}</span>
+          <strong>{emptyAction.title}</strong>
+          <small>{emptyAction.detail}</small>
+        </div>
+      )}
       <ReactFlow<NeuroflowNode>
         nodes={nodes}
         edges={edges}

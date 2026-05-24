@@ -8,6 +8,7 @@ import {
   Download,
   FolderTree,
   GitBranch,
+  MousePointer2,
   PencilLine,
   RefreshCw,
   RotateCcw,
@@ -126,12 +127,38 @@ export function App(): JSX.Element {
 
   function resetActiveWorkflow(): void {
     const original = library.find((item) => item.id === activeWorkflowId) ?? library[0]
+    const isBuiltinWorkflow = library.some((candidate) => candidate.id === activeWorkflowId)
     setWorkspaceItems((items) =>
       items.map((item) =>
-        item.id === activeWorkflowId ? { ...item, workflow: cloneWorkflow(original.workflow) } : item
+        item.id === activeWorkflowId
+          ? {
+              ...item,
+              workflow: isBuiltinWorkflow
+                ? cloneWorkflow(original.workflow)
+                : createBlankWorkflow(item.label, item.workflow.id)
+            }
+          : item
       )
     )
-    setSelectedStep(Object.keys(original.workflow.steps)[0] ?? null)
+    setSelectedStep(isBuiltinWorkflow ? Object.keys(original.workflow.steps)[0] ?? null : null)
+  }
+
+  function createCustomWorkflow(): void {
+    const index = nextCustomWorkflowIndex(workspaceItems)
+    const itemId = `custom-workflow-${index}`
+    const label = `Custom Workflow ${index}`
+    const workflow = createBlankWorkflow(label, `neuroflow.local/${itemId}`)
+    const item: WorkflowLibraryItem = {
+      id: itemId,
+      label,
+      description: 'Compose a pipeline from registry tools and forms.',
+      workflow
+    }
+
+    setWorkspaceItems((items) => [...items, item])
+    setActiveWorkflowId(item.id)
+    setSelectedStep(null)
+    setPlan(null)
   }
 
   function addToolStep(toolId: string, blockId?: string, position?: XYPosition): void {
@@ -312,6 +339,7 @@ export function App(): JSX.Element {
           <WorkflowLibrary
             items={workspaceItems}
             activeId={activeWorkflowId}
+            onCreate={createCustomWorkflow}
             onSelect={(id) => {
               setActiveWorkflowId(id)
               const nextWorkflow = workspaceItems.find((item) => item.id === id)?.workflow
@@ -351,6 +379,15 @@ export function App(): JSX.Element {
             workflow={activeWorkflow}
             tools={toolMap}
             selectedStep={selectedStep}
+            emptyAction={
+              Object.keys(activeWorkflow.steps).length === 0
+                ? {
+                    icon: <MousePointer2 size={17} />,
+                    title: 'Build from the registry',
+                    detail: 'Drop a tool or form here to create the first step.'
+                  }
+                : undefined
+            }
             nodePositions={nodePositions}
             onSelectStep={setSelectedStep}
             onBindInput={bindInputRef}
@@ -402,6 +439,59 @@ function loadWorkspaceItems(): WorkflowLibraryItem[] {
 
 function cloneWorkflow<T>(value: T): T {
   return structuredClone(value)
+}
+
+function createBlankWorkflow(label: string, id: string): WorkflowDocument {
+  return {
+    neuroflow: '0.1.0',
+    kind: 'workflow',
+    id,
+    version: '0.1.0',
+    description: `${label} pipeline.`,
+    inputs: {
+      dicom_dir: {
+        type: 'neuro:dicom-folder',
+        description: 'Optional DICOM source directory.',
+        optional: true
+      },
+      bids_dir: {
+        type: 'neuro:bids-dataset',
+        description: 'Optional existing BIDS dataset.',
+        optional: true
+      },
+      output_dir: {
+        type: 'core:directory',
+        description: 'Optional pipeline output directory.',
+        optional: true
+      }
+    },
+    context: {
+      description: 'Values accumulated while composing and running the workflow.',
+      fields: {}
+    },
+    steps: {},
+    outputs: {},
+    extensions: {
+      [UI_EXTENSION_KEY]: {
+        nodePositions: {
+          inputs: { x: 24, y: 96 },
+          context: { x: 24, y: 292 }
+        }
+      }
+    }
+  }
+}
+
+function nextCustomWorkflowIndex(items: WorkflowLibraryItem[]): number {
+  const used = new Set<number>()
+  for (const item of items) {
+    const match = /^custom-workflow-(\d+)$/.exec(item.id)
+    if (match) used.add(Number(match[1]))
+  }
+
+  let index = 1
+  while (used.has(index)) index += 1
+  return index
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
