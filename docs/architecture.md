@@ -30,6 +30,41 @@ The Tauri host exposes:
 
 - `validate_workflow`
 - `plan_workflow`
+- `execute_console_tool`
+
+`execute_console_tool` is intentionally an allowlisted adapter boundary. The UI
+passes a registry command id, tool id, and structured inputs; Rust validates the
+request and dispatches to a fixed host-side command without invoking a shell.
+The initial `neuroflow.echo` adapter is a dry execution stand-in for NiiVue and
+BIDSvue command adapters while the real tool registry is shaped.
+
+Tool contracts can describe output availability and input consumption with
+`availableFrom` and `consumesAs`; see `docs/tool-io-schema.md`. Safe pipes should
+be derived from that schema and passed as argv, stdin, files, or request bodies,
+never by composing shell strings.
+
+Tool contracts can also describe platform-specific install and packaging policy
+with the `neuroflow/packaging` extension; see `docs/tool-packaging.md`.
+Workflows should remain universal and reference logical tools, while install
+builds resolve `tool-id@version` contracts to a target platform, existing local
+software, user-provided locations, sidecar binaries, containers, or service
+endpoints. The resolved choices belong in a bundle lock and run provenance, not
+as hard-coded paths inside workflow JSON.
+
+Standalone UI tools use the same output contract. A `uiApp` executor launches an
+allowlisted app session, watches declared UI/session/filesystem outputs, and
+continues after the app closes once required outputs are resolved.
+
+NeuroVue is the first preview-oriented UI app modeled by that contract, but it
+should live outside this repo as its own application. NeuroFlow launches it as
+an allowlisted external session, passes resolved artifacts and launch context,
+then watches declared outputs such as correction patches or review state.
+Workflow execution, packaging, and app-session policy stay in NeuroFlow; the
+viewer/correction experience stays in NeuroVue. See `docs/neurovue.md`.
+
+The broader BIDSvue/NeuroVue handoff plan, including NVDocument working-state
+boundaries, `niimath` task exposure, and provenance expectations, lives in
+`docs/bidsvue-neurovue-integration.md`.
 
 Future commands should stay narrow:
 
