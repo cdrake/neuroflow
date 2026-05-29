@@ -1,5 +1,77 @@
 export type NeuroflowType = string
 
+export type ToolIOChannel =
+  | 'value'
+  | 'stdin'
+  | 'stdout'
+  | 'stderr'
+  | 'argument'
+  | 'filesystem'
+  | 'serviceRequest'
+  | 'serviceResponse'
+  | 'uiSession'
+
+export type ToolIOFormat =
+  | 'text'
+  | 'json'
+  | 'jsonl'
+  | 'path'
+  | 'paths'
+  | 'file'
+  | 'directory'
+  | 'binary'
+  | 'nifti'
+  | 'omezarr'
+  | 'tract'
+  | 'mesh'
+  | 'dicom'
+  | 'bids'
+  | 'uiState'
+
+export type ToolUISessionCompletion = 'appClosed' | 'outputsAvailable' | 'manualConfirm'
+
+export interface ToolUIWatchSpec {
+  rootInput?: string
+  path?: string
+  glob?: string
+  debounceMs?: number
+  required?: boolean
+}
+
+export interface ToolUICompletionPolicy {
+  continueWhen: ToolUISessionCompletion
+  requiredOutputs?: string[]
+  timeoutMs?: number
+}
+
+export type ToolPipeMode = 'stdin' | 'argument' | 'file'
+
+export interface ToolPipePolicy {
+  safe: boolean
+  modes: ToolPipeMode[]
+  description?: string
+}
+
+export interface ToolOutputAvailability {
+  source: Extract<ToolIOChannel, 'value' | 'stdout' | 'stderr' | 'filesystem' | 'serviceResponse' | 'uiSession'>
+  format?: ToolIOFormat
+  selector?: string
+  sessionKey?: string
+  glob?: string
+  watch?: ToolUIWatchSpec
+  completion?: ToolUICompletionPolicy
+  encoding?: 'utf-8' | 'binary'
+  pipe?: ToolPipePolicy
+}
+
+export interface ToolInputConsumption {
+  channel: Extract<ToolIOChannel, 'stdin' | 'argument' | 'filesystem' | 'serviceRequest'>
+  format?: ToolIOFormat
+  argument?: string
+  acceptsPipe?: boolean
+  description?: string
+}
+
 export interface ParameterDef {
   type: NeuroflowType
   description: string
@@ -8,6 +80,8 @@ export interface ParameterDef {
   enum?: unknown[]
   min?: number
   max?: number
+  availableFrom?: ToolOutputAvailability[]
+  consumesAs?: ToolInputConsumption[]
   extensions?: Record<string, unknown>
 }
 
@@ -115,6 +189,21 @@ export function shortType(type: string): string {
 }
 
 export function stableToolName(toolRef: string): string {
-  const parts = toolRef.split('/')
+  const parts = parseToolRef(toolRef).id.split('/')
   return parts[parts.length - 1] || toolRef
+}
+
+export function qualifiedToolRef(tool: { id: string; version: string }): string {
+  return `${tool.id}@${tool.version}`
+}
+
+export function parseToolRef(toolRef: string): { id: string; version?: string } {
+  const versionSeparator = toolRef.lastIndexOf('@')
+  if (versionSeparator <= 0) return { id: toolRef }
+
+  const id = toolRef.slice(0, versionSeparator)
+  const version = toolRef.slice(versionSeparator + 1)
+  if (!id || !version) return { id: toolRef }
+
+  return { id, version }
 }

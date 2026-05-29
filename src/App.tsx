@@ -19,13 +19,16 @@ import { WorkflowLibrary } from './components/WorkflowLibrary'
 import { ToolPalette } from './components/ToolPalette'
 import { Inspector } from './components/Inspector'
 import { RunTimeline } from './components/RunTimeline'
+import { WorkflowAppsPanel } from './components/WorkflowAppsPanel'
 import { library, tools } from './data/sample'
 import {
+  buildToolMap,
   buildToolRegistry,
   createStepFromRegistryEntry,
   mergeRegistryContext
 } from './domain/registry'
 import { planWorkflow, validateWorkflow } from './domain/validation'
+import { executeWorkflow } from './domain/execution'
 import type {
   Binding,
   StepDef,
@@ -35,6 +38,7 @@ import type {
   WorkflowLibraryItem,
   WorkflowPlan
 } from './domain/neuroflow'
+import type { RunStepResult, WorkflowRunResult } from './domain/execution'
 import type { NodePositionMap } from './domain/graph'
 import { isRefBinding, stableToolName } from './domain/neuroflow'
 
@@ -47,7 +51,9 @@ export function App(): JSX.Element {
   const [selectedStep, setSelectedStep] = useState<string | null>('convert')
   const [report, setReport] = useState<ValidationReport>({ ok: true, issues: [] })
   const [plan, setPlan] = useState<WorkflowPlan | null>(null)
+  const [run, setRun] = useState<WorkflowRunResult | null>(null)
   const [isRunningPreview, setIsRunningPreview] = useState(false)
+  const [isExecuting, setIsExecuting] = useState(false)
 
   const activeLibraryItem = useMemo(
     () => workspaceItems.find((item) => item.id === activeWorkflowId) ?? workspaceItems[0],
@@ -59,20 +65,15 @@ export function App(): JSX.Element {
     [activeLibraryItem, workspaceItems]
   )
 
-  const toolMap = useMemo(() => {
-    const map = new Map<string, ToolDefinition>()
-    for (const tool of tools) {
-      map.set(tool.id, tool)
-      map.set(tool.name, tool)
-    }
-    return map
-  }, [])
+  const toolMap = useMemo(() => buildToolMap(tools), [])
   const registry = useMemo(() => buildToolRegistry(tools), [])
 
   const nodePositions = useMemo(() => getNodePositions(activeWorkflow), [activeWorkflow])
 
   const updateActiveWorkflow = useCallback(
     (updater: (workflow: WorkflowDocument) => WorkflowDocument) => {
+      setRun(null)
+      setIsExecuting(false)
       setWorkspaceItems((items) =>
         items.map((item) =>
           item.id === activeWorkflowId
@@ -107,10 +108,49 @@ export function App(): JSX.Element {
   }, [activeWorkflow, selectedStep])
 
   async function runPreview(): Promise<void> {
+    setRun(null)
     setIsRunningPreview(true)
     const nextPlan = await planWorkflow(activeWorkflow)
     setPlan(nextPlan)
     window.setTimeout(() => setIsRunningPreview(false), 650)
+  }
+
+  async function runWorkflow(): Promise<void> {
+    const initialRun: WorkflowRunResult = {
+      workflowId: activeWorkflow.id,
+      status: 'running',
+      steps: []
+    }
+
+    setIsExecuting(true)
+    setIsRunningPreview(false)
+    setRun(initialRun)
+
+    try {
+      const nextPlan = await planWorkflow(activeWorkflow)
+      setPlan(nextPlan)
+      const result = await executeWorkflow(activeWorkflow, tools, (step) => {
+        setRun((current) => upsertRunStep(current ?? initialRun, step))
+      })
+      setRun(result)
+    } catch (error) {
+      const failedStep: RunStepResult = {
+        id: 'run-workflow',
+        tool: 'neuroflow-runtime',
+        adapter: 'internal',
+        status: 'failed',
+        message: error instanceof Error ? error.message : String(error),
+        startedAt: new Date().toISOString(),
+        finishedAt: new Date().toISOString()
+      }
+      setRun((current) => ({
+        ...(current ?? initialRun),
+        status: 'failed',
+        steps: [...(current?.steps ?? []), failedStep]
+      }))
+    } finally {
+      setIsExecuting(false)
+    }
   }
 
   function exportActiveWorkflow(): void {
@@ -141,6 +181,7 @@ export function App(): JSX.Element {
       )
     )
     setSelectedStep(isBuiltinWorkflow ? Object.keys(original.workflow.steps)[0] ?? null : null)
+    setRun(null)
   }
 
   function createCustomWorkflow(): void {
@@ -159,6 +200,7 @@ export function App(): JSX.Element {
     setActiveWorkflowId(item.id)
     setSelectedStep(null)
     setPlan(null)
+    setRun(null)
   }
 
   function addToolStep(toolId: string, blockId?: string, position?: XYPosition): void {
@@ -288,6 +330,8 @@ export function App(): JSX.Element {
   }
 
   const issueCount = report.issues.length
+  const stepCount = Object.keys(activeWorkflow.steps).length
+  const canExecute = report.ok && stepCount > 0 && !isExecuting
 
   return (
     <main className="nf-shell">
@@ -327,9 +371,13 @@ export function App(): JSX.Element {
             <RefreshCw size={15} />
             Validate
           </button>
-          <button className="nf-action nf-action-primary" onClick={() => void runPreview()}>
+          <button className="nf-action" onClick={() => void runPreview()} disabled={isExecuting}>
             <CirclePlay size={15} />
             {isRunningPreview ? 'Planning' : 'Run Preview'}
+          </button>
+          <button className="nf-action nf-action-primary" onClick={() => void runWorkflow()} disabled={!canExecute}>
+            <CirclePlay size={15} />
+            {isExecuting ? 'Running' : 'Run Workflow'}
           </button>
         </div>
       </header>
@@ -344,6 +392,7 @@ export function App(): JSX.Element {
               setActiveWorkflowId(id)
               const nextWorkflow = workspaceItems.find((item) => item.id === id)?.workflow
               setSelectedStep(nextWorkflow ? Object.keys(nextWorkflow.steps)[0] ?? null : null)
+              setRun(null)
             }}
           />
           <ToolPalette
@@ -367,7 +416,7 @@ export function App(): JSX.Element {
               </span>
               <span>
                 <Activity size={14} />
-                {Object.keys(activeWorkflow.steps).length} steps
+                {stepCount} steps
               </span>
               <span>
                 <BadgeCheck size={14} />
@@ -380,7 +429,7 @@ export function App(): JSX.Element {
             tools={toolMap}
             selectedStep={selectedStep}
             emptyAction={
-              Object.keys(activeWorkflow.steps).length === 0
+              stepCount === 0
                 ? {
                     icon: <MousePointer2 size={17} />,
                     title: 'Build from the registry',
@@ -397,6 +446,7 @@ export function App(): JSX.Element {
         </section>
 
         <aside className="nf-sidebar nf-right-rail">
+          <WorkflowAppsPanel workflow={activeWorkflow} tools={tools} selectedStep={selectedStep} />
           <Inspector
             workflow={activeWorkflow}
             tools={tools}
@@ -410,7 +460,7 @@ export function App(): JSX.Element {
             onChangeCondition={changeCondition}
             onDeleteStep={deleteStep}
           />
-          <RunTimeline plan={plan} active={isRunningPreview} />
+          <RunTimeline plan={plan} run={run} planning={isRunningPreview} executing={isExecuting} />
         </aside>
       </section>
 
@@ -418,14 +468,29 @@ export function App(): JSX.Element {
         <span className="nf-status-path" title={activeWorkflow.id}>
           {activeWorkflow.id}
         </span>
-        <span>{Object.keys(activeWorkflow.steps).length} steps</span>
+        <span>{stepCount} steps</span>
         <span>{Object.keys(activeWorkflow.outputs).length} outputs</span>
         <span>{report.ok ? 'validation clean' : `${issueCount} validation issue(s)`}</span>
         <span>{registry.length} registry entries</span>
         <span>{plan?.steps.length ?? 0} planned</span>
+        <span>{run ? `run ${run.status}` : 'not run'}</span>
       </footer>
     </main>
   )
+}
+
+function upsertRunStep(run: WorkflowRunResult, step: RunStepResult): WorkflowRunResult {
+  const existingIndex = run.steps.findIndex((candidate) => candidate.id === step.id)
+  const steps =
+    existingIndex >= 0
+      ? run.steps.map((candidate, index) => (index === existingIndex ? step : candidate))
+      : [...run.steps, step]
+
+  return {
+    ...run,
+    status: step.status === 'failed' || step.status === 'blocked' ? step.status : run.status,
+    steps
+  }
 }
 
 function loadWorkspaceItems(): WorkflowLibraryItem[] {

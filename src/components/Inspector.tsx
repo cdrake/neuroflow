@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, Braces, GitCommitHorizontal, ListChecks, Trash2 } from 'lucide-react'
 import type { Binding, ToolDefinition, ValidationReport, WorkflowDocument } from '../domain/neuroflow'
-import { isConstantBinding, isRefBinding, shortType, stableToolName } from '../domain/neuroflow'
+import { isConstantBinding, isRefBinding, shortType } from '../domain/neuroflow'
+import { resolveToolDefinition } from '../domain/registry'
 
 interface InspectorProps {
   workflow: WorkflowDocument
@@ -36,7 +37,7 @@ export function Inspector({
   onDeleteStep
 }: InspectorProps): JSX.Element {
   const step = selectedStep ? workflow.steps[selectedStep] : undefined
-  const tool = step ? toolMap.get(step.tool) ?? toolMap.get(stableToolName(step.tool)) : undefined
+  const tool = step ? resolveToolDefinition(toolMap, step.tool) : undefined
   const [draftStepId, setDraftStepId] = useState(selectedStep ?? '')
   const refOptions = useMemo(
     () => buildRefOptions(workflow, toolMap, selectedStep),
@@ -287,7 +288,7 @@ function buildRefOptions(
 
   for (const [stepId, step] of Object.entries(workflow.steps)) {
     if (stepId === selectedStep) continue
-    const tool = toolMap.get(step.tool) ?? toolMap.get(stableToolName(step.tool))
+    const tool = resolveToolDefinition(toolMap, step.tool)
     for (const [outputName, output] of Object.entries(tool?.outputs ?? {})) {
       options.push({
         value: `steps.${stepId}.outputs.${outputName}`,

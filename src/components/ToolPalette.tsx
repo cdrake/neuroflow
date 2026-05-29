@@ -6,6 +6,7 @@ import {
   Download,
   FileText,
   FormInput,
+  AppWindow,
   Plus,
   Search,
   TableProperties,
@@ -17,6 +18,7 @@ import { getSourceSuggestions } from '../domain/registry'
 import type { WorkflowDocument } from '../domain/neuroflow'
 import { shortType } from '../domain/neuroflow'
 import type { ToolDefinition } from '../domain/neuroflow'
+import { getToolPackaging, packagingModeLabel, packagingTargetSummary } from '../domain/packaging'
 
 const BLOCK_ICONS = {
   Upload,
@@ -30,6 +32,7 @@ const PROVIDER_ICONS = {
   console: Code2,
   webForm: FormInput,
   webService: Cloud,
+  uiApp: AppWindow,
   neuroflow: Wrench
 }
 
@@ -37,6 +40,7 @@ const PROVIDERS: Array<{ kind: ToolProviderKind | 'all'; label: string }> = [
   { kind: 'all', label: 'All' },
   { kind: 'console', label: 'Console' },
   { kind: 'webForm', label: 'Forms' },
+  { kind: 'uiApp', label: 'Apps' },
   { kind: 'webService', label: 'Services' },
   { kind: 'neuroflow', label: 'Built-in' }
 ]
@@ -146,6 +150,7 @@ function PaletteBlock({
       ? BLOCK_ICONS[entry.block.icon as keyof typeof BLOCK_ICONS]
       : Wrench
   const ProviderIcon = PROVIDER_ICONS[entry.provider.kind]
+  const packaging = getToolPackaging(entry.tool)
   const satisfied = entry.requiredInputs.filter((inputName) => {
     const input = entry.tool.inputs[inputName]
     return input ? getSourceSuggestions(workflow, toolMap, input.type).length > 0 : false
@@ -181,6 +186,9 @@ function PaletteBlock({
         <span title={entry.provider.source}>
           <ProviderIcon size={12} />
           {entry.provider.label}
+        </span>
+        <span title={packagingTargetSummary(packaging)}>
+          v{entry.tool.version} {packagingModeLabel(packaging)}
         </span>
         <span>
           {satisfied}/{entry.requiredInputs.length} inputs

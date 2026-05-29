@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import type { Binding, ToolDefinition, ValidationIssue, ValidationReport, WorkflowDocument, WorkflowPlan } from './neuroflow'
-import { isConstantBinding, isRefBinding, stableToolName } from './neuroflow'
+import { isConstantBinding, isRefBinding } from './neuroflow'
+import { buildToolMap, resolveToolDefinition } from './registry'
 import { isTypeCompatible } from './typeCompatibility'
 
 const REF_PATTERN =
@@ -43,7 +44,7 @@ export function validateWorkflowLocally(
   }
 
   for (const [stepName, step] of Object.entries(workflow.steps)) {
-    const tool = toolMap.get(step.tool) ?? toolMap.get(stableToolName(step.tool))
+    const tool = resolveToolDefinition(toolMap, step.tool)
     if (!step.tool) {
       issues.push({ severity: 'error', path: `steps.${stepName}.tool`, message: 'Step has no tool.' })
     } else if (tools.length > 0 && !tool) {
@@ -281,19 +282,10 @@ function resolveRefType(
   if (parts[0] === 'steps' && parts.length === 4 && parts[2] === 'outputs') {
     const step = workflow.steps[parts[1]]
     if (!step) return null
-    const tool = toolMap.get(step.tool) ?? toolMap.get(stableToolName(step.tool))
+    const tool = resolveToolDefinition(toolMap, step.tool)
     return tool?.outputs[parts[3]]?.type ?? null
   }
   return null
-}
-
-function buildToolMap(tools: ToolDefinition[]): Map<string, ToolDefinition> {
-  const map = new Map<string, ToolDefinition>()
-  for (const tool of tools) {
-    map.set(tool.id, tool)
-    map.set(tool.name, tool)
-  }
-  return map
 }
 
 function isMissingBinding(binding: Binding | undefined): boolean {

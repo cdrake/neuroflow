@@ -60,6 +60,7 @@
 
 .nf-topbar-meta {
   gap: 8px;
+  min-width: 0;
 }
 
 .nf-pill,
@@ -188,6 +189,70 @@
   font-size: 15px;
 }
 
+.nf-app-session {
+  display: grid;
+  gap: 9px;
+}
+
+.nf-app-session-head,
+.nf-app-session-head span {
+  display: flex;
+  align-items: center;
+}
+
+.nf-app-session-head {
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.nf-app-session-head span {
+  gap: 6px;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.nf-app-session-head em {
+  flex: 0 0 auto;
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  color: var(--nf-muted);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.nf-app-session-meta {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--nf-border);
+  border-radius: 7px;
+  background: var(--bg-elevated);
+}
+
+.nf-app-session-meta small,
+.nf-app-session-meta code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.nf-app-session-meta small {
+  color: var(--nf-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.nf-app-session-meta code {
+  color: var(--nf-accent-strong);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
 .nf-list,
 .nf-block-list,
 .nf-plan-list,
@@ -222,7 +287,7 @@
 
 .nf-segmented {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 2px;
   margin-bottom: 10px;
   padding: 2px;
@@ -815,6 +880,11 @@
   color: var(--nf-amber);
 }
 
+.nf-run-state.is-failed,
+.nf-run-state.is-blocked {
+  color: var(--nf-red);
+}
+
 .nf-plan-list {
   padding: 0;
   margin: 10px 0 0;
@@ -831,6 +901,84 @@
 .nf-plan-list span {
   color: var(--nf-muted);
   font-size: 11px;
+}
+
+.nf-run-list {
+  gap: 0;
+}
+
+.nf-run-step {
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+}
+
+.nf-run-step-icon {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  color: var(--nf-muted);
+  background: var(--bg-elevated);
+}
+
+.nf-run-step.is-running .nf-run-step-icon {
+  color: var(--nf-amber);
+}
+
+.nf-run-step.is-succeeded .nf-run-step-icon {
+  color: var(--nf-green);
+}
+
+.nf-run-step.is-blocked .nf-run-step-icon,
+.nf-run-step.is-failed .nf-run-step-icon {
+  color: var(--nf-red);
+}
+
+.nf-run-step-main {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.nf-run-step small {
+  color: var(--fg-muted);
+  font-size: 11px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.nf-run-step .nf-run-streams {
+  color: var(--nf-accent-strong);
+  font-family: "SFMono-Regular", Consolas, monospace;
+}
+
+.nf-run-step .nf-run-session {
+  color: var(--nf-lilac);
+  font-family: "SFMono-Regular", Consolas, monospace;
+}
+
+.nf-run-step em {
+  align-self: start;
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  color: var(--nf-muted);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.nf-spin {
+  animation: nf-spin 0.9s linear infinite;
+}
+
+@keyframes nf-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .nf-statusbar {
@@ -859,6 +1007,10 @@
 }
 
 @media (max-width: 1180px) {
+  .nf-topbar {
+    gap: 10px;
+  }
+
   .nf-workspace {
     grid-template-columns: 320px minmax(420px, 1fr);
   }

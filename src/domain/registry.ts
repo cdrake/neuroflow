@@ -1,17 +1,55 @@
-import type { Binding, BlockDef, ContextFieldDef, StepDef, ToolDefinition, WorkflowDocument } from './neuroflow'
-import { isConstantBinding, isRefBinding, shortType, stableToolName } from './neuroflow'
+import type {
+  Binding,
+  BlockDef,
+  ContextFieldDef,
+  StepDef,
+  ToolDefinition,
+  ToolInputConsumption,
+  ToolOutputAvailability,
+  WorkflowDocument
+} from './neuroflow'
+import { isConstantBinding, isRefBinding, parseToolRef, qualifiedToolRef, shortType, stableToolName } from './neuroflow'
 import { isTypeCompatible } from './typeCompatibility'
 
 export const REGISTRY_EXTENSION_KEY = 'neuroflow/registry'
 
-export type ToolProviderKind = 'console' | 'webForm' | 'webService' | 'neuroflow'
+export type ToolProviderKind = 'console' | 'webForm' | 'webService' | 'uiApp' | 'neuroflow'
 
 export interface ToolProviderDescriptor {
   kind: ToolProviderKind
   label: string
   source: string
-  runtime?: 'sidecar' | 'external' | 'browser' | 'service' | 'internal'
+  runtime?: 'sidecar' | 'external' | 'browser' | 'desktop' | 'service' | 'internal'
 }
+
+export type ToolExecutorDescriptor =
+  | {
+      kind: 'console'
+      commandId: string
+      label: string
+      dryRun?: boolean
+    }
+  | {
+      kind: 'webService'
+      serviceId: string
+      label: string
+      endpoint?: string
+      method?: 'GET' | 'POST'
+      dryRun?: boolean
+    }
+  | {
+      kind: 'uiApp'
+      appId: string
+      label: string
+      launchCommandId?: string
+      completion: 'appClosed' | 'outputsAvailable' | 'manualConfirm'
+      dryRun?: boolean
+    }
+  | {
+      kind: 'internal'
+      handler: string
+      label: string
+    }
 
 export interface RegistryFormField {
   key: string
@@ -44,10 +82,13 @@ export interface SourceSuggestion {
   type: string
   label: string
   exact: boolean
+  pipeable: boolean
+  pipeModes: string[]
 }
 
 interface RegistryExtension {
   provider?: Partial<ToolProviderDescriptor>
+  executor?: ToolExecutorDescriptor
 }
 
 export function buildToolRegistry(tools: ToolDefinition[]): ToolRegistryEntry[] {
@@ -89,6 +130,32 @@ export function buildToolRegistry(tools: ToolDefinition[]): ToolRegistryEntry[] 
   return entries
 }
 
+export function buildToolMap(tools: ToolDefinition[]): Map<string, ToolDefinition> {
+  const map = new Map<string, ToolDefinition>()
+
+  for (const tool of tools) {
+    map.set(tool.id, tool)
+    map.set(tool.name, tool)
+    map.set(qualifiedToolRef(tool), tool)
+    map.set(`${tool.name}@${tool.version}`, tool)
+  }
+
+  return map
+}
+
+export function resolveToolDefinition(
+  toolMap: Map<string, ToolDefinition>,
+  toolRef: string
+): ToolDefinition | undefined {
+  const exact = toolMap.get(toolRef)
+  if (exact) return exact
+
+  const parsed = parseToolRef(toolRef)
+  if (parsed.version) return undefined
+
+  return toolMap.get(parsed.id) ?? toolMap.get(stableToolName(parsed.id))
+}
+
 export function getToolProvider(tool: ToolDefinition): ToolProviderDescriptor {
   const extension = readRegistryExtension(tool)
   if (extension?.provider?.kind && isProviderKind(extension.provider.kind)) {
@@ -106,6 +173,11 @@ export function getToolProvider(tool: ToolDefinition): ToolProviderDescriptor {
     source: 'Built-in NeuroFlow registry',
     runtime: 'internal'
   }
+}
+
+export function getToolExecutor(tool: ToolDefinition): ToolExecutorDescriptor | null {
+  const extension = readRegistryExtension(tool)
+  return extension?.executor ?? null
 }
 
 export function createStepFromRegistryEntry(
@@ -144,7 +216,8 @@ export function createStepFromRegistryEntry(
       [REGISTRY_EXTENSION_KEY]: {
         provider: entry.provider.kind,
         form: entry.formComponent ?? entry.block?.id ?? 'default',
-        source: entry.provider.source
+        source: entry.provider.source,
+        executor: getToolExecutor(entry.tool)?.kind ?? null
       }
     }
   }
@@ -175,23 +248,25 @@ export function getSourceSuggestions(
   const suggestions: SourceSuggestion[] = []
 
   for (const [name, def] of Object.entries(workflow.inputs)) {
-    pushSuggestion(suggestions, `inputs.${name}`, def.type, `input ${name}`, inputType)
+    pushSuggestion(suggestions, `inputs.${name}`, def.type, `input ${name}`, inputType, false, [])
   }
 
   for (const [name, def] of Object.entries(workflow.context?.fields ?? {})) {
-    pushSuggestion(suggestions, `context.${name}`, def.type, `context ${name}`, inputType)
+    pushSuggestion(suggestions, `context.${name}`, def.type, `context ${name}`, inputType, false, [])
   }
 
   for (const [stepId, step] of Object.entries(workflow.steps)) {
     if (stepId === selectedStep) continue
-    const tool = toolMap.get(step.tool) ?? toolMap.get(stableToolName(step.tool))
+    const tool = resolveToolDefinition(toolMap, step.tool)
     for (const [outputName, output] of Object.entries(tool?.outputs ?? {})) {
       pushSuggestion(
         suggestions,
         `steps.${stepId}.outputs.${outputName}`,
         output.type,
         `${stepId} output ${outputName}`,
-        inputType
+        inputType,
+        outputCanPipeTo(output, inputType),
+        safePipeModes(output, inputType)
       )
     }
   }
@@ -259,15 +334,55 @@ function pushSuggestion(
   ref: string,
   sourceType: string,
   label: string,
-  inputType: string
+  inputType: string,
+  pipeable: boolean,
+  pipeModes: string[]
 ): void {
   if (!isTypeCompatible(sourceType, inputType)) return
   suggestions.push({
     ref,
     type: sourceType,
     label: `${label} (${shortType(sourceType)})`,
-    exact: sourceType === inputType
+    exact: sourceType === inputType,
+    pipeable,
+    pipeModes
   })
+}
+
+export function outputCanPipeTo(
+  output: { type: string; availableFrom?: ToolOutputAvailability[] },
+  inputType: string,
+  consumption?: ToolInputConsumption
+): boolean {
+  return safePipeModes(output, inputType, consumption).length > 0
+}
+
+export function safePipeModes(
+  output: { type: string; availableFrom?: ToolOutputAvailability[] },
+  inputType: string,
+  consumption?: ToolInputConsumption
+): string[] {
+  if (!isTypeCompatible(output.type, inputType)) return []
+
+  const outputModes = new Set<string>()
+  for (const source of output.availableFrom ?? []) {
+    if (source.pipe?.safe !== true) continue
+    for (const mode of source.pipe.modes) {
+      outputModes.add(mode)
+    }
+  }
+
+  if (!consumption) return Array.from(outputModes).sort()
+  if (consumption.acceptsPipe !== true) return []
+
+  return Array.from(outputModes)
+    .filter((mode) => pipeModeMatchesConsumption(mode, consumption.channel))
+    .sort()
+}
+
+function pipeModeMatchesConsumption(mode: string, channel: ToolInputConsumption['channel']): boolean {
+  if (mode === 'file') return channel === 'filesystem'
+  return mode === channel
 }
 
 function requiredInputNames(tool: ToolDefinition): string[] {
@@ -294,7 +409,11 @@ function readRegistryExtension(tool: ToolDefinition): RegistryExtension | null {
 }
 
 function isProviderKind(value: unknown): value is ToolProviderKind {
-  return value === 'console' || value === 'webForm' || value === 'webService' || value === 'neuroflow'
+  return value === 'console'
+    || value === 'webForm'
+    || value === 'webService'
+    || value === 'uiApp'
+    || value === 'neuroflow'
 }
 
 function providerLabel(kind: ToolProviderKind): string {
@@ -305,6 +424,8 @@ function providerLabel(kind: ToolProviderKind): string {
       return 'Web form'
     case 'webService':
       return 'Web service'
+    case 'uiApp':
+      return 'UI app'
     case 'neuroflow':
       return 'NeuroFlow component'
   }

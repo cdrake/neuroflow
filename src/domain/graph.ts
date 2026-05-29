@@ -1,6 +1,7 @@
 import type { Edge, Node, XYPosition } from '@xyflow/react'
 import type { ToolDefinition, WorkflowDocument } from './neuroflow'
 import { isConstantBinding, isRefBinding, stableToolName } from './neuroflow'
+import { resolveToolDefinition } from './registry'
 
 export interface SourceNodeData extends Record<string, unknown> {
   title: string
@@ -65,7 +66,7 @@ export function buildWorkflowGraph(
   const stepEntries = Object.entries(workflow.steps)
 
   stepEntries.forEach(([stepId, step], index) => {
-    const tool = tools.get(step.tool) ?? tools.get(stableToolName(step.tool))
+    const tool = resolveToolDefinition(tools, step.tool)
     const inputDefs = tool?.inputs ?? {}
     const outputDefs = tool?.outputs ?? {}
 
