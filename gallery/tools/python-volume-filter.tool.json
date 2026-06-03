@@ -1,0 +1,67 @@
+{
+  "$schema": "../../../neuroflow-spec/schemas/0.1/tool.schema.json",
+  "neuroflow": "0.1.0",
+  "kind": "tool",
+  "id": "neuroflow.gallery.tools/python-volume-filter",
+  "version": "0.1.0",
+  "description": "Headless Python script that modifies or filters the NIfTI volumes of a BIDS dataset (e.g. intensity threshold or Gaussian smoothing), optionally guided by a NeuroVue correction patch, and writes the filtered volumes to the session output directory.",
+  "inputs": {
+    "bids_dir": {
+      "type": "neuro:bids-dataset",
+      "description": "BIDS dataset whose anatomical volumes are filtered."
+    },
+    "correction_patch": {
+      "type": "core:json",
+      "description": "Optional NeuroVue correction patch that parameterizes the filter.",
+      "optional": true
+    },
+    "operation": {
+      "type": "core:string",
+      "description": "Filter operation to apply.",
+      "optional": true,
+      "default": "smooth",
+      "enum": ["smooth", "threshold", "zscore", "passthrough"]
+    },
+    "amount": {
+      "type": "core:number",
+      "description": "Operation magnitude (FWHM mm for smooth, intensity for threshold).",
+      "optional": true,
+      "default": 3
+    }
+  },
+  "outputs": {
+    "filtered_volumes": {
+      "type": "core:array<neuro:volume>",
+      "description": "Filtered NIfTI volumes.",
+      "delivery": {
+        "mode": "core:result-dir",
+        "path": "filtered"
+      }
+    }
+  },
+  "outputDelivery": {
+    "default": "core:result-dir"
+  },
+  "extensions": {
+    "niivue/ui": {
+      "block": {
+        "id": "filter-volumes-python",
+        "label": "Filter Volumes (Python)",
+        "description": "Apply a NIfTI filter operation with a Python script.",
+        "category": "Processing",
+        "stage": "explore",
+        "exposedFields": ["operation", "amount"]
+      }
+    },
+    "neuroflow/launch": {
+      "kind": "script",
+      "interpreter": "python3",
+      "script": "../scripts/filter_volumes.py",
+      "completion": "exit",
+      "interactive": false,
+      "contract": "../../docs/neuroflow-session-contract.md",
+      "requirements": ["nibabel", "numpy", "scipy"],
+      "description": "Reads $NEUROFLOW_SESSION/context.json, filters volumes under inputs.bids_dir into $NEUROFLOW_OUTPUT_DIR/filtered, and appends a provenance line."
+    }
+  }
+}

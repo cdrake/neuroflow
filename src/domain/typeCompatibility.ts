@@ -3,12 +3,13 @@ const COERCION_RULES: Record<string, string[]> = {
   'core:directory': ['core:string'],
   'core:file': ['core:string'],
   'neuro:volume': ['core:file', 'core:string'],
-  'neuro:ome-zarr': ['core:directory', 'core:string'],
+  'neuro:ome-zarr': ['neuro:ngff-zarr', 'core:directory', 'core:string'],
+  'neuro:ngff-zarr': ['neuro:ome-zarr', 'core:directory', 'core:file', 'core:json', 'core:string'],
   'neuro:tract': ['core:file', 'core:string'],
-  'neuro:mesh': ['core:file', 'core:string'],
+  'neuro:surface': ['core:file', 'core:string'],
   'neuro:mask': ['neuro:volume', 'core:file', 'core:string'],
   'neuro:bids-dataset': ['core:directory', 'core:string'],
-  'neuro:correction-patch': ['core:json', 'core:file', 'core:string']
+  'neurovue:correction-patch': ['core:json', 'core:file', 'core:string']
 }
 
 export function isTypeCompatible(sourceType: string, inputType: string): boolean {

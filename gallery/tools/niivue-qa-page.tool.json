@@ -1,0 +1,56 @@
+{
+  "$schema": "../../../neuroflow-spec/schemas/0.1/tool.schema.json",
+  "neuroflow": "0.1.0",
+  "kind": "tool",
+  "id": "neuroflow.gallery.tools/niivue-qa-page",
+  "version": "0.1.0",
+  "description": "Publish-stage script that builds a standalone QA web page for a set of NIfTI volumes using NiiVue's saveHTML/generateHTML extension, writing a self-contained index.html to the session output directory.",
+  "inputs": {
+    "volumes": {
+      "type": "core:array<neuro:volume>",
+      "description": "Volumes to render into the QA page (typically the filtered volumes)."
+    },
+    "title": {
+      "type": "core:string",
+      "description": "Heading shown on the QA page.",
+      "optional": true,
+      "default": "NeuroFlow QA"
+    }
+  },
+  "outputs": {
+    "qa_html": {
+      "type": "core:file",
+      "description": "Self-contained NiiVue QA web page.",
+      "delivery": {
+        "mode": "core:result-file",
+        "path": "index.html"
+      }
+    }
+  },
+  "outputDelivery": {
+    "default": "core:result-file"
+  },
+  "extensions": {
+    "niivue/ui": {
+      "block": {
+        "id": "niivue-qa-page",
+        "label": "NiiVue QA Page",
+        "description": "Render a shareable QA page with NiiVue saveHTML.",
+        "category": "Output",
+        "stage": "publish",
+        "exposedFields": ["title"]
+      }
+    },
+    "neuroflow/launch": {
+      "kind": "script",
+      "interpreter": "node",
+      "script": "../scripts/generate_qa.mjs",
+      "completion": "exit",
+      "interactive": false,
+      "contract": "../../docs/neuroflow-session-contract.md",
+      "requirements": ["@niivue/niivue", "@niivue/nv-ext-save-html"],
+      "saveApi": "generateHTML / saveHTML (@niivue/nv-ext-save-html)",
+      "description": "Reads $NEUROFLOW_SESSION/context.json, builds an NVDocument from inputs.volumes, and writes $NEUROFLOW_OUTPUT_DIR/index.html via the NiiVue save-html extension."
+    }
+  }
+}

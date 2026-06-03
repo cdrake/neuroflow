@@ -1,0 +1,67 @@
+{
+  "$schema": "../../../neuroflow-spec/schemas/0.1/workflow.schema.json",
+  "neuroflow": "0.1.0",
+  "kind": "workflow",
+  "id": "neuroflow.gallery/dicom-ingest-review-publish",
+  "version": "0.1.0",
+  "description": "Ingest DICOM into BIDS with BIDSvue (user-driven), review the dataset in NeuroVue (user-driven), filter the volumes with a Python script, then publish a NiiVue QA page. Steps tagged ingest/explore/publish. The two UI-app steps block until the user finishes; the two script steps run headless.",
+  "inputs": {
+    "dicom_dir": {
+      "type": "neuro:dicom-folder",
+      "description": "DICOM source directory to ingest."
+    }
+  },
+  "steps": {
+    "ingest": {
+      "tool": "neuroflow.gallery.tools/bidsvue",
+      "stage": "ingest",
+      "inputs": {
+        "dicom_dir": { "ref": "inputs.dicom_dir" }
+      }
+    },
+    "review": {
+      "tool": "neuroflow.gallery.tools/neurovue",
+      "stage": "explore",
+      "inputs": {
+        "bids_dir": { "ref": "steps.ingest.outputs.bids_dir" }
+      }
+    },
+    "filter": {
+      "tool": "neuroflow.gallery.tools/python-volume-filter",
+      "stage": "explore",
+      "inputs": {
+        "bids_dir": { "ref": "steps.ingest.outputs.bids_dir" },
+        "correction_patch": { "ref": "steps.review.outputs.correction_patch" },
+        "operation": { "constant": "smooth" },
+        "amount": { "constant": 3 }
+      }
+    },
+    "qa": {
+      "tool": "neuroflow.gallery.tools/niivue-qa-page",
+      "stage": "publish",
+      "inputs": {
+        "volumes": { "ref": "steps.filter.outputs.filtered_volumes" },
+        "title": { "constant": "DICOM → BIDS QA" }
+      }
+    }
+  },
+  "outputs": {
+    "bids_dir": {
+      "type": "neuro:bids-dataset",
+      "ref": "steps.ingest.outputs.bids_dir"
+    },
+    "qa_page": {
+      "type": "core:file",
+      "ref": "steps.qa.outputs.qa_html"
+    }
+  },
+  "extensions": {
+    "niivue/ui": {
+      "menu": "Import"
+    },
+    "neuroflow/flow": {
+      "humanInLoop": ["ingest", "review"],
+      "description": "ingest and review launch interactive UI apps (BIDSvue, NeuroVue) that block until the user finishes; filter and qa are headless scripts. Stage order: ingest → explore → publish."
+    }
+  }
+}

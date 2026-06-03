@@ -1,0 +1,67 @@
+{
+  "$schema": "../../../neuroflow-spec/schemas/0.1/tool.schema.json",
+  "neuroflow": "0.1.0",
+  "kind": "tool",
+  "id": "neuroflow.gallery.tools/neurovue",
+  "version": "0.1.0",
+  "description": "NeuroVue explore-stage UI app. Launched by NeuroFlow with a BIDS/NIfTI dataset, it lets the user review volumes, set clip planes, and record corrections, then persists a correction patch and review state to the session output directory.",
+  "inputs": {
+    "bids_dir": {
+      "type": "neuro:bids-dataset",
+      "description": "BIDS dataset to open for review.",
+      "optional": true
+    },
+    "volumes": {
+      "type": "core:array<neuro:volume>",
+      "description": "Specific NIfTI volumes to open instead of, or in addition to, a dataset.",
+      "optional": true
+    }
+  },
+  "outputs": {
+    "correction_patch": {
+      "type": "neurovue:correction-patch",
+      "description": "Small JSON artifact describing review-time corrections (clip planes, flags, edits).",
+      "optional": true,
+      "delivery": {
+        "mode": "core:result-file",
+        "path": "correction.patch.json"
+      }
+    },
+    "review_state": {
+      "type": "core:json",
+      "description": "Viewer state captured when the user finished review.",
+      "optional": true,
+      "delivery": {
+        "mode": "core:result-file",
+        "path": "review.state.json"
+      }
+    }
+  },
+  "outputDelivery": {
+    "default": "core:result-file"
+  },
+  "extensions": {
+    "niivue/ui": {
+      "block": {
+        "id": "review-in-neurovue",
+        "label": "Review in NeuroVue",
+        "description": "Open the dataset for interactive review and correction.",
+        "category": "Quality",
+        "stage": "explore",
+        "exposedFields": ["bids_dir", "volumes"]
+      }
+    },
+    "neuroflow/launch": {
+      "kind": "uiApp",
+      "app": "neurovue",
+      "repo": "/Users/chrisdrake/Dev/neurovue",
+      "branch": "neuroflow-aware",
+      "command": "bun",
+      "args": ["tauri", "dev"],
+      "completion": "outputsAvailable",
+      "interactive": true,
+      "contract": "../../docs/neuroflow-session-contract.md",
+      "description": "NeuroVue reads $NEUROFLOW_SESSION/context.json (inputs.bids_dir / inputs.volumes), and on user save POSTs the patch which the server persists to $NEUROFLOW_OUTPUT_DIR/correction.patch.json plus a provenance line."
+    }
+  }
+}

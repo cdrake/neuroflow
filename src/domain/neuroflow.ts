@@ -22,6 +22,7 @@ export type ToolIOFormat =
   | 'binary'
   | 'nifti'
   | 'omezarr'
+  | 'ngffzarr'
   | 'tract'
   | 'mesh'
   | 'dicom'
@@ -91,11 +92,50 @@ export interface ContextFieldDef extends ParameterDef {
   dependsOn?: string[]
 }
 
+export type WorkflowStage = 'ingest' | 'explore' | 'publish'
+
+export interface StageInfo {
+  id: WorkflowStage
+  label: string
+  description: string
+}
+
+/**
+ * Stages are an informal, opt-in grouping used for tool discovery ("show me
+ * Ingest tools"). They are deliberately NOT load-bearing: nothing in the runtime
+ * branches on a stage. The reference adapters (BIDSvue for ingest, NeuroVue for
+ * explore) are defaults, not requirements — any tool, including custom ones like
+ * "open a file" or "run a python script", can be tagged into any stage, and
+ * untagged tools simply group under "Other".
+ */
+export const WORKFLOW_STAGES: StageInfo[] = [
+  {
+    id: 'ingest',
+    label: 'Ingest',
+    description: 'Bring data in and shape it into a dataset. Reference: BIDSvue / bidsui.'
+  },
+  {
+    id: 'explore',
+    label: 'Explore',
+    description: 'Review, correct, and process artifacts. Reference: NeuroVue.'
+  },
+  {
+    id: 'publish',
+    label: 'Publish',
+    description: 'Compose figures, captions, graphs, and reports from results.'
+  }
+]
+
+export function stageInfo(stage: WorkflowStage): StageInfo {
+  return WORKFLOW_STAGES.find((item) => item.id === stage) ?? WORKFLOW_STAGES[0]
+}
+
 export interface BlockDef {
   id: string
   label: string
   description: string
   category: 'Import' | 'Processing' | 'Quality' | 'Output'
+  stage?: WorkflowStage
   icon?: string
   defaults?: Record<string, unknown>
   exposedFields: string[]
@@ -122,6 +162,7 @@ export type Binding = { ref: string } | { constant: unknown }
 
 export interface StepDef {
   tool: string
+  stage?: WorkflowStage
   inputs: Record<string, Binding>
   outputMappings?: Record<string, string>
   condition?: string

@@ -133,6 +133,19 @@ pub fn validate_workflow_value_with_tools(
             ));
         }
 
+        if let Some(stage) = step_obj.get("stage") {
+            let known = stage.as_str().map(is_known_stage).unwrap_or(false);
+            if !known {
+                issues.push(warning(
+                    format!("{path}.stage"),
+                    format!(
+                        "Stage is not a recognized NeuroFlow stage (expected one of {}).",
+                        KNOWN_STAGES.join(", ")
+                    ),
+                ));
+            }
+        }
+
         let inputs = step_obj.get("inputs").and_then(Value::as_object);
         let Some(inputs) = inputs else {
             issues.push(error(format!("{path}.inputs"), "Step inputs must be an object."));
@@ -518,6 +531,15 @@ fn array_element_type(value: &str) -> Option<&str> {
         .and_then(|rest| rest.strip_suffix('>'))
 }
 
+/// Recognized workflow stages. Stages are an informal, opt-in discovery grouping
+/// (see `docs/stages.md`); they are not load-bearing, so an unrecognized value is
+/// only a warning, never an error.
+const KNOWN_STAGES: [&str; 3] = ["ingest", "explore", "publish"];
+
+fn is_known_stage(value: &str) -> bool {
+    KNOWN_STAGES.contains(&value)
+}
+
 fn valid_semver(value: &str) -> bool {
     let parts: Vec<&str> = value.split('.').collect();
     parts.len() == 3
@@ -601,5 +623,48 @@ mod tests {
         });
         let report = validate_workflow_value(&workflow);
         assert!(report.ok, "{report:?}");
+    }
+
+    fn workflow_with_stage(stage: &str) -> Value {
+        serde_json::json!({
+            "neuroflow": "0.1.0",
+            "kind": "workflow",
+            "id": "test/workflow",
+            "version": "0.1.0",
+            "description": "Stage-tagged workflow",
+            "inputs": { "dicom_dir": { "type": "neuro:dicom-folder", "description": "DICOM" } },
+            "context": { "fields": { "outDir": { "type": "core:directory", "description": "Output" } } },
+            "steps": {
+                "convert": {
+                    "tool": "dcm2niix",
+                    "stage": stage,
+                    "inputs": { "dicom_dir": { "ref": "inputs.dicom_dir" } },
+                    "outputMappings": { "outDir": "outDir" }
+                }
+            },
+            "outputs": { "outDir": { "type": "core:directory", "ref": "steps.convert.outputs.outDir" } }
+        })
+    }
+
+    #[test]
+    fn accepts_known_stage_without_issues() {
+        let report = validate_workflow_value(&workflow_with_stage("ingest"));
+        assert!(report.ok, "{report:?}");
+        assert!(
+            !report.issues.iter().any(|issue| issue.path.as_deref() == Some("steps.convert.stage")),
+            "known stage should not raise an issue: {report:?}"
+        );
+    }
+
+    #[test]
+    fn warns_on_unknown_stage_but_stays_valid() {
+        let report = validate_workflow_value(&workflow_with_stage("teleport"));
+        assert!(report.ok, "unknown stage must not be a hard error: {report:?}");
+        let issue = report
+            .issues
+            .iter()
+            .find(|issue| issue.path.as_deref() == Some("steps.convert.stage"))
+            .expect("expected a stage warning");
+        assert_eq!(issue.severity, "warning");
     }
 }

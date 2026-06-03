@@ -7,3 +7,11 @@ src-tauri/target/
 .env
 .env.local
 *.log
+
+# Generated slide output (source is docs/*.slides.md)
+docs/*.slides.html
+docs/*.slides.pdf
+
+# Python bytecode
+__pycache__/
+*.pyc

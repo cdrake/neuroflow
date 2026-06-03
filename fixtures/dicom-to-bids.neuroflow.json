@@ -17,7 +17,9 @@
         "type": "core:array<neuro:dicom-series>",
         "description": "All DICOM series discovered in the source directory.",
         "heuristic": "list-dicom-series",
-        "dependsOn": ["dicom_dir"]
+        "dependsOn": [
+          "dicom_dir"
+        ]
       },
       "selected_series": {
         "type": "core:array<neuro:dicom-series>",
@@ -53,7 +55,12 @@
         "type": "core:string",
         "description": "Dataset license.",
         "default": "CC0",
-        "enum": ["CC0", "CC-BY-4.0", "PDDL", "custom"]
+        "enum": [
+          "CC0",
+          "CC-BY-4.0",
+          "PDDL",
+          "custom"
+        ]
       },
       "authors": {
         "type": "core:string",
@@ -78,6 +85,7 @@
   "steps": {
     "convert": {
       "tool": "niivue.desktop.tools/dcm2niix",
+      "stage": "ingest",
       "inputs": {
         "dicom_dir": {
           "ref": "inputs.dicom_dir"
@@ -98,6 +106,7 @@
     },
     "classify": {
       "tool": "niivue.desktop.tools/bids-classify",
+      "stage": "ingest",
       "inputs": {
         "sidecars": {
           "ref": "steps.convert.outputs.sidecars"
@@ -113,6 +122,7 @@
     },
     "write": {
       "tool": "niivue.desktop.tools/bids-write",
+      "stage": "ingest",
       "inputs": {
         "volumes": {
           "ref": "steps.convert.outputs.volumes"
@@ -133,6 +143,7 @@
     },
     "postpass": {
       "tool": "niivue.desktop.tools/bids-postpass",
+      "stage": "ingest",
       "inputs": {
         "bids_dir": {
           "ref": "steps.write.outputs.bids_dir"
@@ -153,27 +164,45 @@
         "sections": [
           {
             "title": "Filter",
-            "fields": ["dicom_series", "selected_series"],
+            "fields": [
+              "dicom_series",
+              "selected_series"
+            ],
             "component": "bids-series-filter"
           },
           {
             "title": "BIDS Prep",
-            "fields": ["series_list", "subjects"],
+            "fields": [
+              "series_list",
+              "subjects"
+            ],
             "component": "bids-prep-editor"
           },
           {
             "title": "Skull Strip",
-            "fields": ["skull_strip_config", "series_list"],
+            "fields": [
+              "skull_strip_config",
+              "series_list"
+            ],
             "component": "skull-strip-editor"
           },
           {
             "title": "Write BIDS",
-            "fields": ["dataset_name", "dataset_version", "license", "authors", "readme", "output_dir"],
+            "fields": [
+              "dataset_name",
+              "dataset_version",
+              "license",
+              "authors",
+              "readme",
+              "output_dir"
+            ],
             "buttonText": "Write BIDS"
           },
           {
             "title": "BIDS View",
-            "fields": ["bids_dir"],
+            "fields": [
+              "bids_dir"
+            ],
             "component": "bids-view-editor",
             "buttonText": "Finish",
             "postCompletion": true

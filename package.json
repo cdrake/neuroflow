@@ -9,7 +9,12 @@
     "preview": "vite preview --host 127.0.0.1",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
-    "wasm:build": "wasm-pack build crates/neuroflow-wasm --target web --out-dir ../../src/wasm"
+    "wasm:build": "wasm-pack build crates/neuroflow-wasm --target web --out-dir ../../src/wasm",
+    "validate:gallery": "node gallery/validate.mjs",
+    "slides": "marp --server docs",
+    "slides:watch": "marp --watch --preview docs/stages.slides.md",
+    "slides:html": "marp docs/stages.slides.md --html -o docs/stages.slides.html",
+    "slides:pdf": "marp docs/stages.slides.md --pdf --allow-local-files -o docs/stages.slides.pdf"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.2.0",
@@ -19,6 +24,7 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@marp-team/marp-cli": "^4.1.2",
     "@tauri-apps/cli": "^2.2.0",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",

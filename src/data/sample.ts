@@ -453,6 +453,7 @@ export const tools: ToolDefinition[] = [
         label: 'Filter and Import DICOMs',
         description: 'Browse series, filter, and convert the selected acquisitions.',
         category: 'Import',
+        stage: 'ingest',
         icon: 'Upload',
         defaults: { bids: 'y', compress: 'y', bids_anon: 'n' },
         exposedFields: ['dicom_dir', 'dicom_series', 'selected_series']
@@ -537,6 +538,7 @@ export const tools: ToolDefinition[] = [
       label: 'Classify BIDS',
       description: 'Infer BIDS datatype, suffix, subject, and session metadata.',
       category: 'Processing',
+      stage: 'ingest',
       icon: 'TableProperties',
       exposedFields: ['series_list', 'subjects']
     }
@@ -565,6 +567,7 @@ export const tools: ToolDefinition[] = [
       label: 'Write BIDS',
       description: 'Create BIDS files, sidecars, and dataset metadata.',
       category: 'Output',
+      stage: 'ingest',
       icon: 'Download',
       defaults: { config: { ref: 'context' } },
       exposedFields: ['dataset_name', 'dataset_version', 'license', 'authors', 'readme', 'output_dir']
@@ -591,6 +594,7 @@ export const tools: ToolDefinition[] = [
       label: 'Finalize BIDS',
       description: 'Apply BIDS post-processing and consistency repairs.',
       category: 'Quality',
+      stage: 'ingest',
       icon: 'BadgeCheck',
       exposedFields: ['bids_dir']
     }
@@ -636,6 +640,7 @@ export const tools: ToolDefinition[] = [
       label: 'heudiconv Import',
       description: 'Run heudiconv with a reproin or custom heuristic.',
       category: 'Import',
+      stage: 'ingest',
       icon: 'Upload',
       defaults: { heuristic: 'reproin' },
       exposedFields: ['dicom_dir', 'output_dir', 'heuristic', 'subject', 'session'],
@@ -673,6 +678,7 @@ export const tools: ToolDefinition[] = [
       label: 'dcm2bids Import',
       description: 'Use a dcm2bids config to map DICOM series into BIDS.',
       category: 'Import',
+      stage: 'ingest',
       icon: 'Upload',
       defaults: { cleanupUnmatched: true },
       exposedFields: ['dicom_dir', 'output_dir', 'config', 'subject', 'session', 'cleanupUnmatched'],
@@ -713,6 +719,7 @@ export const tools: ToolDefinition[] = [
       label: 'OpenNeuro Dataset',
       description: 'Fetch or attach an OpenNeuro-hosted BIDS dataset.',
       category: 'Import',
+      stage: 'ingest',
       icon: 'Download',
       exposedFields: ['dataset_id', 'output_dir'],
       formComponent: 'dataset-service-form'
@@ -752,6 +759,7 @@ export const tools: ToolDefinition[] = [
       label: 'Skull Strip',
       description: 'Remove non-brain tissue with the MindGrab model.',
       category: 'Processing',
+      stage: 'explore',
       icon: 'FileText',
       defaults: { model: 'brain-extract-mindgrab', dilation: 3 },
       exposedFields: ['nifti_paths', 'dilation'],
@@ -804,7 +812,7 @@ export const tools: ToolDefinition[] = [
         ]
       },
       mesh: {
-        type: 'core:array<neuro:mesh>',
+        type: 'core:array<neuro:surface>',
         description: 'Preview surface or mesh files.',
         optional: true,
         consumesAs: [
@@ -819,7 +827,7 @@ export const tools: ToolDefinition[] = [
     },
     outputs: {
       correction_patch: {
-        type: 'neuro:correction-patch',
+        type: 'neurovue:correction-patch',
         description: 'Small JSON artifact describing preview-time corrections.',
         optional: true,
         availableFrom: [
@@ -871,6 +879,7 @@ export const tools: ToolDefinition[] = [
       label: 'Review in NeuroVue',
       description: 'Open previous artifacts for preview, clip planes, and small correction patches.',
       category: 'Quality',
+      stage: 'explore',
       icon: 'FileText',
       exposedFields: ['volume', 'omezarr', 'tract', 'mesh']
     }
@@ -954,6 +963,7 @@ export const tools: ToolDefinition[] = [
       label: 'NiiMath',
       description: 'Apply common NIfTI image operations.',
       category: 'Processing',
+      stage: 'explore',
       icon: 'FileText',
       defaults: { operation: '-s', operand: '2' },
       exposedFields: ['nifti_paths', 'operation', 'operand', 'output_dir']

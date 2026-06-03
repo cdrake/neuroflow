@@ -6,7 +6,8 @@ import type {
   ToolDefinition,
   ToolInputConsumption,
   ToolOutputAvailability,
-  WorkflowDocument
+  WorkflowDocument,
+  WorkflowStage
 } from './neuroflow'
 import { isConstantBinding, isRefBinding, parseToolRef, qualifiedToolRef, shortType, stableToolName } from './neuroflow'
 import { isTypeCompatible } from './typeCompatibility'
@@ -69,6 +70,8 @@ export interface ToolRegistryEntry {
   label: string
   description: string
   category: BlockDef['category']
+  /** Informal, opt-in discovery grouping; undefined when the tool is untagged. */
+  stage?: WorkflowStage
   tool: ToolDefinition
   block?: BlockDef
   provider: ToolProviderDescriptor
@@ -117,6 +120,7 @@ export function buildToolRegistry(tools: ToolDefinition[]): ToolRegistryEntry[] 
         label: block.label,
         description: block.description,
         category: block.category,
+        stage: block.stage,
         tool,
         block,
         provider,

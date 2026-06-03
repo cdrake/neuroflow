@@ -1,0 +1,61 @@
+{
+  "$schema": "../../../neuroflow-spec/schemas/0.1/tool.schema.json",
+  "neuroflow": "0.1.0",
+  "kind": "tool",
+  "id": "neuroflow.gallery.tools/bidsvue",
+  "version": "0.1.0",
+  "description": "BIDSvue ingest-stage UI app. Launched by NeuroFlow with a session context, it imports DICOMs into a BIDS dataset under the session output directory while the user drives series filtering and BIDS metadata in the UI.",
+  "inputs": {
+    "dicom_dir": {
+      "type": "neuro:dicom-folder",
+      "description": "DICOM source directory to import."
+    },
+    "subject": {
+      "type": "core:string",
+      "description": "BIDS subject label seed (the user may override in the UI).",
+      "optional": true
+    },
+    "session": {
+      "type": "core:string",
+      "description": "BIDS session label seed.",
+      "optional": true
+    }
+  },
+  "outputs": {
+    "bids_dir": {
+      "type": "neuro:bids-dataset",
+      "description": "The BIDS dataset the user produced in BIDSvue.",
+      "delivery": {
+        "mode": "core:result-dir",
+        "path": "bids"
+      }
+    }
+  },
+  "outputDelivery": {
+    "default": "core:result-dir"
+  },
+  "extensions": {
+    "niivue/ui": {
+      "block": {
+        "id": "ingest-in-bidsvue",
+        "label": "Ingest in BIDSvue",
+        "description": "Import DICOMs into BIDS, driven interactively by the user.",
+        "category": "Import",
+        "stage": "ingest",
+        "exposedFields": ["dicom_dir", "subject", "session"]
+      }
+    },
+    "neuroflow/launch": {
+      "kind": "uiApp",
+      "app": "bidsvue",
+      "repo": "/Users/chrisdrake/Dev/bidsui",
+      "branch": "neuroflow-aware",
+      "command": "bun",
+      "args": ["tauri", "dev"],
+      "completion": "appClosed",
+      "interactive": true,
+      "contract": "../../docs/neuroflow-session-contract.md",
+      "description": "BIDSvue reads $NEUROFLOW_SESSION/context.json, imports inputs.dicom_dir into $NEUROFLOW_OUTPUT_DIR/bids, then writes neuroflow.handoff.json and appends provenance.jsonl when the user finishes."
+    }
+  }
+}

@@ -62,6 +62,10 @@ then watches declared outputs such as correction patches or review state.
 Workflow execution, packaging, and app-session policy stay in NeuroFlow; the
 viewer/correction experience stays in NeuroVue. See `docs/neurovue.md`.
 
+Tools and steps can carry an optional `stage` tag (`ingest`/`explore`/`publish`)
+for discovery and flow grouping; it is informal and non-load-bearing. See
+`docs/stages.md`.
+
 The broader BIDSvue/NeuroVue handoff plan, including NVDocument working-state
 boundaries, `niimath` task exposure, and provenance expectations, lives in
 `docs/bidsvue-neurovue-integration.md`.

@@ -15,8 +15,8 @@ import {
 } from 'lucide-react'
 import type { ToolRegistryEntry, ToolProviderKind } from '../domain/registry'
 import { getSourceSuggestions } from '../domain/registry'
-import type { WorkflowDocument } from '../domain/neuroflow'
-import { shortType } from '../domain/neuroflow'
+import type { WorkflowDocument, WorkflowStage } from '../domain/neuroflow'
+import { shortType, stageInfo, WORKFLOW_STAGES } from '../domain/neuroflow'
 import type { ToolDefinition } from '../domain/neuroflow'
 import { getToolPackaging, packagingModeLabel, packagingTargetSummary } from '../domain/packaging'
 
@@ -45,6 +45,21 @@ const PROVIDERS: Array<{ kind: ToolProviderKind | 'all'; label: string }> = [
   { kind: 'neuroflow', label: 'Built-in' }
 ]
 
+const STAGE_FILTERS: Array<{ id: WorkflowStage | 'all'; label: string }> = [
+  { id: 'all', label: 'All stages' },
+  ...WORKFLOW_STAGES.map((stage) => ({ id: stage.id, label: stage.label }))
+]
+
+// Stable display order for the grouped list; untagged tools fall into 'other'.
+const STAGE_ORDER: Array<WorkflowStage | 'other'> = [
+  ...WORKFLOW_STAGES.map((stage) => stage.id),
+  'other'
+]
+
+function stageGroupLabel(group: WorkflowStage | 'other'): string {
+  return group === 'other' ? 'Other' : stageInfo(group).label
+}
+
 interface ToolPaletteProps {
   registry: ToolRegistryEntry[]
   workflow: WorkflowDocument
@@ -55,26 +70,32 @@ interface ToolPaletteProps {
 export function ToolPalette({ registry, workflow, toolMap, onAddTool }: ToolPaletteProps): JSX.Element {
   const [search, setSearch] = useState('')
   const [provider, setProvider] = useState<ToolProviderKind | 'all'>('all')
+  const [stage, setStage] = useState<WorkflowStage | 'all'>('all')
 
   const filteredEntries = useMemo(() => {
     const q = search.trim().toLowerCase()
     return registry.filter((entry) => {
       const providerMatch = provider === 'all' || entry.provider.kind === provider
       if (!providerMatch) return false
+      const stageMatch = stage === 'all' || entry.stage === stage
+      if (!stageMatch) return false
       if (!q) return true
       return [entry.label, entry.description, entry.tool.name, entry.provider.label, entry.provider.source]
         .join(' ')
         .toLowerCase()
         .includes(q)
     })
-  }, [provider, registry, search])
+  }, [provider, registry, search, stage])
 
   const groupedEntries = useMemo(() => {
-    const groups = new Map<ToolRegistryEntry['category'], ToolRegistryEntry[]>()
+    const groups = new Map<WorkflowStage | 'other', ToolRegistryEntry[]>()
     for (const entry of filteredEntries) {
-      groups.set(entry.category, [...(groups.get(entry.category) ?? []), entry])
+      const key = entry.stage ?? 'other'
+      groups.set(key, [...(groups.get(key) ?? []), entry])
     }
-    return Array.from(groups.entries())
+    return STAGE_ORDER.filter((key) => groups.has(key)).map(
+      (key) => [key, groups.get(key) as ToolRegistryEntry[]] as const
+    )
   }, [filteredEntries])
 
   return (
@@ -97,6 +118,19 @@ export function ToolPalette({ registry, workflow, toolMap, onAddTool }: ToolPale
         />
       </label>
 
+      <div className="nf-segmented" aria-label="Stage filter">
+        {STAGE_FILTERS.map((item) => (
+          <button
+            className={stage === item.id ? 'is-active' : ''}
+            key={item.id}
+            onClick={() => setStage(item.id)}
+            type="button"
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
       <div className="nf-segmented" aria-label="Provider filter">
         {PROVIDERS.map((item) => (
           <button
@@ -111,10 +145,10 @@ export function ToolPalette({ registry, workflow, toolMap, onAddTool }: ToolPale
       </div>
 
       <div className="nf-block-list">
-        {groupedEntries.map(([category, entries]) => (
-          <div className="nf-registry-group" key={category}>
+        {groupedEntries.map(([group, entries]) => (
+          <div className="nf-registry-group" key={group}>
             <div className="nf-registry-group-header">
-              <strong>{category}</strong>
+              <strong>{stageGroupLabel(group)}</strong>
               <span>{entries.length}</span>
             </div>
             {entries.map((entry) => (
