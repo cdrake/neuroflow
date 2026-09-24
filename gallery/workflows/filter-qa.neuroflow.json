@@ -1,0 +1,77 @@
+{
+  "$schema": "../../../neuroflow-spec/schemas/0.1/workflow.schema.json",
+  "neuroflow": "0.1.0",
+  "kind": "workflow",
+  "id": "neuroflow.gallery/filter-qa",
+  "version": "0.1.0",
+  "description": "Headless explore-to-publish pipeline: filter the volumes of an existing BIDS dataset with the Python filter tool, then publish a NiiVue QA page for the results. Every step is a script tool, so an MCP agent can run it end to end.",
+  "inputs": {
+    "bids_dir": {
+      "type": "neuro:bids-dataset",
+      "description": "BIDS dataset whose anatomical volumes are filtered."
+    },
+    "operation": {
+      "type": "core:string",
+      "description": "Filter operation to apply.",
+      "optional": true,
+      "default": "smooth",
+      "enum": [
+        "smooth",
+        "threshold",
+        "zscore",
+        "passthrough"
+      ]
+    },
+    "amount": {
+      "type": "core:number",
+      "description": "Operation magnitude (FWHM mm for smooth, intensity for threshold).",
+      "optional": true,
+      "default": 3
+    }
+  },
+  "steps": {
+    "filter": {
+      "tool": "neuroflow.gallery.tools/python-volume-filter",
+      "stage": "explore",
+      "inputs": {
+        "bids_dir": {
+          "ref": "inputs.bids_dir"
+        },
+        "operation": {
+          "ref": "inputs.operation"
+        },
+        "amount": {
+          "ref": "inputs.amount"
+        }
+      }
+    },
+    "qa": {
+      "tool": "neuroflow.gallery.tools/niivue-qa-page",
+      "stage": "publish",
+      "inputs": {
+        "volumes": {
+          "ref": "steps.filter.outputs.filtered_volumes"
+        },
+        "title": {
+          "constant": "Filtered volumes QA"
+        }
+      }
+    }
+  },
+  "outputs": {
+    "filtered_volumes": {
+      "type": "core:array<neuro:volume>",
+      "ref": "steps.filter.outputs.filtered_volumes"
+    },
+    "qa_html": {
+      "type": "core:file",
+      "ref": "steps.qa.outputs.qa_html"
+    }
+  },
+  "extensions": {
+    "neuroflow/mcp": {
+      "title": "Filter volumes and publish a QA page",
+      "maxWaitMs": 120000
+    }
+  }
+}

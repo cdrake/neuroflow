@@ -1,0 +1,16 @@
+[package]
+name = "neuroflow-mcp"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "Model Context Protocol server for NeuroFlow (RFC 0009 binding)"
+
+[[bin]]
+name = "neuroflow-mcp"
+path = "src/main.rs"
+
+[dependencies]
+neuroflow-core = { path = "../neuroflow-core" }
+# preserve_order keeps workflow `steps` in authorial order (spec section 10).
+serde_json = { version = "1", features = ["preserve_order"] }
+flate2 = "1"

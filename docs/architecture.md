@@ -79,6 +79,18 @@ Future commands should stay narrow:
 - `open_artifact`
 - `write_provenance`
 
+## MCP Server
+
+`crates/neuroflow-mcp` is a fourth host for the Rust core. It speaks the Model
+Context Protocol over stdio so AI agents can discover, validate, compose, and
+run NeuroFlow tools and workflows. It follows the same runtime boundary as the
+Tauri host: agents submit documents and values, never commands. Only tools in
+the registry run, through their declared `neuroflow/launch` contract, with
+file inputs confined to configured data roots. Artifacts come back as
+`neuroflow://` URIs whose summaries (NIfTI geometry, label volumes, dataset
+layout) are sized for a model's context, and every run writes a provenance
+document. The binding is specified in neuroflow-spec RFC 0009.
+
 ## WASM Core
 
 The WASM crate wraps `neuroflow-core` with string-in/string-out functions:

@@ -26,6 +26,9 @@ is defined in `../docs/neuroflow-session-contract.md`.
 
 ## Workflows (`workflows/`)
 
+`filter-qa.neuroflow.json` is fully headless (filter, then QA page), so the
+MCP server (`crates/neuroflow-mcp`) can run it end to end.
+
 `dicom-ingest-review-publish.neuroflow.json` chains all four tools:
 
 ```

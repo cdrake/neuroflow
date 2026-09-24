@@ -25,6 +25,8 @@ running pipelines.
 - `src/domain/`: TypeScript workflow types, graph helpers, and validation bridge.
 - `crates/neuroflow-core/`: Rust workflow validation and planning core.
 - `crates/neuroflow-wasm/`: WASM bindings around the Rust core.
+- `crates/neuroflow-mcp/`: MCP server that exposes the registry to AI agents
+  and runs script tools (RFC 0009); see its README.
 - `src-tauri/`: Tauri native host and commands.
 - `fixtures/`: source-derived NeuroFlow examples.
 - `docs/`: architecture and source-lineage notes.
