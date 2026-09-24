@@ -16,6 +16,7 @@ node gallery/validate.mjs        # or: npm run validate:gallery
 | `neurovue.tool.json` | `…tools/neurovue` | explore | uiApp | `correction_patch`, `review_state` (result-file) |
 | `python-volume-filter.tool.json` | `…tools/python-volume-filter` | explore | script | `filtered_volumes` (result-dir) |
 | `niivue-qa-page.tool.json` | `…tools/niivue-qa-page` | publish | script | `qa_html` (result-file `index.html`) |
+| `provenance-fold.tool.json` | `…tools/provenance-fold` | publish | script | `run_record` (`prov:run-record`, `run.provenance.json`) |
 
 The two **uiApp** tools (BIDSvue, NeuroVue) are interactive: a NeuroFlow runtime
 launches them with a session context and they block until the user finishes. The
@@ -45,6 +46,10 @@ Reference implementations the script-tools point at:
 - `generate_qa.mjs` — builds a standalone QA page via `@niivue/nv-ext-save-html`
   (`generateHTML`/`saveHTML`) when installed, else a self-contained NiiVue CDN
   page. Copies volumes next to `index.html` so the page is portable.
+- `fold_provenance.mjs` — folds the run's append-only `provenance.jsonl` trail
+  into a single conformant `kind:"provenance"` document (`run.provenance.json`),
+  mapping each line to PROV agents/activities/entities. See
+  `../docs/neuroflow-session-contract.md`.
 
 ## Reference apps
 

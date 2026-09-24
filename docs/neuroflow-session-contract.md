@@ -77,6 +77,29 @@ One JSON object per line, appended by each tool when it finishes a unit of work:
 
 Timestamps are ISO-8601 UTC. Tools MUST append, never rewrite.
 
+`provenance.jsonl` is the lightweight, in-flight trail — not the durable record.
+
+### Folding into a provenance document
+
+When a run finishes, the runtime folds `provenance.jsonl` into a single
+conformant **provenance document** (`kind: "provenance"`,
+`neuroflow-spec/schemas/0.1/provenance.schema.json`) — the durable, W3C
+PROV-aligned artifact that embeds in BIDS-Derivatives `GeneratedBy[]` and
+RO-Crate. Each line maps to PROV:
+
+| `provenance.jsonl` line | provenance document |
+| --- | --- |
+| `agent` | an Agent (`type: "software"`) |
+| the line itself (`step`, `tool`, `ts`) | an Activity (one step execution) |
+| each `outputs` path | an Entity (`role: "step-output"`), linked via `generated` |
+
+The run's `startedAt`/`endedAt` come from the first/last line timestamps. The
+reference implementation is `gallery/scripts/fold_provenance.mjs` (exposed as the
+`neuroflow.gallery.tools/provenance-fold` tool), which writes
+`run.provenance.json` to `$NEUROFLOW_OUTPUT_DIR`. Lineage folded from the
+lightweight trail is shallow (no `derivedFrom`); a tool that needs rich lineage
+SHOULD emit a `prov:run-record` output directly.
+
 ## Tool responsibilities (neuroflow-awareness)
 
 A NeuroFlow-aware tool:

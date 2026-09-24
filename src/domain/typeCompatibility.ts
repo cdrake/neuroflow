@@ -8,6 +8,14 @@ const COERCION_RULES: Record<string, string[]> = {
   'neuro:tract': ['core:file', 'core:string'],
   'neuro:surface': ['core:file', 'core:string'],
   'neuro:mask': ['neuro:volume', 'core:file', 'core:string'],
+  'neuro:statmap': ['neuro:volume', 'core:file', 'core:string'],
+  'neuro:probseg': ['neuro:volume', 'core:file', 'core:string'],
+  'neuro:cifti': ['core:file', 'core:string'],
+  'neuro:gradient-table': ['core:file', 'core:string'],
+  'neuro:connectivity-matrix': ['core:tabular', 'core:file', 'core:string'],
+  'neuro:qc-metrics': ['core:json', 'core:file', 'core:string'],
+  'neuro:report': ['core:file', 'core:string'],
+  'core:tabular': ['core:file', 'core:string'],
   'neuro:bids-dataset': ['core:directory', 'core:string'],
   'neurovue:correction-patch': ['core:json', 'core:file', 'core:string']
 }

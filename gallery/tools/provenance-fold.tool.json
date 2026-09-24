@@ -1,0 +1,56 @@
+{
+  "$schema": "../../../neuroflow-spec/schemas/0.1/tool.schema.json",
+  "neuroflow": "0.1.0",
+  "kind": "tool",
+  "id": "neuroflow.gallery.tools/provenance-fold",
+  "version": "0.1.0",
+  "description": "Runtime finalization helper: folds a session's append-only provenance.jsonl trail into a single conformant kind:'provenance' document (PROV-aligned: agents, activities, entities), embeddable in BIDS-Derivatives and RO-Crate.",
+  "inputs": {
+    "provenance_log": {
+      "type": "core:file",
+      "description": "The session provenance.jsonl trail. Resolved from $NEUROFLOW_SESSION when omitted.",
+      "optional": true
+    },
+    "status": {
+      "type": "core:string",
+      "description": "Terminal run status to record.",
+      "optional": true,
+      "default": "completed",
+      "enum": ["completed", "partial", "failed", "cancelled", "halted"]
+    }
+  },
+  "outputs": {
+    "run_record": {
+      "type": "prov:run-record",
+      "description": "Conformant NeuroFlow provenance document for the run.",
+      "delivery": {
+        "mode": "core:result-file",
+        "path": "run.provenance.json"
+      }
+    }
+  },
+  "outputDelivery": {
+    "default": "core:result-file"
+  },
+  "extensions": {
+    "niivue/ui": {
+      "block": {
+        "id": "fold-provenance",
+        "label": "Fold Run Provenance",
+        "description": "Emit a PROV-aligned provenance document from the run trail.",
+        "category": "Output",
+        "stage": "publish",
+        "exposedFields": ["status"]
+      }
+    },
+    "neuroflow/launch": {
+      "kind": "script",
+      "interpreter": "node",
+      "script": "../scripts/fold_provenance.mjs",
+      "completion": "exit",
+      "interactive": false,
+      "contract": "../../docs/neuroflow-session-contract.md",
+      "description": "Reads $NEUROFLOW_SESSION/provenance.jsonl and writes $NEUROFLOW_OUTPUT_DIR/run.provenance.json. Optional env: NEUROFLOW_RUN_ID, NEUROFLOW_RUN_STATUS, NEUROFLOW_WORKFLOW_ID, NEUROFLOW_WORKFLOW_VERSION."
+    }
+  }
+}

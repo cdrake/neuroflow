@@ -9,7 +9,7 @@
  *   node gallery/validate.mjs
  */
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
-import { join, dirname } from 'node:path'
+import { join, dirname, isAbsolute } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 
@@ -44,18 +44,24 @@ const validators = {
   provenance: ajv.getSchema(base + 'provenance.schema.json'),
 }
 
+// Explicit file paths (argv) validate just those; otherwise scan the gallery.
+const argFiles = process.argv.slice(2)
 const docs = []
-for (const sub of ['tools', 'workflows']) {
-  const dir = join(galleryDir, sub)
-  if (!existsSync(dir)) continue
-  for (const name of readdirSync(dir)) {
-    if (name.endsWith('.json')) docs.push(join(sub, name))
+if (argFiles.length) {
+  docs.push(...argFiles)
+} else {
+  for (const sub of ['tools', 'workflows']) {
+    const dir = join(galleryDir, sub)
+    if (!existsSync(dir)) continue
+    for (const name of readdirSync(dir)) {
+      if (name.endsWith('.json')) docs.push(join(sub, name))
+    }
   }
 }
 
 let failures = 0
 for (const rel of docs.sort()) {
-  const doc = JSON.parse(readFileSync(join(galleryDir, rel), 'utf8'))
+  const doc = JSON.parse(readFileSync(isAbsolute(rel) ? rel : join(galleryDir, rel), 'utf8'))
   const validate = validators[doc.kind]
   if (!validate) { console.log(`  ??   ${rel} (unknown kind: ${doc.kind})`); failures++; continue }
   const ok = validate(doc)
