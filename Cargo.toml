@@ -2,6 +2,7 @@
 members = [
   "crates/neuroflow-core",
   "crates/neuroflow-wasm",
+  "crates/neuroflow-mcp",
   "src-tauri"
 ]
 resolver = "2"

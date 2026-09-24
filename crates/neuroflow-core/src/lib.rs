@@ -8,6 +8,9 @@ pub struct ValidationIssue {
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
+    /// Optional repair hint, e.g. the valid alternatives for an unresolved name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hint: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -59,6 +62,7 @@ pub fn validate_workflow_value_with_tools(
                 severity: "error".to_string(),
                 path: None,
                 message: "Workflow document must be a JSON object.".to_string(),
+                hint: None,
             }],
         };
     };
@@ -127,9 +131,12 @@ pub fn validate_workflow_value_with_tools(
         }
         let tool = tool_registry.get(tool_ref);
         if !tool_registry.is_empty() && !tool_ref.is_empty() && tool.is_none() {
-            issues.push(error(
-                format!("{path}.tool"),
-                format!("Step references unknown tool {tool_ref}."),
+            issues.push(with_hint(
+                error(
+                    format!("{path}.tool"),
+                    format!("Step references unknown tool {tool_ref}."),
+                ),
+                similar_tools_hint(tool_ref, &tool_registry),
             ));
         }
 
@@ -203,10 +210,20 @@ pub fn validate_workflow_value_with_tools(
 
                 if let Some(ref_step) = referenced_step(reference) {
                     if !steps.contains_key(ref_step) {
-                        issues.push(error(
-                            binding_path.clone(),
-                            format!("Reference {reference} points to an unknown step."),
+                        let known: Vec<&str> = steps.keys().map(String::as_str).collect();
+                        issues.push(with_hint(
+                            error(
+                                binding_path.clone(),
+                                format!("Reference {reference} points to an unknown step."),
+                            ),
+                            format!("Declared steps: {}.", known.join(", ")),
                         ));
+                        continue;
+                    }
+                    if let Some(issue) =
+                        undeclared_step_output(reference, &binding_path, steps, &tool_registry)
+                    {
+                        issues.push(issue);
                         continue;
                     }
                 }
@@ -278,6 +295,15 @@ pub fn validate_workflow_value_with_tools(
                 continue;
             }
             if tool_registry.is_empty() {
+                continue;
+            }
+            if let Some(issue) = undeclared_step_output(
+                reference,
+                &format!("outputs.{output_name}.ref"),
+                steps,
+                &tool_registry,
+            ) {
+                issues.push(issue);
                 continue;
             }
             let Some(source_type) = resolve_ref_type(reference, root, steps, &tool_registry) else {
@@ -489,11 +515,68 @@ fn resolve_ref_type(
     }
 }
 
+/// When `reference` is `steps.<s>.outputs.<o>`, the step's tool is known, and
+/// the tool does not declare output `<o>`, return an error listing the declared
+/// outputs so the author (human or agent) can repair it in one edit.
+fn undeclared_step_output(
+    reference: &str,
+    path: &str,
+    steps: &serde_json::Map<String, Value>,
+    tools: &HashMap<String, ToolContract<'_>>,
+) -> Option<ValidationIssue> {
+    let parts: Vec<&str> = reference.split('.').collect();
+    let ["steps", step_name, "outputs", output_name] = parts.as_slice() else {
+        return None;
+    };
+    let tool_ref = steps.get(*step_name)?.get("tool").and_then(Value::as_str)?;
+    let tool = tools.get(tool_ref)?;
+    if tool.outputs.contains_key(*output_name) {
+        return None;
+    }
+    let declared: Vec<&str> = tool.outputs.keys().map(String::as_str).collect();
+    Some(with_hint(
+        error(
+            path.to_string(),
+            format!(
+                "Reference {reference} does not resolve: tool {} has no output {output_name}.",
+                tool.name
+            ),
+        ),
+        format!("Declared outputs: {}.", declared.join(", ")),
+    ))
+}
+
+fn similar_tools_hint(tool_ref: &str, tools: &HashMap<String, ToolContract<'_>>) -> String {
+    let needle = tool_ref.rsplit('/').next().unwrap_or(tool_ref).to_ascii_lowercase();
+    let mut ids: Vec<&str> = tools
+        .keys()
+        .map(String::as_str)
+        .filter(|id| id.contains('/'))
+        .collect();
+    ids.sort_unstable();
+    ids.dedup();
+    let similar: Vec<&str> = ids
+        .iter()
+        .copied()
+        .filter(|id| {
+            let last = id.rsplit('/').next().unwrap_or(id).to_ascii_lowercase();
+            !needle.is_empty() && (last.contains(&needle) || needle.contains(&last))
+        })
+        .collect();
+    if similar.is_empty() {
+        format!("Known tools: {}.", ids.join(", "))
+    } else {
+        format!("Did you mean: {}?", similar.join(", "))
+    }
+}
+
 fn declaration_type(value: &Value) -> Option<String> {
     value.get("type").and_then(Value::as_str).map(str::to_string)
 }
 
-fn is_type_compatible(source_type: &str, input_type: &str) -> bool {
+/// Whether a value of `source_type` may be bound to an input of `input_type`.
+/// Mirrors `src/domain/typeCompatibility.ts`; keep the two coercion tables in sync.
+pub fn is_type_compatible(source_type: &str, input_type: &str) -> bool {
     if source_type == input_type {
         return true;
     }
@@ -508,24 +591,41 @@ fn is_type_compatible(source_type: &str, input_type: &str) -> bool {
     }
 }
 
+/// Allowed implicit coercions, keyed by source type. Mirrors
+/// `COERCION_RULES` in `src/domain/typeCompatibility.ts`.
+const COERCION_RULES: &[(&str, &[&str])] = &[
+    ("core:string", &["core:directory", "core:file"]),
+    ("core:directory", &["core:string"]),
+    ("core:file", &["core:string"]),
+    ("neuro:volume", &["core:file", "core:string"]),
+    ("neuro:ome-zarr", &["neuro:ngff-zarr", "core:directory", "core:string"]),
+    (
+        "neuro:ngff-zarr",
+        &["neuro:ome-zarr", "core:directory", "core:file", "core:json", "core:string"],
+    ),
+    ("neuro:tract", &["core:file", "core:string"]),
+    ("neuro:surface", &["core:file", "core:string"]),
+    ("neuro:mask", &["neuro:volume", "core:file", "core:string"]),
+    ("neuro:statmap", &["neuro:volume", "core:file", "core:string"]),
+    ("neuro:probseg", &["neuro:volume", "core:file", "core:string"]),
+    ("neuro:cifti", &["core:file", "core:string"]),
+    ("neuro:gradient-table", &["core:file", "core:string"]),
+    ("neuro:connectivity-matrix", &["core:tabular", "core:file", "core:string"]),
+    ("neuro:qc-metrics", &["core:json", "core:file", "core:string"]),
+    ("neuro:report", &["core:file", "core:string"]),
+    ("core:tabular", &["core:file", "core:string"]),
+    ("neuro:bids-dataset", &["core:directory", "core:string"]),
+    ("neurovue:correction-patch", &["core:json", "core:file", "core:string"]),
+];
+
 fn coercible_to(source_type: &str, input_type: &str) -> bool {
-    matches!(
-        (source_type, input_type),
-        ("core:string", "core:directory")
-            | ("core:string", "core:file")
-            | ("core:directory", "core:string")
-            | ("core:file", "core:string")
-            | ("neuro:volume", "core:file")
-            | ("neuro:volume", "core:string")
-            | ("neuro:mask", "neuro:volume")
-            | ("neuro:mask", "core:file")
-            | ("neuro:mask", "core:string")
-            | ("neuro:bids-dataset", "core:directory")
-            | ("neuro:bids-dataset", "core:string")
-    )
+    COERCION_RULES
+        .iter()
+        .any(|(source, targets)| *source == source_type && targets.contains(&input_type))
 }
 
-fn array_element_type(value: &str) -> Option<&str> {
+/// Element type of a `core:array<...>` type, or `None` for scalar types.
+pub fn array_element_type(value: &str) -> Option<&str> {
     value
         .strip_prefix("core:array<")
         .and_then(|rest| rest.strip_suffix('>'))
@@ -587,7 +687,13 @@ fn error(path: impl Into<String>, message: impl Into<String>) -> ValidationIssue
         severity: "error".to_string(),
         path: Some(path.into()),
         message: message.into(),
+        hint: None,
     }
+}
+
+fn with_hint(mut issue: ValidationIssue, hint: impl Into<String>) -> ValidationIssue {
+    issue.hint = Some(hint.into());
+    issue
 }
 
 fn warning(path: impl Into<String>, message: impl Into<String>) -> ValidationIssue {
@@ -595,6 +701,7 @@ fn warning(path: impl Into<String>, message: impl Into<String>) -> ValidationIss
         severity: "warning".to_string(),
         path: Some(path.into()),
         message: message.into(),
+        hint: None,
     }
 }
 
@@ -654,6 +761,64 @@ mod tests {
             !report.issues.iter().any(|issue| issue.path.as_deref() == Some("steps.convert.stage")),
             "known stage should not raise an issue: {report:?}"
         );
+    }
+
+    fn strip_segment_workflow(reference: &str) -> (Value, Value) {
+        let workflow = serde_json::json!({
+            "neuroflow": "0.1.0",
+            "kind": "workflow",
+            "id": "test/strip-segment",
+            "version": "0.1.0",
+            "description": "Two-step workflow",
+            "inputs": { "t1": { "type": "neuro:volume", "description": "T1" } },
+            "steps": {
+                "strip": { "tool": "test.tools/strip", "inputs": { "t1": { "ref": "inputs.t1" } } },
+                "segment": { "tool": "test.tools/segment", "inputs": { "brain": { "ref": reference } } }
+            },
+            "outputs": { "labels": { "type": "neuro:label-map", "ref": "steps.segment.outputs.labels" } }
+        });
+        let tools = serde_json::json!([
+            {
+                "id": "test.tools/strip",
+                "inputs": { "t1": { "type": "neuro:volume" } },
+                "outputs": { "brain_volume": { "type": "neuro:volume" }, "brain_mask": { "type": "neuro:mask" } }
+            },
+            {
+                "id": "test.tools/segment",
+                "inputs": { "brain": { "type": "neuro:volume" } },
+                "outputs": { "labels": { "type": "neuro:label-map" } }
+            }
+        ]);
+        (workflow, tools)
+    }
+
+    #[test]
+    fn rejects_undeclared_step_output_with_hint() {
+        let (workflow, tools) = strip_segment_workflow("steps.strip.outputs.brain");
+        let report = validate_workflow_value_with_tools(&workflow, Some(&tools));
+        assert!(!report.ok, "{report:?}");
+        let issue = report
+            .issues
+            .iter()
+            .find(|issue| issue.path.as_deref() == Some("steps.segment.inputs.brain"))
+            .expect("expected an unresolved-output error");
+        assert_eq!(issue.severity, "error");
+        let hint = issue.hint.as_deref().unwrap_or("");
+        assert!(hint.contains("brain_volume") && hint.contains("brain_mask"), "{hint}");
+    }
+
+    #[test]
+    fn accepts_declared_step_output() {
+        let (workflow, tools) = strip_segment_workflow("steps.strip.outputs.brain_volume");
+        let report = validate_workflow_value_with_tools(&workflow, Some(&tools));
+        assert!(report.ok, "{report:?}");
+    }
+
+    #[test]
+    fn coercion_table_matches_typescript_rules() {
+        assert!(is_type_compatible("neuro:statmap", "neuro:volume"));
+        assert!(is_type_compatible("core:array<neuro:probseg>", "core:array<neuro:volume>"));
+        assert!(!is_type_compatible("neuro:volume", "neuro:mask"));
     }
 
     #[test]
