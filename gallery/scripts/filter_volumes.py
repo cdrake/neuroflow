@@ -97,7 +97,12 @@ def apply_filter(src: Path, dst: Path, operation: str, amount: float) -> str:
                 return "passthrough (scipy unavailable)"
         # operation == "passthrough" -> write data unchanged
 
-        nib.save(nib.Nifti1Image(data, img.affine, img.header), str(dst))
+        out = nib.Nifti1Image(data, img.affine, img.header)
+        if operation != "passthrough":
+            # Filtered values are fractional (z-scores, smoothed intensities);
+            # do not round them back into the input's integer datatype.
+            out.set_data_dtype(np.float32)
+        nib.save(out, str(dst))
         return operation
     except Exception as exc:  # noqa: BLE001 - reference script must stay resilient
         shutil.copy2(src, dst)
