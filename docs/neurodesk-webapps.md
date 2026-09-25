@@ -90,11 +90,15 @@ Provenance records which engine ran.
 
 ## Known issues
 
-- SynthSeg in `--job` mode (suite 0.14.20260923) never reports "Labels ready":
-  the app waits for its viewer to draw before starting inference, and the job
-  window is hidden. Use the native `synthseg` CLI until the fix is released.
-  The upstream fix makes SynthSeg start the worker and report completion
-  without waiting on the viewer.
+- The SynthSeg web app refuses volumes that need more than its validated
+  2 GiB GPU buffer (a 192×256×256 T1 needs 3.4 GiB). It reports the error in
+  its status line, but the Neurodesk job runner (suite 0.14.20260923) only
+  waits for success, so the job sits until its timeout. Use the native
+  `synthseg` CLI, which the SynthSeg tool prefers when installed. A fix that
+  fails jobs as soon as an app reports an error has been proposed upstream.
+- To see why a job is stuck, run the suite with `--remote-debugging-port=9223`
+  and read the page state (status text, WebGPU adapter, console) over the
+  Chrome DevTools Protocol.
 
 ## Tools and workflows
 
