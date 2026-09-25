@@ -95,6 +95,7 @@ machine.
 | --- | --- |
 | `neuroflow_list` | Catalog with typed inputs and outputs. Filters: `kind`, `stage`, `acceptsType`, `producesType`, `runnableOnly`. |
 | `neuroflow_describe` | Full document for an id or tool name. |
+| `neuroflow_inspect` | Summarize any file or folder inside the data roots (or a `neuroflow://` artifact) without running a tool: NIfTI geometry, orientation, intensity and nonzero volume, label volumes when `type` is `neuro:label-map` or `neuro:mask`, BIDS layout. Lets an agent check inputs instead of guessing from names. |
 | `neuroflow_validate` | Validate a document. Diagnostics carry a JSON Pointer and, where possible, a repair hint. |
 | `neuroflow_plan` | Execution order and runnability for a workflow. |
 | `neuroflow_run` | Run an inline workflow the agent composed, or a registry workflow by id. |

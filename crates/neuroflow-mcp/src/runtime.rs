@@ -543,7 +543,7 @@ fn resolve_value(cfg: &Config, name: &str, decl: &Value, value: &Value, value_ty
     Ok(value.clone())
 }
 
-fn resolve_artifact(cfg: &Config, value: &Value) -> Result<String, String> {
+pub fn resolve_artifact(cfg: &Config, value: &Value) -> Result<String, String> {
     let raw = value.as_str().ok_or("expected an artifact reference string")?;
     let path = if raw.starts_with("neuroflow://") {
         artifacts::resolve_artifact_uri(cfg, raw)?

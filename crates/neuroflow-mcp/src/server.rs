@@ -138,7 +138,8 @@ impl Server {
                  (diagnostics include repair hints), then execute it with neuroflow_run. \
                  Pass file inputs as absolute paths inside the allowed data roots or as neuroflow:// URIs from \
                  earlier results. Read an artifact URI to get a summary (dimensions, orientation, label volumes, \
-                 dataset layout) instead of raw bytes. Every run writes a provenance record."
+                 dataset layout) instead of raw bytes. Use neuroflow_inspect to check an input file's \
+                 contents before relying on assumptions from its name. Every run writes a provenance record."
             ),
         })
     }
@@ -172,6 +173,16 @@ impl Server {
                 "Validate a NeuroFlow document",
                 "Validate a NeuroFlow workflow (or tool) document against this server's registry. Returns diagnostics with a JSON Pointer and, when possible, a hint listing valid alternatives. Validate before calling neuroflow_run.",
                 json!({ "type": "object", "properties": { "document": { "type": "object", "description": "A NeuroFlow document (kind workflow or tool)." } }, "required": ["document"], "additionalProperties": false }),
+                true,
+            ),
+            self.fixed_tool(
+                "neuroflow_inspect",
+                "Inspect a file or folder",
+                "Summarize any NIfTI file, table, JSON file, or folder inside the allowed data roots (or a neuroflow:// artifact) without running a tool: dimensions, voxel size, orientation, intensity range and nonzero volume for images; per-label volumes when type is neuro:label-map or neuro:mask; subjects and datatypes for BIDS datasets. Use it to check assumptions about inputs (for example, whether an image is already skull-stripped) instead of inferring from file or folder names.",
+                json!({ "type": "object", "properties": {
+                    "path": { "type": "string", "description": "Absolute path inside an allowed data root, or a neuroflow:// artifact URI." },
+                    "type": { "type": "string", "description": "Optional NeuroFlow type to interpret it as, e.g. neuro:label-map or neuro:mask for label statistics." }
+                }, "required": ["path"], "additionalProperties": false }),
                 true,
             ),
             self.fixed_tool(
@@ -283,6 +294,27 @@ impl Server {
                         "document": doc.value,
                     }))),
                     None => Ok(tool_error(format!("unknown document {key:?}; call neuroflow_list for ids"))),
+                }
+            }
+            "neuroflow_inspect" => {
+                let path = args.get("path").cloned().unwrap_or(Value::Null);
+                match runtime::resolve_artifact(&self.cfg, &path) {
+                    Err(e) => Ok(tool_error(e)),
+                    Ok(resolved) => {
+                        let p = std::path::Path::new(&resolved);
+                        let t = args.get("type").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| {
+                            if p.is_dir() {
+                                if p.join("dataset_description.json").is_file() { "neuro:bids-dataset" } else { "core:directory" }
+                            } else {
+                                let lower = resolved.to_ascii_lowercase();
+                                if lower.ends_with(".nii") || lower.ends_with(".nii.gz") { "neuro:volume" }
+                                else if lower.ends_with(".tsv") || lower.ends_with(".csv") { "core:tabular" }
+                                else if lower.ends_with(".json") { "core:json" }
+                                else { "core:file" }
+                            }.to_string()
+                        });
+                        Ok(self.ok_json(artifacts::summarize(&resolved, &t, self.cfg.summary_max_bytes)))
+                    }
                 }
             }
             "neuroflow_validate" => {

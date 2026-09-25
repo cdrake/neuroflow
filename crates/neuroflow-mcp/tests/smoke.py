@@ -121,6 +121,22 @@ def main() -> int:
     ids = [i["id"] for i in listed["items"]]
     check("neuroflow.gallery.tools/niivue-qa-page" in ids, "acceptsType neuro:volume finds the QA page", ids)
 
+    print("inspect inputs:")
+    t1 = next(bids.rglob("*_T1w.nii.gz"))
+    info = c.call("neuroflow_inspect", {"path": str(t1)})["structuredContent"]
+    check(info["summary"]["dims"] == [40, 48, 36] and "nonzeroVolumeMl" in info["summary"]["intensity"],
+          "NIfTI geometry and nonzero volume", info)
+    ds = c.call("neuroflow_inspect", {"path": str(bids)})["structuredContent"]
+    check(ds["type"] == "neuro:bids-dataset" and ds["summary"]["bids"]["subjects"] == ["sub-01", "sub-02"],
+          "BIDS dataset detected with subjects", ds.get("summary", {}).get("bids"))
+    import nibabel as nib, numpy as np  # type: ignore
+    lab = np.zeros((10, 10, 10), dtype="int16"); lab[:2, :2, :2] = 17
+    nib.save(nib.Nifti1Image(lab, np.diag([2.0, 2.0, 2.0, 1.0])), str(data / "labels.nii.gz"))
+    labs = c.call("neuroflow_inspect", {"path": str(data / "labels.nii.gz"), "type": "neuro:label-map"})["structuredContent"]
+    check(labs["summary"]["labels"]["17"]["volumeMl"] == 0.064, "label volumes when typed as label-map", labs["summary"].get("labels"))
+    denied = c.call("neuroflow_inspect", {"path": "/etc/hosts"})
+    check(denied.get("isError") is True, "inspect is confined to data roots")
+
     print("validate a broken workflow:")
     broken = json.loads(json.dumps(json.load(open(Path(args.registry) / "workflows" / "filter-qa.neuroflow.json"))))
     broken["steps"]["qa"]["inputs"]["volumes"]["ref"] = "steps.filter.outputs.volumes"
