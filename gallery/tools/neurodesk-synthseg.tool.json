@@ -1,0 +1,161 @@
+{
+  "$schema": "../../../neuroflow-spec/schemas/0.1/tool.schema.json",
+  "neuroflow": "0.1.0",
+  "kind": "tool",
+  "id": "neurodesk.webapps/synthseg",
+  "version": "0.1.0",
+  "description": "Segment a brain MRI of any contrast or resolution into the 32 SynthSeg 2.0 FreeSurfer labels (1 mm grid), using Neurodesk's native synthseg CLI when installed, otherwise the Neurodesk SynthSeg web app (WebGPU) through the Neurodesk Webapps desktop suite. Expects a full-head image.",
+  "inputs": {
+    "t1": {
+      "type": "neuro:volume",
+      "description": "Brain MRI (any contrast), NIfTI."
+    },
+    "mode": {
+      "type": "core:string",
+      "description": "default: flip averaging and topological correction (reference output); fast: single pass.",
+      "optional": true,
+      "default": "default",
+      "enum": [
+        "default",
+        "fast"
+      ]
+    }
+  },
+  "outputs": {
+    "labels": {
+      "type": "neuro:label-map",
+      "description": "SynthSeg label map (FreeSurfer label ids).",
+      "delivery": {
+        "mode": "core:result-dir",
+        "path": "synthseg.nii.gz"
+      }
+    },
+    "report": {
+      "type": "core:json",
+      "description": "Run report: settings, model checksum, geometry, timings.",
+      "delivery": {
+        "mode": "core:result-dir",
+        "path": "synthseg.json"
+      }
+    }
+  },
+  "outputDelivery": {
+    "default": "core:result-dir"
+  },
+  "extensions": {
+    "niivue/ui": {
+      "block": {
+        "id": "neurodesk-synthseg",
+        "label": "SynthSeg (Neurodesk)",
+        "description": "Contrast-agnostic whole-brain segmentation.",
+        "category": "Processing",
+        "stage": "explore",
+        "exposedFields": [
+          "mode"
+        ]
+      }
+    },
+    "neuroflow/launch": {
+      "kind": "script",
+      "interpreter": "node",
+      "script": "../scripts/neurodesk_job.mjs",
+      "completion": "exit",
+      "interactive": false,
+      "contract": "../../docs/neuroflow-session-contract.md",
+      "requirements": [
+        "Neurodesk Webapps desktop suite (neurodesk-webapps)"
+      ],
+      "description": "Fills extensions[\"neurodesk/job\"] from the session inputs and runs neurodesk-webapps --job; maps the label map and report downloads to outputs."
+    },
+    "neuroflow/mcp": {
+      "title": "SynthSeg whole-brain segmentation (Neurodesk)",
+      "annotations": {
+        "idempotentHint": true
+      },
+      "maxWaitMs": 600000
+    },
+    "neurodesk/job": {
+      "app": "synthseg",
+      "expectedDownloads": 2,
+      "timeoutMs": 1800000,
+      "steps": [
+        {
+          "action": "wait",
+          "selector": "#imageInput",
+          "condition": "exists"
+        },
+        {
+          "action": "upload",
+          "selector": "#imageInput",
+          "paths": [
+            "{{t1}}"
+          ]
+        },
+        {
+          "action": "wait",
+          "selector": "#processButton",
+          "condition": "enabled",
+          "timeoutMs": 120000
+        },
+        {
+          "action": "select",
+          "selector": "#mode",
+          "value": "{{mode}}"
+        },
+        {
+          "action": "click",
+          "selector": "#processButton"
+        },
+        {
+          "action": "wait",
+          "selector": "#statusText",
+          "condition": "text",
+          "value": "Labels ready"
+        },
+        {
+          "action": "click",
+          "selector": "#saveBtn"
+        },
+        {
+          "action": "click",
+          "selector": "#reportBtn"
+        }
+      ],
+      "outputs": {
+        "labels": {
+          "match": "_synthseg\\.nii\\.gz$"
+        },
+        "report": {
+          "match": "_synthseg\\.json$"
+        }
+      },
+      "source": "neurodesk/webapps apps/synthseg; steps follow its e2e/fixture.spec.js flow",
+      "native": {
+        "command": "synthseg",
+        "paths": [
+          "/usr/local/bin/synthseg"
+        ],
+        "env": "NEURODESK_SYNTHSEG",
+        "args": [
+          "--i",
+          "{{t1}}",
+          "--o",
+          "{{outputDir}}/synthseg.nii.gz",
+          "--force",
+          "--quiet",
+          {
+            "arg": "--fast",
+            "when": {
+              "mode": "fast"
+            }
+          }
+        ],
+        "outputs": {
+          "labels": "synthseg.nii.gz",
+          "report": "synthseg.json"
+        },
+        "source": "neurodesk/webapps exes/synthseg (native SynthSeg 2.0, Metal on Apple silicon); same model as the web app"
+      }
+    }
+  }
+}

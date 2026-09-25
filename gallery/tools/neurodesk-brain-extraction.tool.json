@@ -1,0 +1,153 @@
+{
+  "$schema": "../../../neuroflow-spec/schemas/0.1/tool.schema.json",
+  "neuroflow": "0.1.0",
+  "kind": "tool",
+  "id": "neurodesk.webapps/brain-extraction",
+  "version": "0.1.0",
+  "description": "Extract the brain and a binary brain mask from a T1- or T2-weighted full-head image with SynthStrip, MindGrab or BET, using the Neurodesk Brain Extraction web app run headless through the Neurodesk Webapps desktop suite. Outputs keep the input geometry.",
+  "inputs": {
+    "t1": {
+      "type": "neuro:volume",
+      "description": "Full-head T1- or T2-weighted NIfTI image."
+    },
+    "method": {
+      "type": "core:string",
+      "description": "Extraction method.",
+      "optional": true,
+      "default": "synthstrip",
+      "enum": [
+        "synthstrip",
+        "mindgrab",
+        "bet"
+      ]
+    },
+    "threshold": {
+      "type": "core:number",
+      "description": "BET fractional intensity threshold (BET only); lower values give larger masks.",
+      "optional": true,
+      "default": 0.5,
+      "min": 0,
+      "max": 1
+    }
+  },
+  "outputs": {
+    "brain": {
+      "type": "neuro:volume",
+      "description": "Skull-stripped image.",
+      "delivery": {
+        "mode": "core:result-dir",
+        "path": "brain.nii"
+      }
+    },
+    "brain_mask": {
+      "type": "neuro:mask",
+      "description": "Binary brain mask.",
+      "delivery": {
+        "mode": "core:result-dir",
+        "path": "brain_mask.nii"
+      }
+    }
+  },
+  "outputDelivery": {
+    "default": "core:result-dir"
+  },
+  "extensions": {
+    "niivue/ui": {
+      "block": {
+        "id": "neurodesk-brain-extraction",
+        "label": "Brain Extraction (Neurodesk)",
+        "description": "SynthStrip, MindGrab or BET brain extraction.",
+        "category": "Processing",
+        "stage": "explore",
+        "exposedFields": [
+          "method",
+          "threshold"
+        ]
+      }
+    },
+    "neuroflow/launch": {
+      "kind": "script",
+      "interpreter": "node",
+      "script": "../scripts/neurodesk_job.mjs",
+      "completion": "exit",
+      "interactive": false,
+      "contract": "../../docs/neuroflow-session-contract.md",
+      "requirements": [
+        "Neurodesk Webapps desktop suite (neurodesk-webapps)"
+      ],
+      "description": "Fills extensions[\"neurodesk/job\"] from the session inputs and runs neurodesk-webapps --job; maps the brain and mask downloads to outputs."
+    },
+    "neuroflow/mcp": {
+      "title": "Brain extraction (Neurodesk: SynthStrip, MindGrab, BET)",
+      "annotations": {
+        "idempotentHint": true
+      },
+      "maxWaitMs": 300000
+    },
+    "neurodesk/job": {
+      "app": "brain-extraction",
+      "expectedDownloads": 2,
+      "timeoutMs": 900000,
+      "steps": [
+        {
+          "action": "wait",
+          "selector": "#imageInput",
+          "condition": "exists"
+        },
+        {
+          "action": "upload",
+          "selector": "#imageInput",
+          "paths": [
+            "{{t1}}"
+          ]
+        },
+        {
+          "action": "wait",
+          "selector": "#runButton",
+          "condition": "enabled",
+          "timeoutMs": 120000
+        },
+        {
+          "action": "select",
+          "selector": "#method",
+          "value": "{{method}}"
+        },
+        {
+          "action": "fill",
+          "selector": "#threshold",
+          "value": "{{threshold}}",
+          "when": {
+            "method": "bet"
+          }
+        },
+        {
+          "action": "click",
+          "selector": "#runButton"
+        },
+        {
+          "action": "wait",
+          "selector": "#statusText",
+          "condition": "text",
+          "value": "Brain image and mask ready"
+        },
+        {
+          "action": "click",
+          "selector": "#resultList > :nth-child(2) .nd-download-btn"
+        },
+        {
+          "action": "click",
+          "selector": "#resultList > :nth-child(3) .nd-download-btn"
+        }
+      ],
+      "outputs": {
+        "brain": {
+          "match": "_brain\\.nii(\\.gz)?$"
+        },
+        "brain_mask": {
+          "match": "_mask\\.nii(\\.gz)?$"
+        }
+      },
+      "source": "neurodesk/webapps apps/brain-extraction; steps follow its e2e/app.spec.js flow"
+    }
+  }
+}

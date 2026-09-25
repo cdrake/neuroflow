@@ -1,0 +1,71 @@
+{
+  "$schema": "../../../neuroflow-spec/schemas/0.1/tool.schema.json",
+  "neuroflow": "0.1.0",
+  "kind": "tool",
+  "id": "neuroflow.gallery.tools/label-volumes",
+  "version": "0.1.0",
+  "description": "Measure the volume of every label in a segmentation (FreeSurfer names for SynthSeg/FreeSurfer label ids) and, optionally, of a brain mask. Writes a TSV and returns the same table inline so an agent can answer volume questions directly.",
+  "inputs": {
+    "labels": {
+      "type": "neuro:label-map",
+      "description": "Integer label map, e.g. SynthSeg output."
+    },
+    "mask": {
+      "type": "neuro:mask",
+      "description": "Optional brain mask; its volume is reported as brain_mask_ml.",
+      "optional": true
+    }
+  },
+  "outputs": {
+    "volumes": {
+      "type": "core:tabular",
+      "description": "label, name, voxels, volume_ml.",
+      "delivery": {
+        "mode": "core:result-dir",
+        "path": "volumes.tsv"
+      }
+    },
+    "table": {
+      "type": "core:json",
+      "description": "Same rows plus totals, inline.",
+      "delivery": {
+        "mode": "core:result-file"
+      }
+    }
+  },
+  "outputDelivery": {
+    "default": "core:result-dir"
+  },
+  "extensions": {
+    "niivue/ui": {
+      "block": {
+        "id": "label-volumes",
+        "label": "Label Volumes",
+        "description": "Per-structure volumes in mL.",
+        "category": "Output",
+        "stage": "publish",
+        "exposedFields": []
+      }
+    },
+    "neuroflow/launch": {
+      "kind": "script",
+      "interpreter": "python3",
+      "script": "../scripts/label_volumes.py",
+      "completion": "exit",
+      "interactive": false,
+      "contract": "../../docs/neuroflow-session-contract.md",
+      "requirements": [
+        "nibabel",
+        "numpy"
+      ],
+      "description": "Reads inputs.labels (and inputs.mask) from context.json; writes volumes.tsv to the output dir and {\"table\": ...} to $NEUROFLOW_OUTPUT_FILE."
+    },
+    "neuroflow/mcp": {
+      "title": "Label volumes (mL per structure)",
+      "annotations": {
+        "readOnlyHint": false,
+        "idempotentHint": true
+      }
+    }
+  }
+}

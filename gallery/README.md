@@ -17,6 +17,9 @@ node gallery/validate.mjs        # or: npm run validate:gallery
 | `python-volume-filter.tool.json` | `…tools/python-volume-filter` | explore | script | `filtered_volumes` (result-dir) |
 | `niivue-qa-page.tool.json` | `…tools/niivue-qa-page` | publish | script | `qa_html` (result-file `index.html`) |
 | `provenance-fold.tool.json` | `…tools/provenance-fold` | publish | script | `run_record` (`prov:run-record`, `run.provenance.json`) |
+| `label-volumes.tool.json` | `…tools/label-volumes` | publish | script | `volumes` (TSV), `table` (inline JSON) |
+| `neurodesk-brain-extraction.tool.json` | `neurodesk.webapps/brain-extraction` | explore | script → Neurodesk job | `brain`, `brain_mask` |
+| `neurodesk-synthseg.tool.json` | `neurodesk.webapps/synthseg` | explore | script → Neurodesk job | `labels`, `report` |
 
 The two **uiApp** tools (BIDSvue, NeuroVue) are interactive: a NeuroFlow runtime
 launches them with a session context and they block until the user finishes. The
@@ -25,6 +28,10 @@ in each tool's `extensions["neuroflow/launch"]`, and the runtime handoff format
 is defined in `../docs/neuroflow-session-contract.md`.
 
 ## Workflows (`workflows/`)
+
+`brain-volumes.neuroflow.json` runs Neurodesk brain extraction and SynthSeg on
+one T1 and reports per-structure volumes in mL. It needs the Neurodesk
+Webapps desktop suite; see `../docs/neurodesk-webapps.md`.
 
 `filter-qa.neuroflow.json` is fully headless (filter, then QA page), so the
 MCP server (`crates/neuroflow-mcp`) can run it end to end.
