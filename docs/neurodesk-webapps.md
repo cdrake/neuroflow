@@ -97,8 +97,8 @@ Provenance records which engine ran.
   `synthseg` CLI, which the SynthSeg tool prefers when installed. A fix that
   fails jobs as soon as an app reports an error has been proposed upstream.
 - To see why a job is stuck, run the suite with `--remote-debugging-port=9223`
-  and read the page state (status text, WebGPU adapter, console) over the
-  Chrome DevTools Protocol.
+  and run `node gallery/scripts/neurodesk_cdp_probe.mjs` while the job waits.
+  It prints the status text, progress, WebGPU adapter, and console output.
 
 ## Tools and workflows
 
