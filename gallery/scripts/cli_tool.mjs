@@ -28,6 +28,7 @@
  *                        one match). The file is renamed to the output's
  *                        declared delivery.path.
  *   cwd (optional)       "outputDir" | "workDir" (default workDir)
+ *   clearEnv (optional)  environment-variable names withheld from the command
  *
  * Env: NEUROFLOW_SESSION / _OUTPUT_DIR / _WORK_DIR / _STEP (session contract),
  * plus the template's own override variable.
@@ -96,12 +97,23 @@ if (!exe) {
     `looked in ${(template.paths ?? []).join(', ') || 'no fixed locations'} and on PATH`);
 }
 
+// Commands occasionally reuse generic environment names with incompatible
+// meanings (for example, tinygrad expects DEBUG to be an integer). A trusted
+// tool template can opt out of forwarding such variables without changing the
+// ambient environment of the runtime or other tools.
+const childEnv = { ...process.env };
+for (const name of template.clearEnv ?? []) delete childEnv[name];
+
 // Probe the release before running.
 let version = null;
 if (template.probe) {
   const p = template.probe;
-  const r = spawnSync(exe, p.args ?? [], { encoding: 'utf8' });
+  const r = spawnSync(exe, p.args ?? [], { encoding: 'utf8', env: childEnv });
   const text = `${r.stdout ?? ''}\n${r.stderr ?? ''}`;
+  if (r.error || r.status !== 0) {
+    const status = r.status ?? 'could not start';
+    fail(`${exe} probe exited with status ${status}. ${p.advice ?? ''}`.trim());
+  }
   if (p.match && !new RegExp(p.match).test(text)) {
     fail(`${exe} does not look like a usable ${template.command}: output lacks /${p.match}/. ${p.advice ?? ''}`.trim());
   }
@@ -135,7 +147,7 @@ mkdirSync(cwd, { recursive: true });
 console.log(`cli_tool: running ${exe} ${args.join(' ')}`);
 const started = Date.now();
 const status = await new Promise((resolve) => {
-  const child = spawn(exe, args, { cwd, stdio: ['ignore', 'inherit', 'inherit'] });
+  const child = spawn(exe, args, { cwd, env: childEnv, stdio: ['ignore', 'inherit', 'inherit'] });
   child.on('error', (err) => { console.error(`cli_tool: ${err.message}`); resolve(127); });
   child.on('exit', (c, signal) => resolve(c ?? (signal ? 128 : 1)));
 });

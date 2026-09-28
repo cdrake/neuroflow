@@ -61,6 +61,9 @@ SynthSeg itself.
   is kept when every listed input equals its value (booleans compare as
   booleans), and `{ "args": [...], "whenSet": "weight" }` when that input has a
   value. Array inputs join with commas.
+- **Environment.** `clearEnv` optionally lists ambient variables withheld from
+  both the probe and command. Use it only for a known conflict in a trusted
+  tool, such as brainchop/tinygrad's numeric `DEBUG` setting.
 - **Outputs.** Each declared output maps to a file name the command writes in the
   output directory, or to `{ "match": regex, "pick": "first" | "largest" }` when
   the name is not known ahead (dcm2niix appends echo and series suffixes). The

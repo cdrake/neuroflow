@@ -15,18 +15,20 @@ them; `prompt.md` names only the data and the five things to do.
 
 | File | What it is |
 | --- | --- |
-| `prompt.md` | The user's request. |
+| `prompt.md` | The user's request; `run.sh` fills its two data-path placeholders. |
 | `system.md` | Four sentences appended to the system prompt: discover, chain by type, validate, report from results. |
-| `mcp.json` | The MCP config: `neuroflow-mcp` with the gallery registry and `~/Data` as the data root. |
+| `mcp.json` | Portable MCP-config skeleton; `run.sh` fills in this checkout's binary and gallery paths. |
 | `run.sh` | Runs `claude -p` with the prompt and only the `mcp__neuroflow__*` tools, then collects the results into `out/`. |
 | `out/answer.md` | The agent's final answer from the recorded run. |
 | `out/agent-workflow.json` | The workflow the agent composed and ran (copied from the run directory). |
 | `out/tool-calls.jsonl` | Every tool call the agent made, in order. |
 | `out/provenance.jsonl`, `out/run.provenance.json` | The run's provenance trail and folded PROV record. |
-| `out/transcript.jsonl` | The full stream-json transcript. |
+| `out/transcript.jsonl` | Not retained: `run.sh` processes the raw provider transcript in a temporary file, then removes it. |
 
 `gallery/workflows/dicom-t1-mni-volumes.neuroflow.json` is the hand-written
 reference for the same pipeline. The agent's workflow matches it step for step.
+The committed records replace absolute local paths with `<local-path>`; the raw
+run artifacts remain only in the local NeuroFlow session directory.
 
 ## Running it
 
@@ -39,10 +41,13 @@ Requirements: the Claude Code CLI and `jq`; dcm2niix; niimath v1.0.20260924 or
 newer (the conda build on `PATH` is too old, so `run.sh` relies on the tool
 document's search of `~/bin` and `/usr/local/bin`, or `NIIMATH`); the brainchop
 CLI in the Python the server uses; native `synthseg` or the Neurodesk Webapps
-suite. The prompt points at a T1 DICOM series under `~/Data/DICOMs` and a
-skull-stripped MNI152 template under `~/Data/templates`; edit `prompt.md` and
-`mcp.json` for other data. New gallery tools are only visible to a freshly
-started server, which `run.sh` provides.
+suite. By default, the demo uses `~/Data/DICOMs/5_anat-T1w` and
+`~/Data/templates/MNI152_T1_1mm_brain.nii.gz`. Set
+`NEUROFLOW_DEMO_DATA_ROOT`, `NEUROFLOW_DEMO_DICOM_DIR`,
+`NEUROFLOW_DEMO_TEMPLATE`, `NEUROFLOW_DEMO_SPEC_DIR`,
+`NEUROFLOW_DEMO_PYTHON`, or `NEUROFLOW_DEMO_NODE` to override them.
+New gallery tools are only visible to a freshly started server, which `run.sh`
+provides.
 
 ## The recorded run
 

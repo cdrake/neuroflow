@@ -1,5 +1,5 @@
-I have a T1-weighted MRI as a DICOM series in /Users/chrisdrake/Data/DICOMs/5_anat-T1w
-and a skull-stripped MNI152 template at /Users/chrisdrake/Data/templates/MNI152_T1_1mm_brain.nii.gz.
+I have a T1-weighted MRI as a DICOM series in {{dicom_dir}}
+and a skull-stripped MNI152 template at {{template}}.
 
 Using only the NeuroFlow tools, build one workflow that:
 1. converts the DICOM series to NIfTI,

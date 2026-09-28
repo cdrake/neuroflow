@@ -17,7 +17,10 @@ const root = mkdtempSync(join(tmpdir(), 'cli-tool-'));
 const fake = join(root, 'fakecli');
 writeFileSync(fake, `#!${process.execPath}
 const a = process.argv.slice(2);
-if (a[0] === '--version') { console.log('fakecli v9.8.7 with -allineate'); process.exit(0); }
+if (a[0] === '--version') {
+  if (process.env.FAKECLI_BLOCKED) { console.error('blocked by inherited environment'); process.exit(9); }
+  console.log('fakecli v9.8.7 with -allineate'); process.exit(0);
+}
 const fs = require('node:fs');
 for (let i = 0; i < a.length; i++) if (a[i] === '--out') fs.writeFileSync(a[i + 1], a.join(' '));
 const e = a.indexOf('--exit'); process.exit(e >= 0 ? Number(a[e + 1]) : 0);
@@ -108,6 +111,21 @@ test('fails on a failed probe, a missing input, a non-zero exit, and a missing o
   assert.equal(none.status, 1);
   assert.match(none.stderr, /did not write output result/);
   assert.equal(none.prov, null);
+});
+
+test('clears template-selected variables for both probing and execution', () => {
+  const previous = process.env.FAKECLI_BLOCKED;
+  process.env.FAKECLI_BLOCKED = '1';
+  try {
+    const blocked = run({ probe: { args: ['--version'], match: '-allineate' }, args: [], outputs: {} }, {});
+    assert.equal(blocked.status, 1);
+    assert.match(blocked.stderr, /probe exited with status 9/);
+    const clear = run({ clearEnv: ['FAKECLI_BLOCKED'], probe: { args: ['--version'], match: '-allineate' }, args: [], outputs: {} }, {});
+    assert.equal(clear.status, 0, clear.stderr);
+  } finally {
+    if (previous === undefined) delete process.env.FAKECLI_BLOCKED;
+    else process.env.FAKECLI_BLOCKED = previous;
+  }
 });
 
 test('honours the override variable and reports a missing executable', () => {

@@ -2,14 +2,8 @@
   "mcpServers": {
     "neuroflow": {
       "type": "stdio",
-      "command": "/Users/chrisdrake/Dev/neuroflow/target/release/neuroflow-mcp",
-      "args": [
-        "--registry", "/Users/chrisdrake/Dev/neuroflow/gallery",
-        "--data-root", "/Users/chrisdrake/Data",
-        "--spec", "/Users/chrisdrake/Dev/neuroflow-spec",
-        "--interpreter", "python3=/opt/homebrew/Caskroom/miniforge/base/bin/python3",
-        "--interpreter", "node=/opt/homebrew/bin/node"
-      ],
+      "command": "neuroflow-mcp",
+      "args": [],
       "env": {}
     }
   }

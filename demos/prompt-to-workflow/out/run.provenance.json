@@ -168,13 +168,13 @@
       "id": "ent-1",
       "type": "neuro:dicom-folder",
       "role": "workflow-input",
-      "path": "/Users/chrisdrake/Data/DICOMs/5_anat-T1w"
+      "path": "<local-path>"
     },
     {
       "id": "ent-2",
       "type": "neuro:volume",
       "role": "workflow-input",
-      "path": "/Users/chrisdrake/Data/templates/MNI152_T1_1mm_brain.nii.gz",
+      "path": "<local-path>",
       "size": 4147830
     },
     {
@@ -193,7 +193,7 @@
       "id": "ent-5",
       "type": "neuro:volume",
       "role": "step-output",
-      "path": "/Users/chrisdrake/.neuroflow/runs/run-20260928T154101Z-152f/outputs/convert/volume.nii.gz",
+      "path": "<local-path>",
       "size": 11416491
     },
     {
@@ -282,7 +282,7 @@
         "ReconMatrixPE": 256,
         "ParallelReductionFactorInPlane": 2,
         "PixelBandwidth": 199,
-        "DwellTime": 9.8e-6,
+        "DwellTime": 0.0000098,
         "ImageOrientationPatientDICOM": [
           0.0561428,
           0.996295,
@@ -304,35 +304,35 @@
       "id": "ent-7",
       "type": "neuro:volume",
       "role": "step-output",
-      "path": "/Users/chrisdrake/.neuroflow/runs/run-20260928T154101Z-152f/outputs/strip/brain.nii.gz",
+      "path": "<local-path>",
       "size": 2725456
     },
     {
       "id": "ent-8",
       "type": "neuro:mask",
       "role": "step-output",
-      "path": "/Users/chrisdrake/.neuroflow/runs/run-20260928T154101Z-152f/outputs/strip/brain_mask.nii.gz",
+      "path": "<local-path>",
       "size": 73201
     },
     {
       "id": "ent-9",
       "type": "neuro:volume",
       "role": "step-output",
-      "path": "/Users/chrisdrake/.neuroflow/runs/run-20260928T154101Z-152f/outputs/register/registered.nii.gz",
+      "path": "<local-path>",
       "size": 6960540
     },
     {
       "id": "ent-10",
       "type": "neuro:transform",
       "role": "step-output",
-      "path": "/Users/chrisdrake/.neuroflow/runs/run-20260928T154101Z-152f/outputs/register/transform.json",
+      "path": "<local-path>",
       "size": 1117
     },
     {
       "id": "ent-11",
       "type": "neuro:label-map",
       "role": "step-output",
-      "path": "/Users/chrisdrake/.neuroflow/runs/run-20260928T154101Z-152f/outputs/segment/synthseg.nii.gz",
+      "path": "<local-path>",
       "size": 337577
     },
     {
@@ -345,7 +345,7 @@
         "executionProvider": "metal",
         "fast": false,
         "flip": true,
-        "input": "/Users/chrisdrake/.neuroflow/runs/run-20260928T154101Z-152f/outputs/convert/volume.nii.gz",
+        "input": "<local-path>",
         "inputShape": [
           192,
           256,
@@ -354,7 +354,7 @@
         "model": "synthseg_2.0 (FreeSurfer 8.1.0 synthseg_2.0.h5)",
         "modelSha256": "94412cd4ece229cee1ec21ac05d9aa6f084ea7b600303d2e598707d86a9a9b13",
         "onnxRuntime": "1.27",
-        "output": "/Users/chrisdrake/.neuroflow/runs/run-20260928T154101Z-152f/outputs/segment/synthseg.nii.gz",
+        "output": "<local-path>",
         "outputAffine": [
           [
             0.9972632203847476,
@@ -404,7 +404,7 @@
       "id": "ent-13",
       "type": "core:tabular",
       "role": "step-output",
-      "path": "/Users/chrisdrake/.neuroflow/runs/run-20260928T154101Z-152f/outputs/volumes/volumes.tsv",
+      "path": "<local-path>",
       "size": 1077
     },
     {

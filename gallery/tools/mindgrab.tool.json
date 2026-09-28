@@ -78,6 +78,9 @@
         "~/.local/bin/brainchop"
       ],
       "env": "BRAINCHOP",
+      "clearEnv": [
+        "DEBUG"
+      ],
       "probe": {
         "args": [
           "--help"
