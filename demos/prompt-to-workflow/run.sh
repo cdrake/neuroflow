@@ -64,6 +64,8 @@ system="$(<"$here/system.md")"
 # Keep committed/demo records portable: the raw transcript and session files
 # retain their local paths only in temporary/session storage.
 redact_paths='walk(if type == "string" and startswith("/") then "<local-path>" else . end)'
+# Converted DICOM sidecars name the site and scanner; the committed copies drop those keys.
+redact_site='walk(if type == "object" then del(.InstitutionName, .InstitutionAddress, .InstitutionalDepartmentName, .DeviceSerialNumber, .StationName, .ProcedureStepDescription, .StudyDescription, .AcquisitionTime, .AcquisitionDateTime) else . end)'
 
 echo "prompt-to-workflow: starting $agent ($stamp)"
 case "$agent" in
@@ -100,14 +102,15 @@ case "$agent" in
 esac
 
 # The answer may quote paths; keep the home directory out of the committed copy.
-sed "s#$HOME#~#g" "$answer" > "$out/answer.md"
+host="$(hostname -s 2>/dev/null || true)"
+sed -e "s#$HOME#~#g" -e "s#${host:-@@none}#local#g" "$answer" > "$out/answer.md"
 
 # Copy the workflow the agent ran (the newest run the tool results mention).
 run_id="$(printf '%s\n' "$results" | grep -o 'run-[0-9TZ]*-[0-9a-f]*' | tail -1 || true)"
 if [ -n "$run_id" ] && [ -d "$HOME/.neuroflow/runs/$run_id" ]; then
   jq "$redact_paths" "$HOME/.neuroflow/runs/$run_id/workflow.json" > "$out/agent-workflow.json"
-  jq "$redact_paths" "$HOME/.neuroflow/runs/$run_id/run.provenance.json" > "$out/run.provenance.json"
-  jq -c "$redact_paths" "$HOME/.neuroflow/runs/$run_id/provenance.jsonl" > "$out/provenance.jsonl"
+  jq "$redact_paths | $redact_site" "$HOME/.neuroflow/runs/$run_id/run.provenance.json" > "$out/run.provenance.json"
+  jq -c "$redact_paths | $redact_site" "$HOME/.neuroflow/runs/$run_id/provenance.jsonl" > "$out/provenance.jsonl"
   echo "run: $run_id (copied workflow.json, provenance to $out)"
 fi
 echo "answer: $out/answer.md"

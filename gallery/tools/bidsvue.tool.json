@@ -48,7 +48,7 @@
     "neuroflow/launch": {
       "kind": "uiApp",
       "app": "bidsvue",
-      "repo": "/Users/chrisdrake/Dev/bidsui",
+      "repo": "bidsui",
       "branch": "neuroflow-aware",
       "command": "bun",
       "args": ["tauri", "dev"],

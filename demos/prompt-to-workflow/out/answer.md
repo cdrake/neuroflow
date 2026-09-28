@@ -28,7 +28,7 @@ Two validation passes failed before the third succeeded. Literal step inputs mus
 {
   "neuroflow": "0.1.0",
   "kind": "workflow",
-  "id": "chrisdrake.local/t1-dicom-mni-structure-volumes",
+  "id": "local/t1-dicom-mni-structure-volumes",
   "version": "0.1.0",
   "description": "DICOM T1 series to NIfTI (dcm2niix), skull-strip (mindgrab), affine registration of the stripped brain to a skull-stripped MNI152 template (niimath -allineate), SynthSeg whole-brain segmentation of the native full-head T1, and per-structure volumes in mL plus the brain-mask volume.",
   "inputs": {

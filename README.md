@@ -12,8 +12,8 @@ running pipelines.
 - Workflow source model: `niivue/niivue/packages/niivue-desktop/workflows`
 - Diagramming model: NiiVue Desktop `WorkflowDiagramView`, `BlockPalette`, and
   workflow draft utilities
-- UI direction: follow the BIDSvue app in `/Users/chrisdrake/Dev/bidsui`
-  (`https://github.com/neurolabusc/bidsui.git`) as the shared BIDS application
+- UI direction: follow the BIDSvue app (the `bidsui` project, not yet
+  public) as the shared BIDS application
   language. Since BIDSvue is SvelteKit, NeuroFlow mirrors its theme tokens and
   shell conventions in React rather than importing components directly.
 
@@ -68,3 +68,9 @@ it loads a DICOM-to-BIDS workflow fixture, renders a graph, shows context and
 output mappings, and calls the validation bridge. Actual tool execution is
 stubbed behind the Rust/Tauri command boundary so native process execution can
 be added deliberately.
+
+## License
+
+Licensed under either of the [Apache License, Version 2.0](LICENSE-APACHE) or the
+[MIT license](LICENSE-MIT), at your option. Contributions are accepted under the
+same terms.

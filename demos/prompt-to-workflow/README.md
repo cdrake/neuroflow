@@ -28,8 +28,11 @@ them; `prompt.md` names only the data and the five things to do.
 
 `gallery/workflows/dicom-t1-mni-volumes.neuroflow.json` is the hand-written
 reference for the same pipeline. The agent's workflow matches it step for step.
-The committed records replace absolute local paths with `<local-path>`; the raw
-run artifacts remain only in the local NeuroFlow session directory.
+The committed records replace absolute local paths with `<local-path>`, drop
+the site and scanner fields that dcm2niix copies into its sidecar
+(institution, device serial, station, study description, acquisition time),
+and replace the machine name in ids; the raw run artifacts remain only in the
+local NeuroFlow session directory.
 
 ## Running it
 

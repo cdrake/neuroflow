@@ -42,10 +42,10 @@ python3 crates/neuroflow-mcp/tests/smoke.py
 ### Claude Code
 
 ```bash
-claude mcp add neuroflow -- /Users/chrisdrake/Dev/neuroflow/target/release/neuroflow-mcp \
-  --registry /Users/chrisdrake/Dev/neuroflow/gallery \
-  --data-root /Users/chrisdrake/Data \
-  --spec /Users/chrisdrake/Dev/neuroflow-spec
+claude mcp add neuroflow -- /path/to/neuroflow/target/release/neuroflow-mcp \
+  --registry /path/to/neuroflow/gallery \
+  --data-root /path/to/data \
+  --spec /path/to/neuroflow-spec
 ```
 
 ### Claude Desktop
@@ -56,12 +56,12 @@ In `~/Library/Application Support/Claude/claude_desktop_config.json`:
 {
   "mcpServers": {
     "neuroflow": {
-      "command": "/Users/chrisdrake/Dev/neuroflow/target/release/neuroflow-mcp",
+      "command": "/path/to/neuroflow/target/release/neuroflow-mcp",
       "args": [
-        "--registry", "/Users/chrisdrake/Dev/neuroflow/gallery",
-        "--data-root", "/Users/chrisdrake/Data",
-        "--spec", "/Users/chrisdrake/Dev/neuroflow-spec",
-        "--interpreter", "python3=/Users/chrisdrake/miniconda3/bin/python3",
+        "--registry", "/path/to/neuroflow/gallery",
+        "--data-root", "/path/to/data",
+        "--spec", "/path/to/neuroflow-spec",
+        "--interpreter", "python3=/path/to/python3",
         "--interpreter", "node=/opt/homebrew/bin/node"
       ]
     }

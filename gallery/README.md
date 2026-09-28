@@ -82,8 +82,8 @@ Reference implementations the script-tools point at:
 
 The uiApp tools are served by NeuroFlow-aware branches of the reference apps:
 
-- BIDSvue — `/Users/chrisdrake/Dev/bidsui` branch `neuroflow-aware`
-- NeuroVue — `/Users/chrisdrake/Dev/neurovue` branch `neuroflow-aware`
+- BIDSvue — a `bidsui` checkout on branch `neuroflow-aware`
+- NeuroVue — a `neurovue` checkout on branch `neuroflow-aware`
 
 Both honor the session contract: read `$NEUROFLOW_SESSION/context.json`, write
 outputs to `$NEUROFLOW_OUTPUT_DIR`, and append to `provenance.jsonl`.

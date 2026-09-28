@@ -12,12 +12,10 @@ registry resolution, packaging policy, or pipeline execution.
 
 ## Reference Implementation
 
-The initial viewer is modeled on:
-
-- `/Users/chrisdrake/Dev/mono/apps/iiif-volumetric-demo/osd-volume-desktop.html`
-- `/Users/chrisdrake/Dev/mono/apps/iiif-volumetric-demo/src/osd-volume-desktop.ts`
-- `/Users/chrisdrake/Dev/mono/apps/iiif-volumetric-demo/src/omezarr.ts`
-- `/Users/chrisdrake/Dev/mono/packages/niivue/examples/vox.clip.html`
+The initial viewer is modeled on an unpublished OpenSeadragon volume demo
+(`iiif-volumetric-demo`: `osd-volume-desktop.html`, `src/osd-volume-desktop.ts`,
+`src/omezarr.ts`)
+- NiiVue's `vox.clip.html` example
 
 During development, NeuroFlow can launch the local reference app on
 `http://127.0.0.1:8087` as a stand-in for the future NeuroVue repo. That demo

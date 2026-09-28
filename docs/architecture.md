@@ -113,6 +113,6 @@ The UI follows the BIDSvue workbench shape:
 - bottom status bar
 
 Local visual tokens in `src/styles/bidsui.css` mirror
-`/Users/chrisdrake/Dev/bidsui/src/lib/styles/theme.css`. BIDSvue is SvelteKit,
+BIDSvue's `src/lib/styles/theme.css`. BIDSvue is SvelteKit,
 so this React scaffold consumes the design language through CSS variables and
 layout conventions rather than direct component imports.

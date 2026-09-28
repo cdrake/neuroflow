@@ -1,6 +1,6 @@
 /* BIDSvue-aligned theme variables.
  *
- * Source model: /Users/chrisdrake/Dev/bidsui/src/lib/styles/theme.css
+ * Source model: BIDSvue's src/lib/styles/theme.css
  * NeuroFlow keeps these variables in a plain CSS file so the React/Tauri
  * scaffold can share the BIDSvue visual language without coupling to Svelte.
  */
