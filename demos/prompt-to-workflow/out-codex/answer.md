@@ -1,0 +1,131 @@
+Run `run-20260928T184230Z-7c58` completed successfully: all 5 steps ran with zero validation diagnostics. No pre-built gallery workflow was run.
+
+- Left hippocampus: **4.747 mL**
+- Right hippocampus: **4.845 mL**
+- Total brain-mask volume: **1592.272 mL**
+- Registration cost: **hel+cr** (`fast` preset), as recorded in the transform artifact
+- MNI-space brain: `neuroflow://runs/run-20260928T184230Z-7c58/artifacts/register_affine/registered`
+
+The exact inline workflow document executed was:
+
+```json
+{
+  "neuroflow": "0.1.0",
+  "kind": "workflow",
+  "id": "user/dicom-t1-affine-mni-structure-volumes",
+  "version": "0.1.0",
+  "description": "Convert a T1 DICOM series, extract the brain, register it affinely to MNI152, segment anatomical structures, and measure all structure and mask volumes in mL.",
+  "inputs": {
+    "dicom_dir": {
+      "type": "neuro:dicom-folder",
+      "description": "T1-weighted DICOM series folder."
+    },
+    "template": {
+      "type": "neuro:volume",
+      "description": "Skull-stripped MNI152 T1 template."
+    },
+    "registration_cost": {
+      "type": "core:string",
+      "description": "Affine registration cost function.",
+      "default": "fast",
+      "enum": [
+        "fast",
+        "fastx",
+        "fasthel",
+        "fastcr",
+        "hel",
+        "nmi",
+        "lpc",
+        "lpa",
+        "ls"
+      ]
+    }
+  },
+  "steps": {
+    "convert": {
+      "tool": "neuroflow.gallery.tools/dcm2niix",
+      "version": "0.1.0",
+      "inputs": {
+        "dicom_dir": {
+          "ref": "inputs.dicom_dir"
+        },
+        "anonymize": {
+          "constant": true
+        }
+      }
+    },
+    "skull_strip": {
+      "tool": "neuroflow.gallery.tools/mindgrab",
+      "version": "0.1.0",
+      "inputs": {
+        "t1": {
+          "ref": "steps.convert.outputs.volume"
+        },
+        "border": {
+          "constant": 0
+        }
+      }
+    },
+    "register_affine": {
+      "tool": "neuroflow.gallery.tools/niimath-allineate",
+      "version": "0.1.0",
+      "inputs": {
+        "moving": {
+          "ref": "steps.skull_strip.outputs.brain"
+        },
+        "template": {
+          "ref": "inputs.template"
+        },
+        "cost": {
+          "ref": "inputs.registration_cost"
+        },
+        "interpolation": {
+          "constant": "cubic"
+        }
+      }
+    },
+    "segment": {
+      "tool": "neurodesk.webapps/synthseg",
+      "version": "0.1.0",
+      "inputs": {
+        "t1": {
+          "ref": "steps.convert.outputs.volume"
+        },
+        "mode": {
+          "constant": "default"
+        }
+      }
+    },
+    "measure": {
+      "tool": "neuroflow.gallery.tools/label-volumes",
+      "version": "0.1.0",
+      "inputs": {
+        "labels": {
+          "ref": "steps.segment.outputs.labels"
+        },
+        "mask": {
+          "ref": "steps.skull_strip.outputs.brain_mask"
+        }
+      }
+    }
+  },
+  "outputs": {
+    "brain_mni": {
+      "type": "neuro:volume",
+      "ref": "steps.register_affine.outputs.registered"
+    },
+    "registration_transform": {
+      "type": "neuro:transform",
+      "ref": "steps.register_affine.outputs.transform"
+    },
+    "structure_volumes": {
+      "type": "core:tabular",
+      "ref": "steps.measure.outputs.volumes"
+    },
+    "volume_table": {
+      "type": "core:json",
+      "ref": "steps.measure.outputs.table"
+    }
+  }
+}
+```

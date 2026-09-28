@@ -150,14 +150,20 @@ from.
   for it. The tool's `preflight` refuses an oversized volume before the app
   starts, naming the native `synthseg` CLI as the fix (the tool prefers it
   whenever it is installed).
-  A fix that fails jobs as soon as an app reports an error has been proposed
-  upstream; until then the adapter's `failure` watch does the same from
-  outside.
+  The job runner fix that fails a job as soon as an app reports an error was
+  merged upstream on 2026-09-28 (neurodesk/webapps#96, desktop 0.14.20260928):
+  `job.json` may carry `failSelector` (default `#statusText.error`), and the
+  adapter now writes the template's `failure.selector` there. The nightly
+  suite build after that date carries it; suite 0.14.20260923 ignores the
+  field, and the adapter's `failure` watch does the same from outside either
+  way.
 - In the same release, one click on SynthSeg's labels Download button
   downloads the file twice (the result-list handler and `saveBtn.onclick` both
   fire), and the job runner rejects the duplicate ("Duplicate output"), so no
   SynthSeg job could finish through the app. The tool's `fixups` entry clears
-  the extra handler; remove it once a release fixes the button.
+  the extra handler; remove it once a suite release carries the fix proposed
+  in neurodesk/webapps#98 (2026-09-28), which drops the second handler from
+  `apps/synthseg/src/main.js`.
 - To see why a job is stuck, run the adapter with `NEURODESK_DEBUG_PORT=9223`
   (or the suite with `--remote-debugging-port=9223`) and run
   `node gallery/scripts/neurodesk_cdp_probe.mjs` while the job waits. It
@@ -177,11 +183,15 @@ built page and worker are under `Contents/Resources/offline/site/<app>/`.
 | `tools/neurodesk-synthseg.tool.json` | synthseg | `t1`, `mode` (default, fast) | `labels`, `report` |
 | `tools/label-volumes.tool.json` | none (Python) | `labels`, optional `mask` | `volumes` TSV, `table` inline JSON |
 | `workflows/brain-volumes.neuroflow.json` | all three | `t1`, `method`, `mode` | brain, mask, labels, volumes |
+| `workflows/dicom-t1-mni-volumes.neuroflow.json` | synthseg, plus the native CLI tools | `dicom_dir`, `template`, `mode` | T1, brain, brain in MNI, labels, volumes |
 
 `brain-volumes` runs brain extraction and SynthSeg on the full-head T1 (SynthSeg
 expects an unstripped image), then measures every SynthSeg structure in mL and
 the brain-mask volume. The inline `table` lets an agent answer questions such as
 "what are the hippocampal volumes?" from the tool result alone.
+`dicom-t1-mni-volumes` starts one step earlier, from a DICOM series, and uses the
+native lightNIIng tools for conversion, stripping and registration (see
+[native-cli-tools.md](native-cli-tools.md)).
 
 ## Adding another app
 

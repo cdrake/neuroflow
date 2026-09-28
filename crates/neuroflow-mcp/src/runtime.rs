@@ -110,20 +110,9 @@ struct Paths {
 }
 
 /// Execute a workflow. `Err` means the run was rejected before any step launched.
-pub fn run_workflow(
-    cfg: &Config,
-    registry: &Registry,
-    workflow: &Value,
-    args: &Map<String, Value>,
-    client: &Value,
-    progress: Progress<'_>,
-) -> Result<RunOutcome, String> {
-    let order = step_order(workflow)?;
-    registry.workflow_runnable(workflow)?;
-    let wf_id = workflow.get("id").and_then(Value::as_str).unwrap_or("neuroflow.mcp.adhoc/workflow");
-    let wf_version = workflow.get("version").and_then(Value::as_str).unwrap_or("0.0.0");
-
-    // Resolve workflow inputs before creating anything on disk.
+/// Check the call's arguments against the workflow's declared inputs, apply
+/// defaults, and resolve artifact references to canonical paths.
+pub fn resolve_inputs(cfg: &Config, workflow: &Value, args: &Map<String, Value>) -> Result<Map<String, Value>, String> {
     let declared = workflow.get("inputs").and_then(Value::as_object).cloned().unwrap_or_default();
     for key in args.keys() {
         if !declared.contains_key(key) {
@@ -144,6 +133,98 @@ pub fn run_workflow(
         let resolved = resolve_value(cfg, name, decl, &value, &[]).map_err(|e| format!("input {name}: {e}"))?;
         inputs.insert(name.clone(), resolved);
     }
+    Ok(inputs)
+}
+
+/// Identity of a run's work: the workflow document, the documents of the tools
+/// it references, and the resolved inputs, where every input path that exists
+/// is replaced by its size and modification time (recursively for folders).
+/// Two calls with the same fingerprint would do the same work, so the server
+/// answers the second with the first run instead of executing again.
+pub fn fingerprint(registry: &Registry, workflow: &Value, inputs: &Map<String, Value>) -> String {
+    let mut tools = Map::new();
+    for step in workflow.get("steps").and_then(Value::as_object).into_iter().flatten().map(|(_, s)| s) {
+        if let Some(id) = step.get("tool").and_then(Value::as_str) {
+            if let Some(doc) = registry.tool(id) {
+                tools.insert(id.to_string(), doc.value.clone());
+            }
+        }
+    }
+    let stamped: Map<String, Value> = inputs.iter().map(|(k, v)| (k.clone(), stamp_paths(v))).collect();
+    let text = canonical_json(&json!({ "workflow": workflow, "tools": tools, "inputs": stamped }));
+    // FNV-1a, 64-bit: no dependency, stable across builds, ample for a session's runs.
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in text.bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    format!("fnv1a64-{hash:016x}-{}", text.len())
+}
+
+fn stamp_paths(v: &Value) -> Value {
+    match v {
+        Value::Array(items) => Value::Array(items.iter().map(stamp_paths).collect()),
+        Value::String(s) if Path::new(s).is_absolute() && Path::new(s).exists() => {
+            let path = Path::new(s);
+            let stamp = |p: &Path| -> Value {
+                let meta = fs::metadata(p).ok();
+                let mtime = meta
+                    .as_ref()
+                    .and_then(|m| m.modified().ok())
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| d.as_nanos() as u64);
+                json!([meta.as_ref().map(|m| m.len()), mtime])
+            };
+            if path.is_dir() {
+                let mut files = Vec::new();
+                list_files(path, &mut files);
+                files.sort();
+                let entries: Map<String, Value> = files
+                    .iter()
+                    .map(|f| (f.strip_prefix(path).unwrap_or(f).to_string_lossy().into_owned(), stamp(f)))
+                    .collect();
+                json!({ "path": s, "files": entries })
+            } else {
+                json!({ "path": s, "file": stamp(path) })
+            }
+        }
+        other => other.clone(),
+    }
+}
+
+/// JSON with object keys sorted, so key order in a document does not matter.
+fn canonical_json(v: &Value) -> String {
+    match v {
+        Value::Object(map) => {
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort();
+            let body: Vec<String> = keys
+                .into_iter()
+                .map(|k| format!("{}:{}", Value::String(k.clone()), canonical_json(&map[k])))
+                .collect();
+            format!("{{{}}}", body.join(","))
+        }
+        Value::Array(items) => format!("[{}]", items.iter().map(canonical_json).collect::<Vec<_>>().join(",")),
+        other => other.to_string(),
+    }
+}
+
+pub fn run_workflow(
+    cfg: &Config,
+    registry: &Registry,
+    workflow: &Value,
+    args: &Map<String, Value>,
+    client: &Value,
+    progress: Progress<'_>,
+) -> Result<RunOutcome, String> {
+    let order = step_order(workflow)?;
+    registry.workflow_runnable(workflow)?;
+    let wf_id = workflow.get("id").and_then(Value::as_str).unwrap_or("neuroflow.mcp.adhoc/workflow");
+    let wf_version = workflow.get("version").and_then(Value::as_str).unwrap_or("0.0.0");
+
+    // Resolve workflow inputs before creating anything on disk.
+    let inputs = resolve_inputs(cfg, workflow, args)?;
+    let fingerprint = fingerprint(registry, workflow, &inputs);
 
     let run_id = loop {
         let id = new_run_id();
@@ -172,6 +253,7 @@ pub fn run_workflow(
         "workflow": { "id": wf_id, "version": wf_version },
         "client": client,
         "inputs": inputs,
+        "fingerprint": fingerprint,
         "steps": {}
     });
     let mut step_outputs: HashMap<String, Map<String, Value>> = HashMap::new();
@@ -877,6 +959,34 @@ mod tests {
             "filter": { "tool": "t/f", "inputs": { "d": { "ref": "inputs.d" } } }
         }});
         assert_eq!(step_order(&wf).unwrap(), vec!["filter", "qa"]);
+    }
+
+    #[test]
+    fn fingerprint_ignores_key_order_and_tracks_input_files() {
+        let registry = Registry::load(&[], &HashMap::new()).unwrap();
+        let a = json!({ "id": "x", "steps": { "s": { "tool": "t/a", "inputs": {} } }, "inputs": {} });
+        let b = json!({ "inputs": {}, "steps": { "s": { "inputs": {}, "tool": "t/a" } }, "id": "x" });
+        let mut inputs = Map::new();
+        inputs.insert("n".into(), json!(1));
+        let same = fingerprint(&registry, &a, &inputs);
+        assert_eq!(same, fingerprint(&registry, &b, &inputs), "key order does not matter");
+        inputs.insert("n".into(), json!(2));
+        assert_ne!(same, fingerprint(&registry, &a, &inputs), "a changed input value changes the fingerprint");
+
+        let dir = std::env::temp_dir().join(format!("neuroflow-fp-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("in.txt");
+        fs::write(&file, "one").unwrap();
+        inputs.insert("f".into(), json!(file.to_string_lossy()));
+        let before = fingerprint(&registry, &a, &inputs);
+        assert_eq!(before, fingerprint(&registry, &a, &inputs));
+        fs::write(&file, "three").unwrap();
+        assert_ne!(before, fingerprint(&registry, &a, &inputs), "changed input file changes the fingerprint");
+        inputs.insert("f".into(), json!(dir.to_string_lossy()));
+        let folder = fingerprint(&registry, &a, &inputs);
+        fs::write(dir.join("more.txt"), "x").unwrap();
+        assert_ne!(folder, fingerprint(&registry, &a, &inputs), "new file in an input folder changes the fingerprint");
+        fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

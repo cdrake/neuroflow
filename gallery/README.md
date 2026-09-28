@@ -20,10 +20,16 @@ node gallery/validate.mjs        # or: npm run validate:gallery
 | `label-volumes.tool.json` | `…tools/label-volumes` | publish | script | `volumes` (TSV), `table` (inline JSON) |
 | `neurodesk-brain-extraction.tool.json` | `neurodesk.webapps/brain-extraction` | explore | script → Neurodesk job | `brain`, `brain_mask` |
 | `neurodesk-synthseg.tool.json` | `neurodesk.webapps/synthseg` | explore | script → Neurodesk job | `labels`, `report` |
+| `dcm2niix.tool.json` | `…tools/dcm2niix` | ingest | script → native CLI | `volume`, `sidecar` |
+| `mindgrab.tool.json` | `…tools/mindgrab` | explore | script → native CLI | `brain`, `brain_mask` |
+| `niimath-allineate.tool.json` | `…tools/niimath-allineate` | explore | script → native CLI | `registered`, `transform` (`neuro:transform`) |
 
 The two **uiApp** tools (BIDSvue, NeuroVue) are interactive: a NeuroFlow runtime
 launches them with a session context and they block until the user finishes. The
-two **script** tools are headless. Launch details (command, completion, env) live
+**script** tools are headless. The three **native CLI** tools (dcm2niix, mindgrab
+via the brainchop CLI, niimath `-allineate`) are the lightNIIng tool set; they share
+one adapter, `scripts/cli_tool.mjs`, and describe their command line under
+`extensions["neuroflow/cli"]`. Launch details (command, completion, env) live
 in each tool's `extensions["neuroflow/launch"]`, and the runtime handoff format
 is defined in `../docs/neuroflow-session-contract.md`.
 
@@ -32,6 +38,12 @@ is defined in `../docs/neuroflow-session-contract.md`.
 `brain-volumes.neuroflow.json` runs Neurodesk brain extraction and SynthSeg on
 one T1 and reports per-structure volumes in mL. It needs the Neurodesk
 Webapps desktop suite; see `../docs/neurodesk-webapps.md`.
+
+`dicom-t1-mni-volumes.neuroflow.json` goes from a T1 DICOM series to structure
+volumes and an MNI-space brain with the lightNIIng tools (dcm2niix → mindgrab →
+niimath `-allineate` → SynthSeg → label volumes). It is the reference answer for
+`../demos/prompt-to-workflow`, where an agent composes the same pipeline from a
+prompt.
 
 `filter-qa.neuroflow.json` is fully headless (filter, then QA page), so the
 MCP server (`crates/neuroflow-mcp`) can run it end to end.
@@ -56,6 +68,11 @@ Reference implementations the script-tools point at:
 - `generate_qa.mjs` — builds a standalone QA page via `@niivue/nv-ext-save-html`
   (`generateHTML`/`saveHTML`) when installed, else a self-contained NiiVue CDN
   page. Copies volumes next to `index.html` so the page is portable.
+- `cli_tool.mjs` — shared adapter for native command-line tools: finds the
+  executable (override variable, install paths, PATH), probes the release,
+  fills an argument template from the session inputs, maps the files written
+  to the declared outputs, appends provenance. `cli_tool.test.mjs` covers it
+  (`npm run test:gallery`).
 - `fold_provenance.mjs` — folds the run's append-only `provenance.jsonl` trail
   into a single conformant `kind:"provenance"` document (`run.provenance.json`),
   mapping each line to PROV agents/activities/entities. See
@@ -65,8 +82,8 @@ Reference implementations the script-tools point at:
 
 The uiApp tools are served by NeuroFlow-aware branches of the reference apps:
 
-- BIDSvue — `/Users/chrisdrake/Dev/bidsui` branch `neuroflow-aware`
-- NeuroVue — `/Users/chrisdrake/Dev/neurovue` branch `neuroflow-aware`
+- BIDSvue — a `bidsui` checkout on branch `neuroflow-aware`
+- NeuroVue — a `neurovue` checkout on branch `neuroflow-aware`
 
 Both honor the session contract: read `$NEUROFLOW_SESSION/context.json`, write
 outputs to `$NEUROFLOW_OUTPUT_DIR`, and append to `provenance.jsonl`.

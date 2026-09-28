@@ -1,0 +1,131 @@
+{
+  "$schema": "../../../neuroflow-spec/schemas/0.1/tool.schema.json",
+  "neuroflow": "0.1.0",
+  "kind": "tool",
+  "id": "neuroflow.gallery.tools/dcm2niix",
+  "version": "0.1.0",
+  "description": "Convert one DICOM series folder to a compressed NIfTI volume plus its BIDS JSON sidecar with dcm2niix (Chris Rorden; the converter used by lightNIIng, BIDSvue and most BIDS converters). Expects the folder to hold a single series; a multi-echo series yields its first echo as the volume and leaves the others in the step's output directory.",
+  "inputs": {
+    "dicom_dir": {
+      "type": "neuro:dicom-folder",
+      "description": "Folder of DICOM files for one series."
+    },
+    "anonymize": {
+      "type": "core:boolean",
+      "description": "Anonymize the BIDS sidecar (dcm2niix -ba y).",
+      "optional": true,
+      "default": true
+    }
+  },
+  "outputs": {
+    "volume": {
+      "type": "neuro:volume",
+      "description": "Converted NIfTI volume (gzip), RAS-reoriented by dcm2niix.",
+      "delivery": {
+        "mode": "core:result-dir",
+        "path": "volume.nii.gz"
+      }
+    },
+    "sidecar": {
+      "type": "core:json",
+      "description": "BIDS JSON sidecar: sequence, timing, and acquisition metadata.",
+      "delivery": {
+        "mode": "core:result-dir",
+        "path": "volume.json"
+      }
+    }
+  },
+  "outputDelivery": {
+    "default": "core:result-dir"
+  },
+  "extensions": {
+    "niivue/ui": {
+      "block": {
+        "id": "dcm2niix",
+        "label": "DICOM to NIfTI (dcm2niix)",
+        "description": "Convert a DICOM series to NIfTI + JSON.",
+        "category": "Ingest",
+        "stage": "ingest",
+        "exposedFields": [
+          "anonymize"
+        ]
+      }
+    },
+    "neuroflow/launch": {
+      "kind": "script",
+      "interpreter": "node",
+      "script": "../scripts/cli_tool.mjs",
+      "completion": "exit",
+      "interactive": false,
+      "contract": "../../docs/neuroflow-session-contract.md",
+      "requirements": [
+        "dcm2niix (on PATH or via DCM2NIIX)"
+      ],
+      "description": "Runs dcm2niix -z y -f volume -o <outputDir> <dicom_dir> through the shared native CLI adapter."
+    },
+    "neuroflow/mcp": {
+      "title": "DICOM to NIfTI (dcm2niix)",
+      "annotations": {
+        "idempotentHint": true,
+        "readOnlyHint": false
+      },
+      "maxWaitMs": 300000
+    },
+    "neuroflow/cli": {
+      "command": "dcm2niix",
+      "paths": [
+        "/usr/local/bin/dcm2niix",
+        "/opt/homebrew/bin/dcm2niix",
+        "~/fsl/bin/dcm2niix"
+      ],
+      "env": "DCM2NIIX",
+      "probe": {
+        "args": [
+          "-v"
+        ],
+        "match": "dcm2niiX version",
+        "version": "v[0-9]+\\.[0-9]+\\.[0-9]+"
+      },
+      "args": [
+        "-z",
+        "y",
+        "-f",
+        "volume",
+        "-b",
+        "y",
+        {
+          "args": [
+            "-ba",
+            "y"
+          ],
+          "when": {
+            "anonymize": true
+          }
+        },
+        {
+          "args": [
+            "-ba",
+            "n"
+          ],
+          "when": {
+            "anonymize": false
+          }
+        },
+        "-o",
+        "{{outputDir}}",
+        "{{dicom_dir}}"
+      ],
+      "outputs": {
+        "volume": {
+          "match": "^volume.*\\.nii\\.gz$",
+          "pick": "first"
+        },
+        "sidecar": {
+          "match": "^volume.*\\.json$",
+          "pick": "first"
+        }
+      },
+      "source": "https://github.com/rordenlab/dcm2niix"
+    }
+  }
+}

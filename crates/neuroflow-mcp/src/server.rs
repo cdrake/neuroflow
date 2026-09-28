@@ -7,6 +7,7 @@ use crate::runtime::{self, step_order};
 use crate::schema::{element_type, input_schema, run_output_schema, value_types_of};
 use crate::Config;
 use serde_json::{json, Map, Value};
+use std::collections::HashMap;
 use std::io::{BufRead, Write};
 
 /// Protocol revisions this server implements, newest first. 2026-07-28
@@ -18,11 +19,15 @@ pub struct Server {
     registry: Registry,
     version: String,
     client: Value,
+    /// Completed runs of this session by work fingerprint (runtime::fingerprint):
+    /// a repeated call with identical workflow and inputs is answered from here
+    /// instead of executing (and writing its outputs) a second time.
+    completed: HashMap<String, (String, Value)>,
 }
 
 impl Server {
     pub fn new(cfg: Config, registry: Registry) -> Self {
-        Server { cfg, registry, version: SUPPORTED_VERSIONS[0].to_string(), client: json!({}) }
+        Server { cfg, registry, version: SUPPORTED_VERSIONS[0].to_string(), client: json!({}), completed: HashMap::new() }
     }
 
     /// Features added in 2025-06-18: titles, structuredContent, outputSchema, resource links.
@@ -198,14 +203,16 @@ impl Server {
         let mut run = self.fixed_tool(
             "neuroflow_run",
             "Run a NeuroFlow workflow",
-            "Execute a workflow given inline (a document you composed) or by registry id, with its inputs. Only registered tools run, through their declared launch contracts. Returns outputs as neuroflow:// artifact URIs plus a provenance record.",
+            "Execute a workflow given inline (a document you composed) or by registry id, with its inputs. Only registered tools run, through their declared launch contracts. Returns outputs as neuroflow:// artifact URIs plus a provenance record. Calling it again in this session with the same workflow and inputs returns the earlier completed run instead of executing again; set rerun to force a new run.",
             json!({ "type": "object", "properties": {
                 "workflow": { "type": "object", "description": "Inline NeuroFlow workflow document." },
                 "id": { "type": "string", "description": "Registry workflow id (instead of workflow)." },
-                "inputs": { "type": "object", "description": "Values for the workflow's declared inputs." }
+                "inputs": { "type": "object", "description": "Values for the workflow's declared inputs." },
+                "rerun": rerun_schema()
             }, "additionalProperties": false }),
             false,
         );
+        run["annotations"]["idempotentHint"] = json!(true);
         if self.modern() {
             run["outputSchema"] = run_output_schema();
         }
@@ -219,10 +226,12 @@ impl Server {
             }
             description.push_str(&format!(" NeuroFlow {} {}@{}.", doc.kind.as_str(), doc.id, doc.version));
             let value_types = value_types_of(&doc.value);
+            let mut schema = input_schema(doc.value.get("inputs").and_then(Value::as_object), &value_types);
+            schema["properties"]["rerun"] = rerun_schema();
             let mut tool = json!({
                 "name": name,
                 "description": description,
-                "inputSchema": input_schema(doc.value.get("inputs").and_then(Value::as_object), &value_types),
+                "inputSchema": schema,
                 "annotations": self.annotations(doc),
             });
             if self.modern() {
@@ -266,7 +275,8 @@ impl Server {
                 })
             }),
         };
-        let mut a = json!({ "readOnlyHint": false, "destructiveHint": destructive, "idempotentHint": false, "openWorldHint": false });
+        // Idempotent within a session: a repeated call with identical inputs replays the completed run.
+        let mut a = json!({ "readOnlyHint": false, "destructiveHint": destructive, "idempotentHint": true, "openWorldHint": false });
         if let Some(over) = doc.value.pointer("/extensions/neuroflow~1mcp/annotations").and_then(Value::as_object) {
             for (k, v) in over {
                 a[k] = v.clone();
@@ -281,8 +291,9 @@ impl Server {
     fn call_tool(&mut self, params: &Value) -> Result<Value, (i64, String)> {
         let name = params.get("name").and_then(Value::as_str).unwrap_or("");
         let args = params.get("arguments").cloned().unwrap_or(json!({}));
-        let args = args.as_object().cloned().unwrap_or_default();
+        let mut args = args.as_object().cloned().unwrap_or_default();
         let token = params.pointer("/_meta/progressToken").cloned();
+        let rerun = args.remove("rerun").and_then(|v| v.as_bool()).unwrap_or(false);
         match name {
             "neuroflow_list" => Ok(self.ok_json(self.list(&args))),
             "neuroflow_describe" => {
@@ -354,7 +365,7 @@ impl Server {
                     return Ok(r);
                 }
                 let inputs = args.get("inputs").and_then(Value::as_object).cloned().unwrap_or_default();
-                Ok(self.execute(&wf, &inputs, token))
+                Ok(self.execute(&wf, &inputs, token, rerun))
             }
             other => {
                 let Some(doc) = self.registry.by_mcp_name(other) else {
@@ -364,12 +375,57 @@ impl Server {
                     Kind::Workflow => doc.value.clone(),
                     Kind::Tool => runtime::wrap_tool(doc),
                 };
-                Ok(self.execute(&wf, &args, token))
+                Ok(self.execute(&wf, &args, token, rerun))
             }
         }
     }
 
-    fn execute(&self, wf: &Value, inputs: &Map<String, Value>, token: Option<Value>) -> Value {
+    fn execute(&mut self, wf: &Value, inputs: &Map<String, Value>, token: Option<Value>, rerun: bool) -> Value {
+        // Same work already done in this session: answer with that run. Input
+        // resolution errors fall through to run_workflow, which reports them.
+        let key = runtime::resolve_inputs(&self.cfg, wf, inputs).ok().map(|i| runtime::fingerprint(&self.registry, wf, &i));
+        if let Some(key) = &key {
+            if let Some((run_id, result)) = self.completed.get(key) {
+                if !rerun {
+                    if let Some(replay) = self.replay(run_id, result) {
+                        return replay;
+                    }
+                }
+                self.completed.remove(key);
+            }
+        }
+        let result = self.execute_now(wf, inputs, token);
+        if let (Some(key), Some(run_id)) = (key, result.pointer("/structuredContent/runId").and_then(Value::as_str)) {
+            if result.pointer("/structuredContent/status") == Some(&json!("completed")) {
+                self.completed.insert(key, (run_id.to_string(), result.clone()));
+            }
+        }
+        result
+    }
+
+    /// The earlier run's result, restated, provided its session is still on disk.
+    fn replay(&self, run_id: &str, result: &Value) -> Option<Value> {
+        let record = std::fs::read_to_string(self.cfg.sessions_root.join(run_id).join("run.json")).ok()?;
+        let record: Value = serde_json::from_str(&record).ok()?;
+        if record.get("status") != Some(&json!("completed")) {
+            return None;
+        }
+        let ended = record.get("endedAt").and_then(Value::as_str).unwrap_or("earlier");
+        let mut replay = result.clone();
+        if let Some(text) = result.pointer("/content/0/text").and_then(Value::as_str).map(str::to_string) {
+            let rest = text.strip_prefix(&format!("Run {run_id} completed:")).unwrap_or(&text).trim_start().to_string();
+            replay["content"][0]["text"] = json!(format!(
+                "Reused run {run_id}: this workflow already ran with identical inputs in this session \
+                 (completed {ended}), so nothing was executed or written again. Pass \"rerun\": true to run it anew. {rest}"
+            ));
+        }
+        if replay.get("structuredContent").is_some() {
+            replay["structuredContent"]["reused"] = json!(true);
+        }
+        Some(replay)
+    }
+
+    fn execute_now(&self, wf: &Value, inputs: &Map<String, Value>, token: Option<Value>) -> Value {
         let mut progress = |done: f64, total: f64, message: &str| {
             if let Some(token) = &token {
                 send(&json!({ "jsonrpc": "2.0", "method": "notifications/progress",
@@ -568,6 +624,11 @@ fn validate_tool(doc: &Value) -> Vec<Value> {
         }
     }
     out
+}
+
+fn rerun_schema() -> Value {
+    json!({ "type": "boolean", "default": false,
+            "description": "Execute again even though this workflow already completed with identical inputs in this session (by default that earlier run is returned)." })
 }
 
 fn tool_error(message: String) -> Value {

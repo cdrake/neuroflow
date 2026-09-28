@@ -42,10 +42,10 @@ python3 crates/neuroflow-mcp/tests/smoke.py
 ### Claude Code
 
 ```bash
-claude mcp add neuroflow -- /Users/chrisdrake/Dev/neuroflow/target/release/neuroflow-mcp \
-  --registry /Users/chrisdrake/Dev/neuroflow/gallery \
-  --data-root /Users/chrisdrake/Data \
-  --spec /Users/chrisdrake/Dev/neuroflow-spec
+claude mcp add neuroflow -- /path/to/neuroflow/target/release/neuroflow-mcp \
+  --registry /path/to/neuroflow/gallery \
+  --data-root /path/to/data \
+  --spec /path/to/neuroflow-spec
 ```
 
 ### Claude Desktop
@@ -56,12 +56,12 @@ In `~/Library/Application Support/Claude/claude_desktop_config.json`:
 {
   "mcpServers": {
     "neuroflow": {
-      "command": "/Users/chrisdrake/Dev/neuroflow/target/release/neuroflow-mcp",
+      "command": "/path/to/neuroflow/target/release/neuroflow-mcp",
       "args": [
-        "--registry", "/Users/chrisdrake/Dev/neuroflow/gallery",
-        "--data-root", "/Users/chrisdrake/Data",
-        "--spec", "/Users/chrisdrake/Dev/neuroflow-spec",
-        "--interpreter", "python3=/Users/chrisdrake/miniconda3/bin/python3",
+        "--registry", "/path/to/neuroflow/gallery",
+        "--data-root", "/path/to/data",
+        "--spec", "/path/to/neuroflow-spec",
+        "--interpreter", "python3=/path/to/python3",
         "--interpreter", "node=/opt/homebrew/bin/node"
       ]
     }
@@ -98,7 +98,7 @@ machine.
 | `neuroflow_inspect` | Summarize any file or folder inside the data roots (or a `neuroflow://` artifact) without running a tool: NIfTI geometry, orientation, intensity and nonzero volume, label volumes when `type` is `neuro:label-map` or `neuro:mask`, BIDS layout. Lets an agent check inputs instead of guessing from names. |
 | `neuroflow_validate` | Validate a document. Diagnostics carry a JSON Pointer and, where possible, a repair hint. |
 | `neuroflow_plan` | Execution order and runnability for a workflow. |
-| `neuroflow_run` | Run an inline workflow the agent composed, or a registry workflow by id. |
+| `neuroflow_run` | Run an inline workflow the agent composed, or a registry workflow by id. A repeat of the same workflow and inputs in the same session returns the earlier completed run; `rerun: true` forces a new one. |
 | One tool per runnable document | For example `neuroflow.gallery.tools.python-volume-filter` and `neuroflow.gallery.filter-qa`, with an `inputSchema` generated from the document's typed inputs. |
 
 **Resources**
@@ -130,6 +130,18 @@ registry so an agent can compose a pipeline.
    `exit-code`, and `fixed-path`.
 4. `run.json` and `run.provenance.json` are written to the session. The MCP
    client is recorded as an agent.
+5. The run's work fingerprint (the workflow document, the documents of the
+   tools it references, and the resolved inputs with the size and
+   modification time of every input file or folder entry) is stored in
+   `run.json`. While the server process lives, a later call with the same
+   fingerprint is answered with that completed run: the text starts with
+   `Reused run <id>`, `structuredContent.reused` is `true`, and nothing is
+   executed or written again. Agents do repeat a call now and then (one
+   Codex session called `neuroflow_run` twice with a byte-identical
+   document), and this keeps that from producing two copies of every
+   output. Pass `rerun: true` to force a fresh run; failed runs are never
+   replayed, and a changed input file or a deleted session invalidates the
+   entry. The run tools carry `idempotentHint: true` for this reason.
 
 ## Not implemented yet
 

@@ -23,9 +23,8 @@ The source concepts preserved in this scaffold are:
 
 ## BIDS UI Direction
 
-The requested design target is the local BIDSvue checkout at
-`/Users/chrisdrake/Dev/bidsui`, remote
-`https://github.com/neurolabusc/bidsui.git`. BIDSvue is a SvelteKit/Tauri app,
+The requested design target is BIDSvue (the `bidsui` project by
+neurolabusc, not yet public). BIDSvue is a SvelteKit/Tauri app,
 not a reusable React component package, so NeuroFlow mirrors its design system
 and shell conventions rather than importing Svelte components directly.
 

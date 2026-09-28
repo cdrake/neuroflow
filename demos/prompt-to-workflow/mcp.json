@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "neuroflow": {
+      "type": "stdio",
+      "command": "neuroflow-mcp",
+      "args": [],
+      "env": {}
+    }
+  }
+}

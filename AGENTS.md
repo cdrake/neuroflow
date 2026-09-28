@@ -1,7 +1,7 @@
 # AGENTS.md
 
 Working guide for coding-agent sessions in this repo. This file is adapted from
-the local BIDSvue guidance in `/Users/chrisdrake/Dev/bidsui/CLAUDE.md`, but
+the BIDSvue guidance in that project's `CLAUDE.md` where you have a checkout, but
 tailored to NeuroFlow's React/Tauri/Rust/WASM scaffold.
 
 Companion docs:
@@ -34,7 +34,7 @@ deliberate Tauri command boundary when it is added.
   the Rust core.
 - **Tauri host:** `src-tauri`, currently exposes `validate_workflow` and
   `plan_workflow`.
-- **Design language:** local BIDSvue checkout at `/Users/chrisdrake/Dev/bidsui`.
+- **Design language:** BIDSvue (the `bidsui` project, not yet public).
   NeuroFlow mirrors BIDSvue CSS tokens and shell conventions rather than
   importing Svelte components.
 - **Package manager:** npm. Use the scripts in `package.json` unless there is a
@@ -114,7 +114,7 @@ Run `npm run wasm:build` after changing the public WASM surface.
 - Do not import BIDSvue Svelte components into this React scaffold. Mirror
   stable tokens and interaction conventions locally.
 - Keep `src/styles/bidsui.css` aligned with
-  `/Users/chrisdrake/Dev/bidsui/src/lib/styles/theme.css` when the shared visual
+  BIDSvue's `src/lib/styles/theme.css` when the shared visual
   language changes.
 - Use lucide-react icons for toolbar and action affordances.
 - Prefer full-height workbench surfaces over landing-page or marketing layouts.

@@ -54,7 +54,7 @@
     "neuroflow/launch": {
       "kind": "uiApp",
       "app": "neurovue",
-      "repo": "/Users/chrisdrake/Dev/neurovue",
+      "repo": "neurovue",
       "branch": "neuroflow-aware",
       "command": "bun",
       "args": ["tauri", "dev"],
