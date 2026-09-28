@@ -161,8 +161,9 @@ from.
   downloads the file twice (the result-list handler and `saveBtn.onclick` both
   fire), and the job runner rejects the duplicate ("Duplicate output"), so no
   SynthSeg job could finish through the app. The tool's `fixups` entry clears
-  the extra handler; remove it once a release fixes the button (still present
-  on main as of 2026-09-28, `apps/synthseg/src/main.js` line 306).
+  the extra handler; remove it once a suite release carries the fix proposed
+  in neurodesk/webapps#98 (2026-09-28), which drops the second handler from
+  `apps/synthseg/src/main.js`.
 - To see why a job is stuck, run the adapter with `NEURODESK_DEBUG_PORT=9223`
   (or the suite with `--remote-debugging-port=9223`) and run
   `node gallery/scripts/neurodesk_cdp_probe.mjs` while the job waits. It
