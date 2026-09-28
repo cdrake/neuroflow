@@ -57,6 +57,10 @@ SynthSeg itself.
   `PATH` from conda is v1.0.20250804 and has no `-allineate`). `probe.version`
   is a regex whose match goes into provenance as the agent name, for example
   `niimath v1.0.20260924`.
+- **Inputs.** Every non-scalar input (anything but `core:string`, `core:number`,
+  `core:integer`, `core:boolean`, `core:object`) is a path, and the adapter
+  checks it exists before running the command, so a broken reference is
+  reported by input name rather than as the tool's own error.
 - **Arguments.** Strings may contain `{{input}}`, `{{outputDir}}` and
   `{{workDir}}`. A missing value for a placeholder fails the step, so optional
   inputs go in conditional groups: `{ "arg": "--fast", "when": { "mode": "fast" } }`

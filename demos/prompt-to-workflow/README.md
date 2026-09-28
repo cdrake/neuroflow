@@ -23,7 +23,7 @@ them; `prompt.md` names only the data and the five things to do.
 | `out/agent-workflow.json` | The workflow the agent composed and ran (copied from the run directory). |
 | `out/tool-calls.jsonl` | Every tool call the agent made, in order. |
 | `out/provenance.jsonl`, `out/run.provenance.json` | The run's provenance trail and folded PROV record. |
-| `out/transcript.jsonl` | Not retained: `run.sh` processes the raw provider transcript in a temporary file, then removes it. |
+| `out/transcript.jsonl` | Not retained: `run.sh` processes the raw provider transcript in a temporary file and removes it after a successful run (a failed run leaves it in place and prints where). |
 
 `gallery/workflows/dicom-t1-mni-volumes.neuroflow.json` is the hand-written
 reference for the same pipeline. The agent's workflow matches it step for step.

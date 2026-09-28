@@ -36,7 +36,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -86,7 +86,7 @@ function findExecutable(t) {
     return p;
   }
   for (const p of (t.paths ?? []).map(expand)) if (existsSync(p)) return p;
-  for (const dir of (process.env.PATH ?? '').split(':')) {
+  for (const dir of (process.env.PATH ?? '').split(delimiter)) {
     if (dir && existsSync(join(dir, t.command))) return join(dir, t.command);
   }
   return null;
@@ -124,6 +124,17 @@ if (template.probe) {
   if (p.version) version = new RegExp(p.version).exec(text)?.[0] ?? null;
 }
 
+// File and folder inputs must exist before the command runs, so a broken
+// reference fails here with the input's name rather than as the tool's own error.
+const SCALAR = new Set(['core:string', 'core:integer', 'core:number', 'core:boolean', 'core:object']);
+for (const [name, decl] of Object.entries(tool.inputs ?? {})) {
+  const v = inputs[name];
+  if (v === undefined || v === null || SCALAR.has(decl.type) || typeof decl.type !== 'string') continue;
+  for (const p of Array.isArray(v) ? v : [v]) {
+    if (typeof p === 'string' && p !== '' && !existsSync(p)) fail(`input ${name} (${decl.type}) does not exist: ${p}`);
+  }
+}
+
 // Fill the argument template.
 const has = (name) => inputs[name] !== undefined && inputs[name] !== null && inputs[name] !== '';
 const fill = (value) => value.replace(/\{\{([A-Za-z0-9_-]+)\}\}/g, (_, name) => {
@@ -138,7 +149,7 @@ const keep = (a) => {
   if (a.when && !Object.entries(a.when).every(([name, expected]) => inputs[name] === expected)) return false;
   return true;
 };
-const args = template.args.flatMap((a) => {
+const args = (template.args ?? []).flatMap((a) => {
   if (typeof a === 'string') return [fill(a)];
   if (!keep(a)) return [];
   return (a.args ?? [a.arg]).map(fill);

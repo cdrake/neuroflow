@@ -104,6 +104,12 @@ test('fails on a failed probe, a missing input, a non-zero exit, and a missing o
   const missing = run({ args: ['{{image}}'], outputs: {} }, {});
   assert.equal(missing.status, 1);
   assert.match(missing.stderr, /references input image, which has no value/);
+  const typed = { ...baseTool, inputs: { image: { type: 'neuro:volume' }, cost: { type: 'core:string' } } };
+  const absent = run({ args: ['{{image}}', '{{cost}}'], outputs: {} }, { image: join(root, 'no-such.nii.gz'), cost: 'fast' }, { tool: typed });
+  assert.equal(absent.status, 1);
+  assert.match(absent.stderr, /input image \(neuro:volume\) does not exist: .*no-such\.nii\.gz/);
+  const present = run({ args: ['{{image}}', '{{cost}}'], outputs: {} }, { image: fake, cost: 'fast' }, { tool: typed });
+  assert.equal(present.status, 0, present.stderr);
   const exit = run({ args: ['--exit', '3'], outputs: {} }, {});
   assert.equal(exit.status, 1);
   assert.match(exit.stderr, /exited with status 3/);

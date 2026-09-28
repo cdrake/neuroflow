@@ -19,11 +19,26 @@ template="${NEUROFLOW_DEMO_TEMPLATE:-$data_root/templates/MNI152_T1_1mm_brain.ni
 spec_dir="${NEUROFLOW_DEMO_SPEC_DIR:-$repo/../neuroflow-spec}"
 python="${NEUROFLOW_DEMO_PYTHON:-$(command -v python3)}"
 node="${NEUROFLOW_DEMO_NODE:-$(command -v node)}"
-mcp_config="$(mktemp "${TMPDIR:-/tmp}/neuroflow-mcp.XXXXXX.json")"
-transcript="$(mktemp "${TMPDIR:-/tmp}/neuroflow-transcript.XXXXXX.jsonl")"
-trap 'rm -f "$mcp_config" "$transcript"' EXIT
+server="$repo/target/release/neuroflow-mcp"
 
-jq --arg command "$repo/target/release/neuroflow-mcp" \
+for cmd in claude jq; do
+  command -v "$cmd" >/dev/null || { echo "prompt-to-workflow: $cmd is not installed" >&2; exit 1; }
+done
+[ -x "$server" ] || { echo "prompt-to-workflow: $server is missing; run: cargo build --release -p neuroflow-mcp" >&2; exit 1; }
+[ -n "$python" ] && [ -n "$node" ] || { echo "prompt-to-workflow: python3 and node are required (or NEUROFLOW_DEMO_PYTHON / NEUROFLOW_DEMO_NODE)" >&2; exit 1; }
+[ -d "$dicom_dir" ] || { echo "prompt-to-workflow: DICOM folder $dicom_dir not found (set NEUROFLOW_DEMO_DICOM_DIR)" >&2; exit 1; }
+[ -f "$template" ] || { echo "prompt-to-workflow: template $template not found (set NEUROFLOW_DEMO_TEMPLATE)" >&2; exit 1; }
+# The spec checkout is optional: it only exposes the schemas as MCP resources.
+[ -d "$spec_dir" ] || spec_dir=""
+
+mcp_config="$(mktemp "${TMPDIR:-/tmp}/neuroflow-mcp.XXXXXX")"
+transcript="$(mktemp "${TMPDIR:-/tmp}/neuroflow-transcript.XXXXXX")"
+done_ok=0
+# The raw transcript holds local paths, so it is never written to out/; on a
+# failed run it is left in place for debugging.
+trap 'rm -f "$mcp_config"; if [ "$done_ok" = 1 ]; then rm -f "$transcript"; else echo "prompt-to-workflow: failed; transcript kept at $transcript" >&2; fi' EXIT
+
+jq --arg command "$server" \
   --arg registry "$repo/gallery" --arg data_root "$data_root" --arg spec "$spec_dir" \
   --arg python "$python" --arg node "$node" \
   '.mcpServers.neuroflow.command = $command | .mcpServers.neuroflow.args =
@@ -51,7 +66,8 @@ env -u CLAUDECODE claude -p "$prompt" \
   "$@" > "$transcript"
 
 # The final assistant message and the run record.
-jq -r 'select(.type == "result") | .result' "$transcript" > "$out/answer.md"
+# The answer may quote paths; keep the home directory out of the committed copy.
+jq -r 'select(.type == "result") | .result' "$transcript" | sed "s#$HOME#~#g" > "$out/answer.md"
 jq -c "select(.type == \"assistant\") | .message.content[] | select(.type == \"tool_use\") | {tool: .name, input: (.input | $redact_paths)}" \
   "$transcript" > "$out/tool-calls.jsonl"
 jq -r 'select(.type == "result") | "turns: \(.num_turns)  duration: \(.duration_ms / 1000 | floor) s  cost: $\(.total_cost_usd | . * 100 | round / 100)"' "$transcript"
@@ -60,9 +76,10 @@ jq -r 'select(.type == "result") | "turns: \(.num_turns)  duration: \(.duration_
 run_id="$(jq -r 'select(.type == "user") | .message.content[]? | select(.type == "tool_result") | .content | if type == "array" then .[0].text else . end' "$transcript" 2>/dev/null \
   | grep -o 'run-[0-9TZ]*-[0-9a-f]*' | tail -1 || true)"
 if [ -n "$run_id" ] && [ -d "$HOME/.neuroflow/runs/$run_id" ]; then
-  cp "$HOME/.neuroflow/runs/$run_id/workflow.json" "$out/agent-workflow.json"
+  jq "$redact_paths" "$HOME/.neuroflow/runs/$run_id/workflow.json" > "$out/agent-workflow.json"
   jq "$redact_paths" "$HOME/.neuroflow/runs/$run_id/run.provenance.json" > "$out/run.provenance.json"
   jq -c "$redact_paths" "$HOME/.neuroflow/runs/$run_id/provenance.jsonl" > "$out/provenance.jsonl"
   echo "run: $run_id (copied workflow.json, provenance to $out)"
 fi
 echo "answer: $out/answer.md"
+done_ok=1
