@@ -11,6 +11,7 @@
     "tauri:build": "tauri build",
     "wasm:build": "wasm-pack build crates/neuroflow-wasm --target web --out-dir ../../src/wasm",
     "validate:gallery": "node gallery/validate.mjs",
+    "test:gallery": "node --test \"gallery/scripts/*.test.mjs\"",
     "slides": "marp --server docs",
     "slides:watch": "marp --watch --preview docs/stages.slides.md",
     "slides:html": "marp docs/stages.slides.md --html -o docs/stages.slides.html",

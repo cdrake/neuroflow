@@ -16,6 +16,16 @@
  *                                       "when": { input: value } is kept only
  *                                       when every listed input equals value
  *   outputs{ name: { match } }          regex applied to downloaded filenames
+ *   preflight (optional)                refuse, before starting the app, a volume the
+ *     input, resampleMm, padMultiple,   app's GPU plan cannot hold: the input to
+ *     bytesPerVoxel, maxBytes,          measure and the app's grid/buffer rules
+ *     label, advice                     (see estimateGpuBuffer in neurodesk_lib.mjs)
+ *   failure (optional)                  { selector } that matches when the app has
+ *                                       reported an error (default "#statusText.error");
+ *                                       the job is stopped and the text becomes the error
+ *   fixups (optional)                   [{ selector, property, value, reason }] set on the
+ *                                       page once the element exists (release-specific
+ *                                       workarounds, e.g. removing a duplicate handler)
  *   native (optional)                   a native CLI that runs the same method:
  *     command, paths[], env             executable name, install paths, and an
  *                                       env var that overrides its location
@@ -31,12 +41,17 @@
  *   NEURODESK_WEBAPPS   path to the neurodesk-webapps executable (optional;
  *                       common install locations are searched otherwise)
  *   NEURODESK_MODELS_DIR  passed through to the app for offline model packs
+ *   NEURODESK_DEBUG_PORT  DevTools port for the suite (default: a free port); the
+ *                       adapter watches the app through it, and
+ *                       neurodesk_cdp_probe.mjs can attach to the same port
+ *   NEURODESK_PREFLIGHT=0 skip the template's preflight check
  */
 import { spawn } from 'node:child_process';
 import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { estimateGpuBuffer, formatGiB, freePort, readNiftiHeader, watchApp } from './neurodesk_lib.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fail = (message) => {
@@ -158,6 +173,28 @@ if (nativeExe) {
   process.exit(0);
 }
 
+// Preflight: refuse a volume the app's GPU plan cannot hold, before starting the suite.
+if (template.preflight && process.env.NEURODESK_PREFLIGHT !== '0') {
+  const pf = template.preflight;
+  const path = inputs[pf.input];
+  let hdr = null;
+  try { hdr = readNiftiHeader(path); } catch (err) { console.warn(`neurodesk_job: preflight skipped: ${err.message}`); }
+  if (hdr) {
+    const est = estimateGpuBuffer(hdr, pf);
+    const mm = hdr.pixdims.map((p) => +p.toFixed(2)).join('×');
+    const grid = est.grid.join('×');
+    if (!est.ok) {
+      const label = pf.label ?? template.app;
+      const res = pf.resampleMm ?? 1;
+      fail(`${pf.input} is ${hdr.dims.join('×')} voxels at ${mm} mm: a ${grid} grid at ${res} mm needs a ` +
+        `${formatGiB(est.bytes)} GPU buffer for ${label}, above the ${formatGiB(pf.maxBytes)} the web app accepts, ` +
+        `so the app was not started. ${pf.advice ? pf.advice + ' ' : ''}` +
+        `Volumes of up to ${est.maxVoxels.toLocaleString('en-US')} voxels at ${res} mm fit.`);
+    }
+    console.log(`neurodesk_job: preflight ok: ${grid} grid needs ${formatGiB(est.bytes)} of ${formatGiB(pf.maxBytes)}`);
+  }
+}
+
 // Locate the desktop executable.
 function findExecutable() {
   const env = process.env.NEURODESK_WEBAPPS;
@@ -190,13 +227,35 @@ mkdirSync(jobDir, { recursive: true });
 const jobPath = join(jobDir, 'job.json');
 const resultsDir = join(jobDir, 'results');
 writeFileSync(jobPath, JSON.stringify(job, null, 2) + '\n');
-console.log(`neurodesk_job: running ${template.app} via ${executable}`);
+const debugPort = Number(process.env.NEURODESK_DEBUG_PORT) || await freePort();
+console.log(`neurodesk_job: running ${template.app} via ${executable} (DevTools port ${debugPort})`);
 
-const code = await new Promise((resolve) => {
-  const child = spawn(executable, ['--job', jobPath, '--output', resultsDir], { stdio: ['ignore', 'inherit', 'inherit'] });
+// Run the suite while watching the app page: the suite's job runner only waits for success,
+// so an app that reports an error would otherwise sit until the job timeout.
+const exited = new AbortController();
+const child = spawn(executable, ['--job', jobPath, '--output', resultsDir, `--remote-debugging-port=${debugPort}`],
+  { stdio: ['ignore', 'inherit', 'inherit'] });
+const exit = new Promise((resolve) => {
   child.on('error', (err) => { console.error(`neurodesk_job: ${err.message}`); resolve(127); });
   child.on('exit', (c, signal) => resolve(c ?? (signal ? 128 : 1)));
+}).finally(() => exited.abort());
+const watched = watchApp({
+  port: debugPort, app: template.app, signal: exited.signal,
+  failure: template.failure, fixups: template.fixups,
+  onStatus: (text) => console.log(`neurodesk_job: ${template.app}: ${text}`),
+  onLog: (text) => console.warn(`neurodesk_job: ${text}`),
 });
+const outcome = await Promise.race([exit.then((code) => ({ code })), watched.then((w) => ({ watch: w }))]);
+let code;
+if (outcome.watch?.failure) {
+  child.kill('SIGTERM');
+  const forced = setTimeout(() => child.kill('SIGKILL'), 5000);
+  await exit;
+  clearTimeout(forced);
+  fail(`${template.app} reported: ${outcome.watch.failure} (job: ${jobPath})`);
+} else {
+  code = outcome.code ?? await exit;
+}
 if (code !== 0) fail(`${template.app} job exited with status ${code}; see the log above (job: ${jobPath})`);
 
 // Map downloads to declared outputs.
