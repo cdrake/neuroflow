@@ -22,7 +22,9 @@
  *     label, advice                     (see estimateGpuBuffer in neurodesk_lib.mjs)
  *   failure (optional)                  { selector } that matches when the app has
  *                                       reported an error (default "#statusText.error");
- *                                       the job is stopped and the text becomes the error
+ *                                       the job is stopped and the text becomes the error;
+ *                                       also written to job.json as failSelector for
+ *                                       suites that fail the job themselves (0.14.20260928+)
  *   fixups (optional)                   [{ selector, property, value, reason }] set on the
  *                                       page once the element exists (release-specific
  *                                       workarounds, e.g. removing a duplicate handler)
@@ -123,6 +125,9 @@ const job = {
   app: template.app,
   expectedDownloads: template.expectedDownloads,
   ...(template.timeoutMs ? { timeoutMs: template.timeoutMs } : {}),
+  // Suite 0.14.20260928+ fails the job itself when this selector matches (neurodesk/webapps#96);
+  // older suites ignore the field and the adapter's DevTools watch does the same from outside.
+  ...(template.failure?.selector ? { failSelector: template.failure.selector } : {}),
   steps,
 };
 

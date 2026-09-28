@@ -150,14 +150,19 @@ from.
   for it. The tool's `preflight` refuses an oversized volume before the app
   starts, naming the native `synthseg` CLI as the fix (the tool prefers it
   whenever it is installed).
-  A fix that fails jobs as soon as an app reports an error has been proposed
-  upstream; until then the adapter's `failure` watch does the same from
-  outside.
+  The job runner fix that fails a job as soon as an app reports an error was
+  merged upstream on 2026-09-28 (neurodesk/webapps#96, desktop 0.14.20260928):
+  `job.json` may carry `failSelector` (default `#statusText.error`), and the
+  adapter now writes the template's `failure.selector` there. The nightly
+  suite build after that date carries it; suite 0.14.20260923 ignores the
+  field, and the adapter's `failure` watch does the same from outside either
+  way.
 - In the same release, one click on SynthSeg's labels Download button
   downloads the file twice (the result-list handler and `saveBtn.onclick` both
   fire), and the job runner rejects the duplicate ("Duplicate output"), so no
   SynthSeg job could finish through the app. The tool's `fixups` entry clears
-  the extra handler; remove it once a release fixes the button.
+  the extra handler; remove it once a release fixes the button (still present
+  on main as of 2026-09-28, `apps/synthseg/src/main.js` line 306).
 - To see why a job is stuck, run the adapter with `NEURODESK_DEBUG_PORT=9223`
   (or the suite with `--remote-debugging-port=9223`) and run
   `node gallery/scripts/neurodesk_cdp_probe.mjs` while the job waits. It
