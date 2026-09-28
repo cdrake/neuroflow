@@ -1,0 +1,106 @@
+{
+  "$schema": "../../../neuroflow-spec/schemas/0.1/tool.schema.json",
+  "neuroflow": "0.1.0",
+  "kind": "tool",
+  "id": "neuroflow.gallery.tools/mindgrab",
+  "version": "0.1.0",
+  "description": "Skull-strip a head MRI with mindgrab, the brainchop brain-extraction model from the lightNIIng project, through the brainchop command-line interface (Python + tinygrad, runs on CPU or Apple GPU in a few seconds). Writes the brain-only image and a binary brain mask, both on the input grid.",
+  "inputs": {
+    "t1": {
+      "type": "neuro:volume",
+      "description": "Full-head MRI (T1-weighted preferred; mindgrab is trained across contrasts)."
+    },
+    "border": {
+      "type": "core:integer",
+      "description": "Grow the brain mask by this many mm (0 keeps the model's mask).",
+      "optional": true,
+      "default": 0
+    }
+  },
+  "outputs": {
+    "brain": {
+      "type": "neuro:volume",
+      "description": "Input image with everything outside the brain zeroed.",
+      "delivery": {
+        "mode": "core:result-dir",
+        "path": "brain.nii.gz"
+      }
+    },
+    "brain_mask": {
+      "type": "neuro:mask",
+      "description": "Binary brain mask on the input grid.",
+      "delivery": {
+        "mode": "core:result-dir",
+        "path": "brain_mask.nii.gz"
+      }
+    }
+  },
+  "outputDelivery": {
+    "default": "core:result-dir"
+  },
+  "extensions": {
+    "niivue/ui": {
+      "block": {
+        "id": "mindgrab",
+        "label": "Brain extraction (mindgrab)",
+        "description": "Skull-strip with the brainchop mindgrab model.",
+        "category": "Processing",
+        "stage": "explore",
+        "exposedFields": [
+          "border"
+        ]
+      }
+    },
+    "neuroflow/launch": {
+      "kind": "script",
+      "interpreter": "node",
+      "script": "../scripts/cli_tool.mjs",
+      "completion": "exit",
+      "interactive": false,
+      "contract": "../../docs/neuroflow-session-contract.md",
+      "requirements": [
+        "brainchop CLI 0.2 or newer (pip install brainchop; on PATH or via BRAINCHOP)"
+      ],
+      "description": "Runs brainchop <t1> --skull-strip --mask brain_mask.nii.gz --border <border> --no-optimize -o brain.nii.gz through the shared native CLI adapter."
+    },
+    "neuroflow/mcp": {
+      "title": "Brain extraction (brainchop mindgrab)",
+      "annotations": {
+        "idempotentHint": true
+      },
+      "maxWaitMs": 600000
+    },
+    "neuroflow/cli": {
+      "command": "brainchop",
+      "paths": [
+        "/opt/homebrew/Caskroom/miniforge/base/bin/brainchop",
+        "/usr/local/bin/brainchop",
+        "~/.local/bin/brainchop"
+      ],
+      "env": "BRAINCHOP",
+      "probe": {
+        "args": [
+          "--help"
+        ],
+        "match": "--skull-strip",
+        "advice": "Install or upgrade the brainchop CLI (pip install -U brainchop); this release has no --skull-strip mode."
+      },
+      "args": [
+        "{{t1}}",
+        "--skull-strip",
+        "--mask",
+        "{{outputDir}}/brain_mask.nii.gz",
+        "--border",
+        "{{border}}",
+        "--no-optimize",
+        "-o",
+        "{{outputDir}}/brain.nii.gz"
+      ],
+      "outputs": {
+        "brain": "brain.nii.gz",
+        "brain_mask": "brain_mask.nii.gz"
+      },
+      "source": "https://github.com/neuroneural/brainchop-cli (mindgrab model, lightNIIng brain_extraction)"
+    }
+  }
+}

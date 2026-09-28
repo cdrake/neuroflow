@@ -29,6 +29,11 @@ running pipelines.
   and runs script tools (RFC 0009); see its README.
 - `src-tauri/`: Tauri native host and commands.
 - `fixtures/`: source-derived NeuroFlow examples.
+- `gallery/`: schema-valid tool and workflow documents plus the launcher scripts
+  they run (Neurodesk web apps, native CLIs such as dcm2niix and niimath); see
+  its README.
+- `demos/prompt-to-workflow/`: a headless agent composes, validates and runs a
+  workflow from a user prompt through the MCP server, with the recorded run.
 - `docs/`: architecture and source-lineage notes.
 
 ## Development

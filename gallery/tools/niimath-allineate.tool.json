@@ -1,0 +1,145 @@
+{
+  "$schema": "../../../neuroflow-spec/schemas/0.1/tool.schema.json",
+  "neuroflow": "0.1.0",
+  "kind": "tool",
+  "id": "neuroflow.gallery.tools/niimath-allineate",
+  "version": "0.1.0",
+  "description": "Affine (12 degrees of freedom) registration of a moving volume to a template with niimath -allineate, Chris Rorden's C port of AFNI 3dAllineate from the lightNIIng project (CPU, seconds per T1). Writes the moving image resampled onto the template grid and the affine as a JSON matrix that -applymat can replay on other images. Register a skull-stripped image to a skull-stripped template, or a full-head image to a full-head template.",
+  "inputs": {
+    "moving": {
+      "type": "neuro:volume",
+      "description": "Image to register (NIfTI). A 4D image is registered by its first volume."
+    },
+    "template": {
+      "type": "neuro:volume",
+      "description": "Fixed reference image, e.g. MNI152 T1 1 mm (brain-only when the moving image is skull-stripped)."
+    },
+    "cost": {
+      "type": "core:string",
+      "description": "Cost function: fast (default; hel+cr), fastx, fasthel, fastcr, hel, nmi, lpc, lpa, ls.",
+      "optional": true,
+      "default": "fast",
+      "enum": [
+        "fast",
+        "fastx",
+        "fasthel",
+        "fastcr",
+        "hel",
+        "nmi",
+        "lpc",
+        "lpa",
+        "ls"
+      ]
+    },
+    "interpolation": {
+      "type": "core:string",
+      "description": "Final resampling: NN (label maps), linear, cubic.",
+      "optional": true,
+      "default": "cubic",
+      "enum": [
+        "NN",
+        "linear",
+        "cubic"
+      ]
+    },
+    "weight": {
+      "type": "neuro:mask",
+      "description": "Optional weight image in template space that restricts the cost function.",
+      "optional": true
+    }
+  },
+  "outputs": {
+    "registered": {
+      "type": "neuro:volume",
+      "description": "Moving image resampled onto the template grid.",
+      "delivery": {
+        "mode": "core:result-dir",
+        "path": "registered.nii.gz"
+      }
+    },
+    "transform": {
+      "type": "neuro:transform",
+      "description": "niimath allineate_affine JSON: the 4x4 world-mm matrix (template to moving, plus its inverse), cost, engine and inputs. Replay with niimath <image> -applymat transform.json -master <template> <out>.",
+      "delivery": {
+        "mode": "core:result-dir",
+        "path": "transform.json"
+      }
+    }
+  },
+  "outputDelivery": {
+    "default": "core:result-dir"
+  },
+  "extensions": {
+    "niivue/ui": {
+      "block": {
+        "id": "niimath-allineate",
+        "label": "Affine registration (niimath)",
+        "description": "Register to a template with niimath -allineate.",
+        "category": "Processing",
+        "stage": "explore",
+        "exposedFields": [
+          "cost",
+          "interpolation"
+        ]
+      }
+    },
+    "neuroflow/launch": {
+      "kind": "script",
+      "interpreter": "node",
+      "script": "../scripts/cli_tool.mjs",
+      "completion": "exit",
+      "interactive": false,
+      "contract": "../../docs/neuroflow-session-contract.md",
+      "requirements": [
+        "niimath v1.0.20260924 or newer with -allineate (on PATH, ~/bin, /usr/local/bin, or via NIIMATH)"
+      ],
+      "description": "Runs niimath <moving> -allineate <template> -cost <cost> -final <interpolation> [-weight <weight>] -savemat transform.json registered.nii.gz through the shared native CLI adapter."
+    },
+    "neuroflow/mcp": {
+      "title": "Affine registration to a template (niimath -allineate)",
+      "annotations": {
+        "idempotentHint": true
+      },
+      "maxWaitMs": 300000
+    },
+    "neuroflow/cli": {
+      "command": "niimath",
+      "paths": [
+        "~/bin/niimath",
+        "/usr/local/bin/niimath",
+        "/opt/homebrew/bin/niimath"
+      ],
+      "env": "NIIMATH",
+      "probe": {
+        "args": [],
+        "match": "-allineate",
+        "advice": "Install niimath v1.0.20260924 or newer (https://github.com/rordenlab/niimath/releases) and point NIIMATH at it; older builds have no -allineate.",
+        "version": "v[0-9]+\\.[0-9]+\\.[0-9]+"
+      },
+      "args": [
+        "{{moving}}",
+        "-allineate",
+        "{{template}}",
+        "-cost",
+        "{{cost}}",
+        "-final",
+        "{{interpolation}}",
+        {
+          "args": [
+            "-weight",
+            "{{weight}}"
+          ],
+          "whenSet": "weight"
+        },
+        "-savemat",
+        "{{outputDir}}/transform.json",
+        "{{outputDir}}/registered.nii.gz"
+      ],
+      "outputs": {
+        "registered": "registered.nii.gz",
+        "transform": "transform.json"
+      },
+      "source": "https://github.com/rordenlab/niimath (-allineate: lightNIIng spatial_processing port of AFNI 3dAllineate)"
+    }
+  }
+}

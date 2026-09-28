@@ -177,11 +177,15 @@ built page and worker are under `Contents/Resources/offline/site/<app>/`.
 | `tools/neurodesk-synthseg.tool.json` | synthseg | `t1`, `mode` (default, fast) | `labels`, `report` |
 | `tools/label-volumes.tool.json` | none (Python) | `labels`, optional `mask` | `volumes` TSV, `table` inline JSON |
 | `workflows/brain-volumes.neuroflow.json` | all three | `t1`, `method`, `mode` | brain, mask, labels, volumes |
+| `workflows/dicom-t1-mni-volumes.neuroflow.json` | synthseg, plus the native CLI tools | `dicom_dir`, `template`, `mode` | T1, brain, brain in MNI, labels, volumes |
 
 `brain-volumes` runs brain extraction and SynthSeg on the full-head T1 (SynthSeg
 expects an unstripped image), then measures every SynthSeg structure in mL and
 the brain-mask volume. The inline `table` lets an agent answer questions such as
 "what are the hippocampal volumes?" from the tool result alone.
+`dicom-t1-mni-volumes` starts one step earlier, from a DICOM series, and uses the
+native lightNIIng tools for conversion, stripping and registration (see
+[native-cli-tools.md](native-cli-tools.md)).
 
 ## Adding another app
 
