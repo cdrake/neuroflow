@@ -110,11 +110,15 @@ if (template.probe) {
   const p = template.probe;
   const r = spawnSync(exe, p.args ?? [], { encoding: 'utf8', env: childEnv });
   const text = `${r.stdout ?? ''}\n${r.stderr ?? ''}`;
-  if (r.error || r.status !== 0) {
-    const status = r.status ?? 'could not start';
+  // A matching banner is proof enough: some tools exit non-zero after printing
+  // their version (dcm2niix -v returns 3), so a bad status only counts when the
+  // output does not match either.
+  const matched = p.match ? new RegExp(p.match).test(text) : r.status === 0;
+  if (r.error || (!matched && r.status !== 0)) {
+    const status = r.error ? 'could not start' : r.status;
     fail(`${exe} probe exited with status ${status}. ${p.advice ?? ''}`.trim());
   }
-  if (p.match && !new RegExp(p.match).test(text)) {
+  if (!matched) {
     fail(`${exe} does not look like a usable ${template.command}: output lacks /${p.match}/. ${p.advice ?? ''}`.trim());
   }
   if (p.version) version = new RegExp(p.version).exec(text)?.[0] ?? null;

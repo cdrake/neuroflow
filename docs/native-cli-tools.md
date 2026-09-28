@@ -50,7 +50,9 @@ SynthSeg itself.
   the step with the variable to set. This is the same rule as the `native`
   block of the Neurodesk adapter.
 - **Probe.** Before the job, the adapter runs the executable with `probe.args`
-  and fails with `advice` unless the output matches `probe.match`. It catches an
+  and fails with `advice` unless the output matches `probe.match`. A matching
+  banner passes even when the probe exits non-zero (`dcm2niix -v` returns 3);
+  without a match, a non-zero exit is reported as such. It catches an
   installed release that lacks the operation the tool needs (the niimath on
   `PATH` from conda is v1.0.20250804 and has no `-allineate`). `probe.version`
   is a regex whose match goes into provenance as the agent name, for example

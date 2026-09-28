@@ -19,7 +19,7 @@ writeFileSync(fake, `#!${process.execPath}
 const a = process.argv.slice(2);
 if (a[0] === '--version') {
   if (process.env.FAKECLI_BLOCKED) { console.error('blocked by inherited environment'); process.exit(9); }
-  console.log('fakecli v9.8.7 with -allineate'); process.exit(0);
+  console.log('fakecli v9.8.7 with -allineate'); process.exit(Number(process.env.FAKECLI_VERSION_STATUS ?? 0));
 }
 const fs = require('node:fs');
 for (let i = 0; i < a.length; i++) if (a[i] === '--out') fs.writeFileSync(a[i + 1], a.join(' '));
@@ -125,6 +125,21 @@ test('clears template-selected variables for both probing and execution', () => 
   } finally {
     if (previous === undefined) delete process.env.FAKECLI_BLOCKED;
     else process.env.FAKECLI_BLOCKED = previous;
+  }
+});
+
+test('accepts a probe that prints a matching banner but exits non-zero (dcm2niix -v returns 3)', () => {
+  const previous = process.env.FAKECLI_VERSION_STATUS;
+  process.env.FAKECLI_VERSION_STATUS = '3';
+  try {
+    const ok = run({ probe: { args: ['--version'], match: '-allineate', version: 'v[0-9.]+' }, args: ['--out', '{{outputDir}}/r.txt'], outputs: { result: 'r.txt' } }, {});
+    assert.equal(ok.status, 0, ok.stderr);
+    assert.equal(ok.prov.agent, 'fakecli v9.8.7');
+    const bad = run({ probe: { args: ['--version'], match: 'no-such-op' }, args: [], outputs: {} }, {});
+    assert.equal(bad.status, 1);
+    assert.match(bad.stderr, /probe exited with status 3/);
+  } finally {
+    if (previous === undefined) delete process.env.FAKECLI_VERSION_STATUS; else process.env.FAKECLI_VERSION_STATUS = previous;
   }
 });
 
