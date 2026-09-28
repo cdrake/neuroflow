@@ -1,7 +1,8 @@
 # Prompt to workflow
 
-A user describes an analysis in plain language. A headless Claude Code agent,
-given nothing but the `neuroflow` MCP server, discovers the registered tools,
+A user describes an analysis in plain language. A headless coding agent
+(Claude Code by default, or OpenAI Codex), given nothing but the `neuroflow`
+MCP server, discovers the registered tools,
 composes a NeuroFlow workflow from them, validates it, runs it on the user's
 data, and reports numbers read back from the run's artifacts.
 
@@ -18,7 +19,7 @@ them; `prompt.md` names only the data and the five things to do.
 | `prompt.md` | The user's request; `run.sh` fills its two data-path placeholders. |
 | `system.md` | Four sentences appended to the system prompt: discover, chain by type, validate, report from results. |
 | `mcp.json` | Portable MCP-config skeleton; `run.sh` fills in this checkout's binary and gallery paths. |
-| `run.sh` | Runs `claude -p` with the prompt and only the `mcp__neuroflow__*` tools, then collects the results into `out/`. |
+| `run.sh` | Runs `claude -p` (or `codex exec` with `NEUROFLOW_DEMO_AGENT=codex`) with the prompt and the neuroflow MCP server, then collects the results into `out/` (Claude) or `out-codex/` (Codex). |
 | `out/answer.md` | The agent's final answer from the recorded run. |
 | `out/agent-workflow.json` | The workflow the agent composed and ran (copied from the run directory). |
 | `out/tool-calls.jsonl` | Every tool call the agent made, in order. |
@@ -46,6 +47,12 @@ suite. By default, the demo uses `~/Data/DICOMs/5_anat-T1w` and
 `NEUROFLOW_DEMO_DATA_ROOT`, `NEUROFLOW_DEMO_DICOM_DIR`,
 `NEUROFLOW_DEMO_TEMPLATE`, `NEUROFLOW_DEMO_SPEC_DIR`,
 `NEUROFLOW_DEMO_PYTHON`, or `NEUROFLOW_DEMO_NODE` to override them.
+`NEUROFLOW_DEMO_AGENT=codex` runs the same prompt through the Codex CLI
+instead: the server is passed as `-c mcp_servers.neuroflow.*` overrides derived
+from the same `mcp.json`, `system.md` leads the prompt (Codex has no
+system-prompt flag), the shell sandbox stays read-only, and `--ephemeral`
+keeps the session out of Codex's history. Any MCP client can drive the server
+the same way; it is plain stdio JSON-RPC with no Claude-specific parts.
 New gallery tools are only visible to a freshly started server, which `run.sh`
 provides.
 
@@ -91,6 +98,27 @@ The agent also noted, unprompted, that SynthSeg must see the unstripped T1 (the
 tool description says so) and therefore measured volumes in native space rather
 than on the MNI-resampled brain.
 
+## The same prompt under Codex
+
+`NEUROFLOW_DEMO_AGENT=codex demos/prompt-to-workflow/run.sh` ran the identical
+prompt through `codex exec` (codex-cli 0.155.1), with results in `out-codex/`.
+Nothing in the server, the tool documents or the prompt changed; only the
+client did.
+
+- 11 tool calls: `neuroflow_list`, six `neuroflow_describe`, one
+  `neuroflow_validate` (valid on the first attempt, with `{ "constant": ... }`
+  bindings), `neuroflow_run` twice, and `neuroflow_inspect` on the transform.
+- The composed workflow has the same five steps as the Claude run, with
+  different step names (`skull_strip`, `measure`) and `cost`/`interpolation`
+  bound as constants rather than workflow inputs.
+- It reported left/right hippocampus 4.747/4.845 mL, brain mask 1592.272 mL,
+  cost `hel+cr`, and the MNI-space brain URI, all matching the run's
+  `volumes.tsv` and `transform.json`.
+- Codex called `neuroflow_run` a second time with identical inputs 26 s after
+  the first run had completed, and reported the second run. Both completed;
+  the tool documents mark the steps idempotent, so this cost time but not
+  correctness. Token usage: 295 k input (263 k cached), 5.5 k output.
+
 ## What the demo shows
 
 - **Discovery by type.** The agent chained `neuro:dicom-folder` → `neuro:volume`
@@ -99,6 +127,9 @@ than on the MNI-resampled brain.
 - **Validation as the feedback loop.** The spec's binding rules are strict, and
   the validator's pointer-level diagnostics were enough to repair the document
   without a human.
+- **Client-agnostic.** The server is plain stdio MCP; Claude Code and Codex
+  drove it from the same `mcp.json`-derived definition with no client-specific
+  code, and any MCP client can do the same.
 - **Native tools next to web apps.** Three CLIs and one Neurodesk app ran under
   the same session contract; provenance records each executable, its version
   where the tool exposes one, and the full argument vector.
