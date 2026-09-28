@@ -141,11 +141,15 @@ from.
 
 - The SynthSeg web app refuses volumes that need more than its validated
   2 GiB GPU buffer. That is every padded 1 mm grid over about 7.4 million
-  voxels, which includes a typical 176×256×256 MPRAGE (3.1 GiB) and anything
-  resampled to 192×256×256 (3.4 GiB); the app does not crop empty space first,
-  and 2 mm data is resampled to 1 mm before the check. The tool's `preflight`
-  now refuses such a volume before the app starts, naming the native
-  `synthseg` CLI as the fix (the tool prefers it whenever it is installed).
+  voxels, which includes the MNI152 1 mm template at 182×218×182 (2.2 GiB), a
+  typical 176×256×256 MPRAGE (3.1 GiB) and anything resampled to 192×256×256
+  (3.4 GiB); the app does not crop empty space first, and 2 mm data is
+  resampled to 1 mm before the check. The same template cropped to the brain
+  bounding box plus a 6 mm margin (155×192×166, 1.6 GiB) segments in the app
+  in about 8 s, and the app and native engines produce identical label maps
+  for it. The tool's `preflight` refuses an oversized volume before the app
+  starts, naming the native `synthseg` CLI as the fix (the tool prefers it
+  whenever it is installed).
   A fix that fails jobs as soon as an app reports an error has been proposed
   upstream; until then the adapter's `failure` watch does the same from
   outside.
