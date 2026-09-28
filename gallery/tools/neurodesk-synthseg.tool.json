@@ -4,7 +4,7 @@
   "kind": "tool",
   "id": "neurodesk.webapps/synthseg",
   "version": "0.1.0",
-  "description": "Segment a brain MRI of any contrast or resolution into the 32 SynthSeg 2.0 FreeSurfer labels (1 mm grid), using Neurodesk's native synthseg CLI when installed, otherwise the Neurodesk SynthSeg web app (WebGPU) through the Neurodesk Webapps desktop suite. Expects a full-head image.",
+  "description": "Segment a brain MRI of any contrast or resolution into the 32 SynthSeg 2.0 FreeSurfer labels (1 mm grid), using Neurodesk's native synthseg CLI when installed, otherwise the Neurodesk SynthSeg web app (WebGPU) through the Neurodesk Webapps desktop suite. Expects a full-head image. The web app refuses volumes whose padded 1 mm grid exceeds about 7.4 million voxels (2 GiB GPU buffer); the adapter checks that before starting it.",
   "inputs": {
     "t1": {
       "type": "neuro:volume",
@@ -129,6 +129,27 @@
           "match": "_synthseg\\.json$"
         }
       },
+      "preflight": {
+        "input": "t1",
+        "resampleMm": 1,
+        "padMultiple": 32,
+        "bytesPerVoxel": 288,
+        "maxBytes": 2147483647,
+        "label": "SynthSeg",
+        "advice": "Use the native synthseg CLI (on PATH or via NEURODESK_SYNTHSEG), or a smaller field of view.",
+        "source": "inference worker of neurodesk/webapps apps/synthseg (suite 0.14.20260923): the padded 1 mm grid times the widest U-Net activation (72 float32 channels = 288 bytes per voxel) must fit the validated 2 GiB (2^31-1 bytes) WebGPU buffer"
+      },
+      "failure": {
+        "selector": "#statusText.error"
+      },
+      "fixups": [
+        {
+          "selector": "#saveBtn",
+          "property": "onclick",
+          "value": null,
+          "reason": "suite 0.14.20260923 wires the labels Download button twice (result-list handler plus saveBtn.onclick), so one click downloads the file twice and the job runner rejects the duplicate"
+        }
+      ],
       "source": "neurodesk/webapps apps/synthseg; steps follow its e2e/fixture.spec.js flow",
       "native": {
         "command": "synthseg",

@@ -1,6 +1,7 @@
 // Read the live state of a Neurodesk Webapps job started with --remote-debugging-port:
 // status text, progress, WebGPU adapter, and console output.
 // Usage: node gallery/scripts/neurodesk_cdp_probe.mjs [port]   (default 9223; Node 22+)
+// Start the suite with --remote-debugging-port=9223, or the adapter with NEURODESK_DEBUG_PORT=9223.
 const port = process.argv[2] || '9223';
 const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
 console.log('targets:', targets.map((t) => `${t.type} ${t.url}`).join('\n         '));
