@@ -163,6 +163,33 @@ def main() -> int:
     check(any(p.get("progressToken") == "t1" for p in c.progress), "progress notifications sent")
     links = [x for x in r["content"] if x["type"] == "resource_link"]
     check(len(links) == 2, "resource_link per artifact")
+    check(tools["neuroflow_run"]["annotations"].get("idempotentHint") is True, "neuroflow_run advertises idempotentHint")
+
+    print("repeat the same call:")
+    again = c.call("neuroflow.gallery.tools.python-volume-filter",
+                   {"bids_dir": str(bids), "operation": "threshold", "amount": 100})
+    check(again["structuredContent"]["runId"] == sc["runId"] and again["structuredContent"].get("reused") is True,
+          "identical inputs return the earlier run instead of running again", again["content"][0]["text"])
+    check(again["content"][0]["text"].startswith(f"Reused run {sc['runId']}"), "the text says so", again["content"][0]["text"])
+    check(again["structuredContent"]["outputs"] == sc["outputs"], "same outputs")
+    runs_before = sorted(p.name for p in (tmp / "runs").iterdir())
+    forced = c.call("neuroflow.gallery.tools.python-volume-filter",
+                    {"bids_dir": str(bids), "operation": "threshold", "amount": 100, "rerun": True})
+    check(forced["structuredContent"]["status"] == "completed" and forced["structuredContent"]["runId"] != sc["runId"],
+          "rerun: true executes a new run", forced["content"][0]["text"])
+    check(len(sorted(p.name for p in (tmp / "runs").iterdir())) == len(runs_before) + 1, "exactly one new session for the forced run")
+    changed = c.call("neuroflow.gallery.tools.python-volume-filter",
+                     {"bids_dir": str(bids), "operation": "threshold", "amount": 101})
+    check(changed["structuredContent"].get("reused") is None and changed["structuredContent"]["runId"] not in (sc["runId"], forced["structuredContent"]["runId"]),
+          "different inputs run afresh", changed["content"][0]["text"])
+    t1.touch()
+    touched = c.call("neuroflow.gallery.tools.python-volume-filter",
+                     {"bids_dir": str(bids), "operation": "threshold", "amount": 100})
+    check(touched["structuredContent"].get("reused") is None, "a modified input file runs afresh", touched["content"][0]["text"])
+    inline = c.call("neuroflow_run", {"id": "neuroflow.gallery.tools/python-volume-filter",
+                                      "inputs": {"bids_dir": str(bids), "operation": "threshold", "amount": 100}})
+    check(inline["structuredContent"].get("reused") is True and inline["structuredContent"]["runId"] == touched["structuredContent"]["runId"],
+          "neuroflow_run by id reuses the run of the generated tool", inline["content"][0]["text"])
 
     print("chain by URI into the workflow:")
     r2 = c.call("neuroflow.gallery.filter-qa", {"bids_dir": str(bids), "operation": "zscore"})

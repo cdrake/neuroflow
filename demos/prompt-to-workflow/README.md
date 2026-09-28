@@ -24,7 +24,7 @@ them; `prompt.md` names only the data and the five things to do.
 | `out/agent-workflow.json` | The workflow the agent composed and ran (copied from the run directory). |
 | `out/tool-calls.jsonl` | Every tool call the agent made, in order. |
 | `out/provenance.jsonl`, `out/run.provenance.json` | The run's provenance trail and folded PROV record. |
-| `out/transcript.jsonl` | Not retained: `run.sh` processes the raw provider transcript in a temporary file and removes it after a successful run (a failed run leaves it in place and prints where). |
+| `out/transcript.jsonl` | Not retained: `run.sh` processes the raw provider transcript in a temporary file and removes it after a successful run. A failed run, or `NEUROFLOW_DEMO_KEEP_TRANSCRIPT=1`, leaves it in place and prints where. |
 
 `gallery/workflows/dicom-t1-mni-volumes.neuroflow.json` is the hand-written
 reference for the same pipeline. The agent's workflow matches it step for step.
@@ -105,19 +105,31 @@ prompt through `codex exec` (codex-cli 0.155.1), with results in `out-codex/`.
 Nothing in the server, the tool documents or the prompt changed; only the
 client did.
 
-- 11 tool calls: `neuroflow_list`, six `neuroflow_describe`, one
-  `neuroflow_validate` (valid on the first attempt, with `{ "constant": ... }`
-  bindings), `neuroflow_run` twice, and `neuroflow_inspect` on the transform.
+- 10 tool calls: `neuroflow_list`, five `neuroflow_describe` (one per tool),
+  `neuroflow_validate` twice, `neuroflow_run` once, and `neuroflow_inspect`
+  on the transform artifact.
+- The first validation failed on one rule: the agent had exposed the
+  registration cost as a workflow output referencing a workflow input, and
+  outputs may only reference step outputs. It dropped that output and read
+  the cost from the transform artifact after the run instead.
 - The composed workflow has the same five steps as the Claude run, with
-  different step names (`skull_strip`, `measure`) and `cost`/`interpolation`
-  bound as constants rather than workflow inputs.
+  different step names (`skull_strip`, `register_affine`, `measure`); the
+  cost is a workflow input with an enum, `anonymize`, `border`,
+  `interpolation` and `mode` are constants.
 - It reported left/right hippocampus 4.747/4.845 mL, brain mask 1592.272 mL,
   cost `hel+cr`, and the MNI-space brain URI, all matching the run's
-  `volumes.tsv` and `transform.json`.
-- Codex called `neuroflow_run` a second time with identical inputs 26 s after
-  the first run had completed, and reported the second run. Both completed;
-  the tool documents mark the steps idempotent, so this cost time but not
-  correctness. Token usage: 295 k input (263 k cached), 5.5 k output.
+  `volumes.tsv` and `transform.json`. Token usage: 292 k input (261 k
+  cached), 5.1 k output.
+
+An earlier Codex run of the same prompt (not the one recorded here) called
+`neuroflow_run` twice with a byte-identical document and inputs: the second
+call came 26 s after the server had returned the first run's completed
+result, and the answer reported only the second run. Its transcript was not
+kept, so what prompted the repeat on the client side is unknown; the server
+handles every request sequentially and had answered the first call. The
+server now answers such a repeat with the earlier run instead of executing
+again (see "How a run works" in `crates/neuroflow-mcp/README.md`), so a
+duplicate call no longer writes a second copy of every output.
 
 ## What the demo shows
 

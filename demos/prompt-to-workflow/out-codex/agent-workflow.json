@@ -1,23 +1,39 @@
 {
   "neuroflow": "0.1.0",
   "kind": "workflow",
-  "id": "local/dicom-t1-affine-mni-structure-volumes",
+  "id": "user/dicom-t1-affine-mni-structure-volumes",
   "version": "0.1.0",
-  "description": "Convert one T1 DICOM series, extract the brain, affinely register it to a skull-stripped MNI152 template, segment the native full-head T1, and measure all structure and brain-mask volumes.",
+  "description": "Convert a T1 DICOM series, extract the brain, register it affinely to MNI152, segment anatomical structures, and measure all structure and mask volumes in mL.",
   "inputs": {
     "dicom_dir": {
       "type": "neuro:dicom-folder",
-      "description": "Folder containing one T1-weighted DICOM series."
+      "description": "T1-weighted DICOM series folder."
     },
     "template": {
       "type": "neuro:volume",
       "description": "Skull-stripped MNI152 T1 template."
+    },
+    "registration_cost": {
+      "type": "core:string",
+      "description": "Affine registration cost function.",
+      "default": "fast",
+      "enum": [
+        "fast",
+        "fastx",
+        "fasthel",
+        "fastcr",
+        "hel",
+        "nmi",
+        "lpc",
+        "lpa",
+        "ls"
+      ]
     }
   },
   "steps": {
     "convert": {
       "tool": "neuroflow.gallery.tools/dcm2niix",
-      "stage": "ingest",
+      "version": "0.1.0",
       "inputs": {
         "dicom_dir": {
           "ref": "inputs.dicom_dir"
@@ -29,7 +45,7 @@
     },
     "skull_strip": {
       "tool": "neuroflow.gallery.tools/mindgrab",
-      "stage": "explore",
+      "version": "0.1.0",
       "inputs": {
         "t1": {
           "ref": "steps.convert.outputs.volume"
@@ -39,9 +55,9 @@
         }
       }
     },
-    "register": {
+    "register_affine": {
       "tool": "neuroflow.gallery.tools/niimath-allineate",
-      "stage": "explore",
+      "version": "0.1.0",
       "inputs": {
         "moving": {
           "ref": "steps.skull_strip.outputs.brain"
@@ -50,7 +66,7 @@
           "ref": "inputs.template"
         },
         "cost": {
-          "constant": "fast"
+          "ref": "inputs.registration_cost"
         },
         "interpolation": {
           "constant": "cubic"
@@ -59,7 +75,7 @@
     },
     "segment": {
       "tool": "neurodesk.webapps/synthseg",
-      "stage": "explore",
+      "version": "0.1.0",
       "inputs": {
         "t1": {
           "ref": "steps.convert.outputs.volume"
@@ -71,7 +87,7 @@
     },
     "measure": {
       "tool": "neuroflow.gallery.tools/label-volumes",
-      "stage": "publish",
+      "version": "0.1.0",
       "inputs": {
         "labels": {
           "ref": "steps.segment.outputs.labels"
@@ -85,21 +101,13 @@
   "outputs": {
     "brain_mni": {
       "type": "neuro:volume",
-      "ref": "steps.register.outputs.registered"
+      "ref": "steps.register_affine.outputs.registered"
     },
-    "affine_transform": {
+    "registration_transform": {
       "type": "neuro:transform",
-      "ref": "steps.register.outputs.transform"
+      "ref": "steps.register_affine.outputs.transform"
     },
-    "segmentation": {
-      "type": "neuro:label-map",
-      "ref": "steps.segment.outputs.labels"
-    },
-    "brain_mask": {
-      "type": "neuro:mask",
-      "ref": "steps.skull_strip.outputs.brain_mask"
-    },
-    "volumes": {
+    "structure_volumes": {
       "type": "core:tabular",
       "ref": "steps.measure.outputs.volumes"
     },

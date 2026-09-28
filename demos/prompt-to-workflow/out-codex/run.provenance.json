@@ -1,13 +1,13 @@
 {
   "neuroflow": "0.1.0",
   "kind": "provenance",
-  "id": "neuroflow.runs/run-20260928T183120Z-7bc4",
+  "id": "neuroflow.runs/run-20260928T184230Z-7c58",
   "version": "1.0.0",
-  "description": "Provenance for run run-20260928T183120Z-7bc4 executed by neuroflow-mcp.",
+  "description": "Provenance for run run-20260928T184230Z-7c58 executed by neuroflow-mcp.",
   "run": {
-    "runId": "run-20260928T183120Z-7bc4",
-    "startedAt": "2026-09-28T18:31:20Z",
-    "endedAt": "2026-09-28T18:31:34Z",
+    "runId": "run-20260928T184230Z-7c58",
+    "startedAt": "2026-09-28T18:42:30Z",
+    "endedAt": "2026-09-28T18:42:44Z",
     "status": "completed",
     "host": {
       "platform": "macos",
@@ -15,7 +15,7 @@
     }
   },
   "workflow": {
-    "id": "local/dicom-t1-affine-mni-structure-volumes",
+    "id": "user/dicom-t1-affine-mni-structure-volumes",
     "version": "0.1.0"
   },
   "agents": [
@@ -75,16 +75,16 @@
       "stepId": "convert",
       "toolId": "neuroflow.gallery.tools/dcm2niix",
       "agent": "agent-tool-1",
-      "startedAt": "2026-09-28T18:31:20Z",
-      "endedAt": "2026-09-28T18:31:20Z",
+      "startedAt": "2026-09-28T18:42:30Z",
+      "endedAt": "2026-09-28T18:42:30Z",
       "status": "completed",
       "toolVersion": "0.1.0",
       "used": [
         "ent-1"
       ],
       "generated": [
-        "ent-3",
-        "ent-4"
+        "ent-4",
+        "ent-5"
       ],
       "exitCode": 0
     },
@@ -93,35 +93,35 @@
       "stepId": "skull_strip",
       "toolId": "neuroflow.gallery.tools/mindgrab",
       "agent": "agent-tool-2",
-      "startedAt": "2026-09-28T18:31:20Z",
-      "endedAt": "2026-09-28T18:31:24Z",
+      "startedAt": "2026-09-28T18:42:30Z",
+      "endedAt": "2026-09-28T18:42:34Z",
       "status": "completed",
       "toolVersion": "0.1.0",
       "used": [
-        "ent-3"
+        "ent-4"
       ],
       "generated": [
-        "ent-5",
-        "ent-6"
+        "ent-6",
+        "ent-7"
       ],
       "exitCode": 0
     },
     {
       "id": "act-3",
-      "stepId": "register",
+      "stepId": "register_affine",
       "toolId": "neuroflow.gallery.tools/niimath-allineate",
       "agent": "agent-tool-3",
-      "startedAt": "2026-09-28T18:31:24Z",
-      "endedAt": "2026-09-28T18:31:25Z",
+      "startedAt": "2026-09-28T18:42:34Z",
+      "endedAt": "2026-09-28T18:42:35Z",
       "status": "completed",
       "toolVersion": "0.1.0",
       "used": [
-        "ent-5",
+        "ent-6",
         "ent-2"
       ],
       "generated": [
-        "ent-7",
-        "ent-8"
+        "ent-8",
+        "ent-9"
       ],
       "exitCode": 0
     },
@@ -130,16 +130,16 @@
       "stepId": "segment",
       "toolId": "neurodesk.webapps/synthseg",
       "agent": "agent-tool-4",
-      "startedAt": "2026-09-28T18:31:25Z",
-      "endedAt": "2026-09-28T18:31:33Z",
+      "startedAt": "2026-09-28T18:42:35Z",
+      "endedAt": "2026-09-28T18:42:44Z",
       "status": "completed",
       "toolVersion": "0.1.0",
       "used": [
-        "ent-3"
+        "ent-4"
       ],
       "generated": [
-        "ent-9",
-        "ent-10"
+        "ent-10",
+        "ent-11"
       ],
       "exitCode": 0
     },
@@ -148,17 +148,17 @@
       "stepId": "measure",
       "toolId": "neuroflow.gallery.tools/label-volumes",
       "agent": "agent-tool-5",
-      "startedAt": "2026-09-28T18:31:33Z",
-      "endedAt": "2026-09-28T18:31:34Z",
+      "startedAt": "2026-09-28T18:42:44Z",
+      "endedAt": "2026-09-28T18:42:44Z",
       "status": "completed",
       "toolVersion": "0.1.0",
       "used": [
-        "ent-9",
-        "ent-6"
+        "ent-10",
+        "ent-7"
       ],
       "generated": [
-        "ent-11",
-        "ent-12"
+        "ent-12",
+        "ent-13"
       ],
       "exitCode": 0
     }
@@ -179,13 +179,19 @@
     },
     {
       "id": "ent-3",
+      "type": "core:string",
+      "role": "workflow-input",
+      "value": "fast"
+    },
+    {
+      "id": "ent-4",
       "type": "neuro:volume",
       "role": "step-output",
       "path": "<local-path>",
       "size": 11416491
     },
     {
-      "id": "ent-4",
+      "id": "ent-5",
       "type": "core:json",
       "role": "step-output",
       "value": {
@@ -289,42 +295,42 @@
       }
     },
     {
-      "id": "ent-5",
+      "id": "ent-6",
       "type": "neuro:volume",
       "role": "step-output",
       "path": "<local-path>",
       "size": 2725456
     },
     {
-      "id": "ent-6",
+      "id": "ent-7",
       "type": "neuro:mask",
       "role": "step-output",
       "path": "<local-path>",
       "size": 73201
     },
     {
-      "id": "ent-7",
+      "id": "ent-8",
       "type": "neuro:volume",
       "role": "step-output",
       "path": "<local-path>",
       "size": 6960540
     },
     {
-      "id": "ent-8",
+      "id": "ent-9",
       "type": "neuro:transform",
       "role": "step-output",
       "path": "<local-path>",
       "size": 1123
     },
     {
-      "id": "ent-9",
+      "id": "ent-10",
       "type": "neuro:label-map",
       "role": "step-output",
       "path": "<local-path>",
       "size": 337577
     },
     {
-      "id": "ent-10",
+      "id": "ent-11",
       "type": "core:json",
       "role": "step-output",
       "value": {
@@ -374,29 +380,29 @@
           256,
           256
         ],
-        "seconds": 7.883136416,
+        "seconds": 8.185765792,
         "target": "aarch64-macos",
         "threads": 18,
         "timings": {
-          "inference": 5.996577334,
-          "initialize": 0.076159333,
-          "postprocess": 1.487305667,
-          "preprocess": 0.208159958,
-          "read": 0.068055375,
-          "release": 0.046872083
+          "inference": 6.306072042,
+          "initialize": 0.07452,
+          "postprocess": 1.477399791,
+          "preprocess": 0.209488916,
+          "read": 0.066810042,
+          "release": 0.051464667
         },
         "version": "0.3.20260924"
       }
     },
     {
-      "id": "ent-11",
+      "id": "ent-12",
       "type": "core:tabular",
       "role": "step-output",
       "path": "<local-path>",
       "size": 1077
     },
     {
-      "id": "ent-12",
+      "id": "ent-13",
       "type": "core:json",
       "role": "step-output",
       "value": {
@@ -605,14 +611,13 @@
   ],
   "inputs": {
     "dicom_dir": "ent-1",
-    "template": "ent-2"
+    "template": "ent-2",
+    "registration_cost": "ent-3"
   },
   "outputs": {
-    "brain_mni": "ent-7",
-    "affine_transform": "ent-8",
-    "segmentation": "ent-9",
-    "brain_mask": "ent-6",
-    "volumes": "ent-11",
-    "volume_table": "ent-12"
+    "brain_mni": "ent-8",
+    "registration_transform": "ent-9",
+    "structure_volumes": "ent-12",
+    "volume_table": "ent-13"
   }
 }

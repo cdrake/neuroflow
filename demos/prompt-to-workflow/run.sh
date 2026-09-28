@@ -42,8 +42,8 @@ transcript="$(mktemp "${TMPDIR:-/tmp}/neuroflow-transcript.XXXXXX")"
 answer="$(mktemp "${TMPDIR:-/tmp}/neuroflow-answer.XXXXXX")"
 done_ok=0
 # The raw transcript holds local paths, so it is never written to out/; on a
-# failed run it is left in place for debugging.
-trap 'rm -f "$mcp_config" "$answer"; if [ "$done_ok" = 1 ]; then rm -f "$transcript"; else echo "prompt-to-workflow: failed; transcript kept at $transcript" >&2; fi' EXIT
+# failed run (or with NEUROFLOW_DEMO_KEEP_TRANSCRIPT=1) it is left in place.
+trap 'rm -f "$mcp_config" "$answer"; if [ "$done_ok" = 1 ] && [ -z "${NEUROFLOW_DEMO_KEEP_TRANSCRIPT:-}" ]; then rm -f "$transcript"; else echo "prompt-to-workflow: transcript kept at $transcript" >&2; fi' EXIT
 
 # One server definition for every agent: the Claude Code MCP config, from which
 # the Codex overrides are derived.
