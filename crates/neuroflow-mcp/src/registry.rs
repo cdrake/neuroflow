@@ -99,7 +99,9 @@ impl Registry {
                     Some("workflow") => Kind::Workflow,
                     _ => continue,
                 };
-                if value.get("neuroflow").and_then(Value::as_str) != Some("0.1.0") {
+                if !neuroflow_core::is_supported_spec_version(
+                    value.get("neuroflow").and_then(Value::as_str),
+                ) {
                     continue;
                 }
                 let Some(id) = value.get("id").and_then(Value::as_str).map(str::to_string) else {

@@ -549,8 +549,8 @@ impl Server {
 fn validate_tool(doc: &Value) -> Vec<Value> {
     let mut out = Vec::new();
     let mut err = |pointer: &str, message: &str| out.push(json!({ "severity": "error", "pointer": pointer, "message": message }));
-    if doc.get("neuroflow").and_then(Value::as_str) != Some("0.1.0") {
-        err("/neuroflow", "neuroflow must be \"0.1.0\".");
+    if !neuroflow_core::is_supported_spec_version(doc.get("neuroflow").and_then(Value::as_str)) {
+        err("/neuroflow", "neuroflow must be \"0.1.0\" or \"0.1.1\".");
     }
     if !doc.get("id").and_then(Value::as_str).is_some_and(|id| id.contains('/')) {
         err("/id", "id must be namespace-qualified (contain '/').");
