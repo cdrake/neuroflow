@@ -71,10 +71,10 @@ pub fn validate_workflow_value_with_tools(
         issues.push(error("kind", "Document kind must be workflow."));
     }
 
-    if root.get("neuroflow").and_then(Value::as_str) != Some("0.1.0") {
+    if !is_supported_spec_version(root.get("neuroflow").and_then(Value::as_str)) {
         issues.push(error(
             "neuroflow",
-            "Workflow must target NeuroFlow spec version 0.1.0.",
+            "Workflow must target NeuroFlow spec version 0.1.0 or 0.1.1.",
         ));
     }
 
@@ -230,6 +230,14 @@ pub fn validate_workflow_value_with_tools(
 
                 if let Some(tool) = tool {
                     if let Some(input_def) = tool.inputs.get(input_name) {
+                        for qualifier in declared_qualifiers(input_def) {
+                            issues.push(warning(
+                                binding_path.clone(),
+                                format!(
+                                    "Input {input_name} declares the type qualifier {qualifier}; this runtime does not evaluate qualifiers yet, so the binding requires a runtime check."
+                                ),
+                            ));
+                        }
                         if let (Some(source_type), Some(input_type)) = (
                             resolve_ref_type(reference, root, steps, &tool_registry),
                             declaration_type(input_def),
@@ -570,6 +578,15 @@ fn similar_tools_hint(tool_ref: &str, tools: &HashMap<String, ToolContract<'_>>)
     }
 }
 
+/// The RFC 0010 type qualifiers a declaration carries. This runtime reads
+/// them (spec 0.1.1) but does not yet compare them, so a binding onto a
+/// qualified input is reported as requiring a runtime check.
+pub const TYPE_QUALIFIERS: &[&str] = &["formats", "space", "resolution", "density", "labelSystem"];
+
+pub fn declared_qualifiers(declaration: &Value) -> Vec<&'static str> {
+    TYPE_QUALIFIERS.iter().copied().filter(|q| declaration.get(q).is_some()).collect()
+}
+
 fn declaration_type(value: &Value) -> Option<String> {
     value.get("type").and_then(Value::as_str).map(str::to_string)
 }
@@ -622,6 +639,15 @@ fn coercible_to(source_type: &str, input_type: &str) -> bool {
     COERCION_RULES
         .iter()
         .any(|(source, targets)| *source == source_type && targets.contains(&input_type))
+}
+
+/// Specification versions this runtime reads. `0.1.1` is `0.1.0` plus the
+/// RFC 0010 type qualifiers; a document declares it when it carries any.
+pub const SUPPORTED_SPEC_VERSIONS: &[&str] = &["0.1.0", "0.1.1"];
+
+/// Whether a document's `neuroflow` envelope value is one this runtime reads.
+pub fn is_supported_spec_version(value: Option<&str>) -> bool {
+    value.is_some_and(|v| SUPPORTED_SPEC_VERSIONS.contains(&v))
 }
 
 /// Element type of a `core:array<...>` type, or `None` for scalar types.
@@ -790,6 +816,30 @@ mod tests {
             }
         ]);
         (workflow, tools)
+    }
+
+    #[test]
+    fn accepts_0_1_1_and_warns_on_qualified_inputs() {
+        let tool = serde_json::json!({
+            "neuroflow": "0.1.1", "kind": "tool", "id": "test/strip", "version": "1.0.0", "description": "Strip",
+            "inputs": { "image": { "type": "neuro:volume", "description": "T1", "formats": ["nifti"], "space": "individual" } },
+            "outputs": { "brain": { "type": "neuro:volume", "description": "Brain", "space": "inputs.image" } }
+        });
+        let workflow = serde_json::json!({
+            "neuroflow": "0.1.1", "kind": "workflow", "id": "test/workflow", "version": "0.1.0", "description": "Qualified",
+            "inputs": { "t1": { "type": "neuro:volume", "description": "T1" } },
+            "steps": { "strip": { "tool": "test/strip", "inputs": { "image": { "ref": "inputs.t1" } } } },
+            "outputs": { "brain": { "type": "neuro:volume", "ref": "steps.strip.outputs.brain" } }
+        });
+        let tools = serde_json::json!([tool]);
+        let report = validate_workflow_value_with_tools(&workflow, Some(&tools));
+        assert!(report.ok, "0.1.1 must be accepted: {report:?}");
+        let warnings: Vec<_> = report.issues.iter().filter(|i| i.severity == "warning").collect();
+        assert_eq!(warnings.len(), 2, "one warning per declared qualifier: {report:?}");
+        assert!(warnings.iter().all(|i| i.message.contains("requires a runtime check")));
+        let mut old = workflow.clone();
+        old["neuroflow"] = serde_json::json!("0.2.0");
+        assert!(!validate_workflow_value_with_tools(&old, None).ok, "0.2.0 is not a supported version");
     }
 
     #[test]

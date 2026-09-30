@@ -4,6 +4,16 @@ import { isConstantBinding, isRefBinding } from './neuroflow'
 import { buildToolMap, resolveToolDefinition } from './registry'
 import { isTypeCompatible } from './typeCompatibility'
 
+/** Spec versions this app reads: 0.1.1 is 0.1.0 plus the RFC 0010 type qualifiers. */
+export const SUPPORTED_SPEC_VERSIONS: readonly string[] = ['0.1.0', '0.1.1']
+
+/** RFC 0010 type qualifiers: read (spec 0.1.1) but not yet compared by this app. */
+export const TYPE_QUALIFIERS = ['formats', 'space', 'resolution', 'density', 'labelSystem'] as const
+
+export function declaredQualifiers(declaration: object): string[] {
+  return TYPE_QUALIFIERS.filter((qualifier) => qualifier in declaration)
+}
+
 const REF_PATTERN =
   /^(inputs\.[A-Za-z][A-Za-z0-9_-]*|context|context\.[A-Za-z][A-Za-z0-9_-]*|steps\.[A-Za-z][A-Za-z0-9_-]*\.outputs\.[A-Za-z][A-Za-z0-9_-]*)$/
 
@@ -131,11 +141,11 @@ export function validateWorkflowLocally(
 }
 
 function validateWorkflowEnvelope(workflow: WorkflowDocument, issues: ValidationIssue[]): void {
-  if (workflow.neuroflow !== '0.1.0') {
+  if (!SUPPORTED_SPEC_VERSIONS.includes(workflow.neuroflow)) {
     issues.push({
       severity: 'error',
       path: 'neuroflow',
-      message: 'Workflow must target NeuroFlow spec version 0.1.0.'
+      message: 'Workflow must target NeuroFlow spec version 0.1.0 or 0.1.1.'
     })
   }
   if (!workflow.id || !workflow.id.includes('/')) {
@@ -181,6 +191,13 @@ function validateToolInputs(
     }
 
     if (isRefBinding(binding)) {
+      for (const qualifier of declaredQualifiers(inputDef)) {
+        issues.push({
+          severity: 'warning',
+          path: `steps.${stepName}.inputs.${inputName}`,
+          message: `Input ${inputName} declares the type qualifier ${qualifier}; this runtime does not evaluate qualifiers yet, so the binding requires a runtime check.`
+        })
+      }
       const sourceType = resolveRefType(binding.ref, workflow, toolMap)
       if (sourceType && !isTypeCompatible(sourceType, inputDef.type)) {
         issues.push({
