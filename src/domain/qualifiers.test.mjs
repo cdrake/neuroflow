@@ -160,3 +160,16 @@ test('qualified context defaults require inspection rather than filename guesses
   workflow.context = { fields: { image: { type: 'neuro:volume', formats: ['nifti'], default: 'looks-like-nifti.nii' } } }
   assert.ok(validateWorkflowLocally(workflow, tools).issues.some((i) => i.path === 'context.fields.image.default' && i.message.includes('formats requires a runtime check')))
 })
+
+test('legacy unqualified type mismatches remain explicit errors', () => {
+  const { workflow, tools } = graph()
+  workflow.neuroflow = '0.1.0'
+  workflow.inputs.t1 = { type: 'core:string' }
+  workflow.outputs.image = { type: 'neuro:volume', ref: 'steps.b.outputs.image' }
+  tools[0].neuroflow = '0.1.0'
+  tools[0].inputs.image = { type: 'neuro:volume' }
+  tools[0].outputs.image = { type: 'neuro:volume' }
+  const report = validateWorkflowLocally(workflow, tools)
+  assert.equal(report.ok, false)
+  assert.ok(report.issues.some((issue) => issue.path === 'steps.a.inputs.image' && issue.severity === 'error' && issue.outcome === 'incompatible'))
+})

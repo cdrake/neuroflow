@@ -526,6 +526,9 @@ impl Server {
         let valid = !issues.iter().any(|i| i["severity"] == "error");
         let mut out = json!({ "valid": valid, "conditional": conditional, "diagnostics": issues,
             "qualifierInspectors": qualifiers::capabilities() });
+        if kind == "workflow" {
+            out["runnable"] = json!(false);
+        }
         if valid && kind == "workflow" {
             // Same gate as `run_workflow`: errors block, conditional bindings run
             // and are checked against artifact evidence before each launch.
@@ -669,4 +672,76 @@ fn send(v: &Value) {
     let mut out = std::io::stdout().lock();
     let _ = writeln!(out, "{}", serde_json::to_string(v).unwrap_or_default());
     let _ = out.flush();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{fs, path::PathBuf};
+
+    struct Scratch(PathBuf);
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn validation_distinguishes_conditional_blocked_and_invalid_workflows() {
+        let scratch = Scratch(std::env::temp_dir().join(format!(
+            "neuroflow-validation-{}-{}", std::process::id(), crate::util::new_run_id()
+        )));
+        fs::create_dir_all(&scratch.0).unwrap();
+        let root = scratch.0.canonicalize().unwrap();
+        fs::write(root.join("check.py"), "pass\n").unwrap();
+        let tool = json!({
+            "neuroflow": "0.1.1", "kind": "tool", "id": "test/check", "version": "1.0.0",
+            "inputs": { "image": { "type": "neuro:volume", "formats": ["nifti"] } }, "outputs": {},
+            "extensions": { "neuroflow/launch": { "kind": "script", "interpreter": "python3", "script": "check.py" } }
+        });
+        fs::write(root.join("tool.json"), tool.to_string()).unwrap();
+        let cfg = Config {
+            registry_dirs: vec![root.clone()], spec_dir: None, data_roots: vec![root.clone()],
+            sessions_root: root.join("runs"),
+            interpreters: HashMap::from([("python3".into(), std::env::current_exe().unwrap())]),
+            step_timeout: None, summary_max_bytes: 1024,
+        };
+        let registry = Registry::load(&cfg.registry_dirs, &cfg.interpreters).unwrap();
+        let server = Server::new(cfg, registry);
+        let workflow = json!({
+            "neuroflow": "0.1.1", "kind": "workflow", "id": "test/validation", "version": "1.0.0",
+            "description": "Validate a constrained artifact input.",
+            "inputs": { "image": { "type": "neuro:volume" } },
+            "steps": { "check": { "tool": "test/check", "inputs": { "image": { "ref": "inputs.image" } } } },
+            "outputs": {}
+        });
+        let conditional = server.validate(&workflow);
+        assert_eq!(conditional["valid"], true);
+        assert_eq!(conditional["conditional"], true);
+        assert_eq!(conditional["runnable"], true);
+        assert_eq!(conditional["diagnostics"][0]["outcome"], "requires-runtime-check");
+
+        let mut incompatible = workflow.clone();
+        incompatible["inputs"]["image"]["formats"] = json!(["mgz"]);
+        let rejected = server.validate(&incompatible);
+        assert_eq!(rejected["valid"], false);
+        assert_eq!(rejected["conditional"], false);
+        assert_eq!(rejected["runnable"], false);
+        assert_eq!(rejected["diagnostics"][0]["outcome"], "incompatible");
+
+        let mut unsupported = workflow.clone();
+        unsupported["steps"]["check"]["condition"] = json!(true);
+        let blocked = server.validate(&unsupported);
+        assert_eq!(blocked["valid"], true);
+        assert_eq!(blocked["conditional"], true);
+        assert_eq!(blocked["runnable"], false);
+
+        let mut misleading = workflow;
+        misleading["steps"]["check"]["tool"] = json!("test/requires a runtime check");
+        let rejected = server.validate(&misleading);
+        assert!(rejected["diagnostics"].as_array().unwrap().iter()
+            .any(|issue| issue["message"].as_str().unwrap().contains("requires a runtime check")));
+        assert_eq!(rejected["conditional"], false);
+        assert_eq!(rejected["runnable"], false);
+    }
 }

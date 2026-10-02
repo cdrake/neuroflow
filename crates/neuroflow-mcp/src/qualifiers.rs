@@ -31,8 +31,8 @@ pub fn qualified(decl: &Value) -> bool {
     AXES.iter().any(|axis| decl.get(axis).is_some())
 }
 
-/// Size and modification time; enough to reuse a hash computed earlier in the
-/// same run without reading a multi-gigabyte volume again.
+/// Metadata for reusing a hash within one run. Unix change time and file identity
+/// also detect replacement or edits that preserve size and modification time.
 fn file_stamp(path: &Path) -> Result<Value, String> {
     let meta = fs::metadata(path).map_err(|e| e.to_string())?;
     let modified = meta
@@ -40,7 +40,22 @@ fn file_stamp(path: &Path) -> Result<Value, String> {
         .ok()
         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
         .map(|d| d.as_nanos());
-    Ok(json!({ "size": meta.len(), "modified": modified }))
+    let stamp = json!({ "size": meta.len(), "modified": modified });
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let mut stamp = stamp;
+        stamp["unix"] = json!({
+            "device": meta.dev(),
+            "inode": meta.ino(),
+            "changed": [meta.ctime(), meta.ctime_nsec()]
+        });
+        Ok(stamp)
+    }
+    #[cfg(not(unix))]
+    {
+        Ok(stamp)
+    }
 }
 
 fn file_hash(path: &Path) -> Result<String, String> {
@@ -84,10 +99,16 @@ pub fn inspect(
     }
     let key = path.to_string_lossy().into_owned();
     let stamp = file_stamp(path)?;
-    // Evidence recorded earlier in this run is reused only while the file keeps
-    // its size and modification time; a prior run's record is always rehashed.
+    // Without change time, a tool can preserve size and mtime after editing the
+    // bytes. Rehash on platforms without that signal or without an mtime.
+    // A prior run's record is always rehashed.
     let hash = match known.get(&key) {
-        Some(seen) if seen["stamp"] == stamp && seen["sha256"].is_string() => {
+        Some(seen)
+            if stamp.get("unix").is_some()
+                && stamp["modified"].is_number()
+                && seen["stamp"] == stamp
+                && seen["sha256"].is_string() =>
+        {
             seen["sha256"].as_str().unwrap_or_default().to_string()
         }
         _ => file_hash(path)?,
@@ -333,5 +354,74 @@ pub fn unchanged(evidence: &Value) -> bool {
         }
         Value::Object(fields) => fields.values().all(unchanged),
         _ => true,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mutated_artifacts_cannot_reuse_trusted_qualifier_evidence() {
+        let root = std::env::temp_dir().join(format!(
+            "neuroflow-evidence-cache-{}-{}",
+            std::process::id(),
+            crate::util::new_run_id()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let root = fs::canonicalize(root).unwrap();
+        let cfg = Config {
+            registry_dirs: Vec::new(),
+            spec_dir: None,
+            data_roots: vec![root.clone()],
+            sessions_root: root.join("runs"),
+            interpreters: HashMap::new(),
+            step_timeout: None,
+            summary_max_bytes: 1024,
+        };
+        let path = root.join("labels.json");
+        let value = json!(path);
+        for mutation in ["size", "mtime", "preserved-mtime"] {
+            fs::write(&path, b"{\"label\":1}").unwrap();
+            let original = fs::metadata(&path).unwrap();
+            let mut evidence = inspect(&cfg, &value, &value, &HashMap::new()).unwrap();
+            produced(
+                &json!({ "labelSystem": "atlas@1" }),
+                &mut evidence,
+                &Map::new(),
+                &json!({ "run": "producer", "step": "labels", "output": "labels" }),
+            );
+            let mut known = HashMap::new();
+            remember(&evidence, &mut known);
+            let replacement: &[u8] = if mutation == "size" {
+                b"{\"label\":222}"
+            } else {
+                b"{\"label\":2}"
+            };
+            fs::write(&path, replacement).unwrap();
+            let modified = original.modified().unwrap();
+            let target_time = if mutation == "mtime" {
+                modified + std::time::Duration::from_secs(1)
+            } else {
+                modified
+            };
+            fs::File::options()
+                .write(true)
+                .open(&path)
+                .unwrap()
+                .set_times(fs::FileTimes::new().set_modified(target_time))
+                .unwrap();
+            if mutation == "preserved-mtime" {
+                let changed = fs::metadata(&path).unwrap();
+                assert_eq!(changed.len(), original.len());
+                assert_eq!(changed.modified().unwrap(), modified);
+            }
+            let result = inspect(&cfg, &value, &value, &known);
+            assert!(
+                result.as_ref().is_err_and(|error| error.contains("changed since")),
+                "{mutation} mutation reused trusted evidence: {result:?}"
+            );
+        }
+        fs::remove_dir_all(root).unwrap();
     }
 }

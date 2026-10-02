@@ -682,16 +682,53 @@ fn array_output_delivered_as_one_path_is_accepted() {
 }
 
 #[test]
+fn integer_output_delivery_normalizes_whole_numbers_and_rejects_fractions() {
+    for (delivered, expected) in [("3.0", Some(3)), ("-4.0", Some(-4)), ("3.5", None)] {
+        let f = Fixture::new();
+        let file = f.image("input.nii", false, 2, 1);
+        let script = f.root.join("registry/copy.py");
+        fs::write(
+            &script,
+            fs::read_to_string(&script)
+                .unwrap()
+                .replace("{'image': 'image.bin'}", &format!("{{'image': {delivered}}}")),
+        )
+        .unwrap();
+        let registry = f.tool(
+            "copy",
+            declaration(json!({})),
+            json!({ "type": "core:integer", "description": "Delivered count." }),
+        );
+        let run = f.run(&registry, "copy", json!(file), "marker");
+        assert!(f.root.join("marker").exists());
+        if let Some(expected) = expected {
+            assert_eq!(run.status, "completed", "{}", run.structured);
+            assert_eq!(
+                f.record(&run)["steps"]["copy"]["outputs"]["image"].as_i64(),
+                Some(expected)
+            );
+        } else {
+            assert_eq!(run.status, "failed");
+            assert!(run.structured["error"].as_str().unwrap().contains("expected core:integer"));
+        }
+    }
+}
+
+#[test]
 fn hash_is_reused_within_a_run_and_recomputed_across_runs() {
     let f = Fixture::new();
     let file = f.image("input.nii", false, 2, 1);
     let mut known = HashMap::new();
     let first = crate::qualifiers::inspect(&f.cfg, &json!(file), &json!(file), &known).unwrap();
     crate::qualifiers::remember(&first, &mut known);
-    // A stale hash in the map is trusted only while size and mtime match.
+    // Unix change metadata permits reuse; other platforms rehash every time.
     known.get_mut(file.to_str().unwrap()).unwrap()["sha256"] = json!("cached");
-    let again = crate::qualifiers::inspect(&f.cfg, &json!(file), &json!(file), &known).unwrap();
-    assert_eq!(again["sha256"], "cached");
+    let again = crate::qualifiers::inspect(&f.cfg, &json!(file), &json!(file), &known);
+    if cfg!(unix) {
+        assert_eq!(again.unwrap()["sha256"], "cached");
+    } else {
+        assert!(again.unwrap_err().contains("changed since"));
+    }
     let fresh = crate::qualifiers::inspect(&f.cfg, &json!(file), &json!(file), &HashMap::new()).unwrap();
     assert_eq!(fresh["sha256"], first["sha256"]);
     assert_ne!(fresh["sha256"], "cached");

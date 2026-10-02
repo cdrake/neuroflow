@@ -264,3 +264,22 @@ fn qualified_context_defaults_require_inspection_not_filename_guesses() {
         "{report:?}"
     );
 }
+
+#[test]
+fn legacy_unqualified_type_mismatches_are_serialized_errors() {
+    let (mut workflow, mut tools) = graph();
+    workflow["neuroflow"] = json!("0.1.0");
+    workflow["inputs"]["t1"] = json!({"type":"core:string"});
+    workflow["outputs"]["image"] = json!({"type":"neuro:volume", "ref":"steps.b.outputs.image"});
+    tools[0]["neuroflow"] = json!("0.1.0");
+    tools[0]["inputs"]["image"] = json!({"type":"neuro:volume"});
+    tools[0]["outputs"]["image"] = json!({"type":"neuro:volume"});
+    let report = validate_workflow_value_with_tools(&workflow, Some(&tools));
+    assert!(!report.ok);
+    let serialized = serde_json::to_value(report).unwrap();
+    assert!(serialized["issues"].as_array().unwrap().iter().any(|issue|
+        issue["path"] == "steps.a.inputs.image"
+            && issue["severity"] == "error"
+            && issue["outcome"] == "incompatible"
+    ));
+}

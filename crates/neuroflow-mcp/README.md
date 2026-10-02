@@ -156,11 +156,15 @@ context default is a placeholder for an output mapping and is not inspected.
 
 Validation outcomes follow RFC 0010: an `incompatible` binding, including a
 type mismatch the previous executor reported as a warning, is now an error and
-`neuroflow_run` refuses the document. A binding that `requires-runtime-check`
+`neuroflow_run` refuses the document. This also applies to 0.1.0 workflows without
+qualifiers. To repair a mismatch, bind a compatible output or add a conversion
+tool. Correct a type declaration only when it misdescribes the actual data.
+A binding that `requires-runtime-check`
 is a warning carrying `outcome: "requires-runtime-check"` on the diagnostic;
 `neuroflow_validate` and `neuroflow_plan` report it as `conditional: true`,
-`runnable: true`, and execution resolves it from artifact evidence before each
-launch.
+`runnable: true` when the workflow uses supported execution features. Execution
+resolves the requirement from artifact evidence before each launch. Invalid
+workflows and unsupported execution features report `runnable: false`.
 
 The initialize/discover capability
 `experimental["com.niivue/neuroflow"].qualifierInspectors` states the supported
@@ -173,9 +177,12 @@ readers and provenance checks:
 | `space` | An unambiguous NIfTI scanner-anatomical transform (code 1) establishes an artifact-local `individual` frame. Code 2 alone, matching affines and code 4 do not establish subject or named-template identity. Registered producer contracts and resolved `inputs.*` inheritance can supply semantic identity. |
 | `labelSystem`, `density` | Registered producer provenance or resolved input inheritance. A voxel histogram does not identify an integer table. |
 
-Each file's evidence includes its SHA-256, computed once per run per file and
-reused while the file keeps its size and modification time; evidence from an
-earlier run is always rehashed. A new file gets a content-scoped
+Each file's evidence includes its SHA-256. On Unix, the executor reuses a hash
+within a run while the path, size, modification time, device, inode, and change
+time match the cached file. Replacing a file or restoring its modification time
+invalidates that cache. On other platforms, or when modification time is
+unavailable, each inspection rehashes the file. Evidence from an earlier run is
+always rehashed. A new file gets a content-scoped
 frame identity; separate acquisitions are not equated because their geometry
 matches. An inherited output retains the inspected input's frame identity,
 including when no portable space label is known. Registered tools are the trust
@@ -183,8 +190,8 @@ boundary for semantic output claims: their declared template, table revision or
 density is recorded after successful execution. Input declarations and MCP
 arguments cannot supply those claims. Encodings and spacing are read from the
 artifact and a measured contradiction of an output promise fails the run.
-Delivered outputs are normalized on the RFC 0008 delivery side: an array
-output may arrive as one path, an integer as a whole-valued number, and
+The MCP executor normalizes delivered outputs: an array artifact output may
+arrive as one path, an integer as a whole-valued number, and
 artifact paths are canonicalized and confined to the data roots or the session.
 Each `qualifierChecks` entry records one binding with its per-axis `checks`
 and the evidence once.
