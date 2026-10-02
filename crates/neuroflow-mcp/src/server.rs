@@ -6,6 +6,7 @@ use crate::registry::{Kind, Registry};
 use crate::runtime::{self, step_order};
 use crate::schema::{element_type, input_schema, run_output_schema, value_types_of};
 use crate::Config;
+use neuroflow_core::qualifiers::Compatibility;
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
 use std::io::{BufRead, Write};
@@ -492,12 +493,18 @@ impl Server {
 
     fn validate(&self, doc: &Value) -> Value {
         let kind = doc.get("kind").and_then(Value::as_str).unwrap_or("");
-        let issues: Vec<Value> = if kind == "tool" {
-            validate_tool(doc)
+        let (issues, conditional): (Vec<Value>, bool) = if kind == "tool" {
+            (validate_tool(doc), false)
         } else {
             let tools = self.registry.tools_array();
             let report = neuroflow_core::validate_workflow_value_with_tools(doc, Some(&tools));
-            report
+            // A binding the executor must settle from artifact evidence carries a
+            // structured outcome; the message wording is not the contract.
+            let conditional = report
+                .issues
+                .iter()
+                .any(|i| i.outcome == Some(Compatibility::RequiresRuntimeCheck));
+            let issues = report
                 .issues
                 .iter()
                 .map(|i| {
@@ -508,20 +515,22 @@ impl Server {
                     if let Some(h) = &i.hint {
                         d["hint"] = json!(h);
                     }
+                    if let Some(o) = &i.outcome {
+                        d["outcome"] = json!(o);
+                    }
                     d
                 })
-                .collect()
+                .collect();
+            (issues, conditional)
         };
         let valid = !issues.iter().any(|i| i["severity"] == "error");
-        let conditional = issues.iter().any(|issue| issue["message"].as_str().is_some_and(|message| message.contains("requires a runtime check")));
         let mut out = json!({ "valid": valid, "conditional": conditional, "diagnostics": issues,
             "qualifierInspectors": qualifiers::capabilities() });
         if valid && kind == "workflow" {
+            // Same gate as `run_workflow`: errors block, conditional bindings run
+            // and are checked against artifact evidence before each launch.
             match self.registry.workflow_runnable(doc) {
-                Ok(()) => {
-                    out["runnable"] = json!(!conditional);
-                    if conditional { out["notRunnableReason"] = json!("qualifier checks need artifact evidence before execution"); }
-                },
+                Ok(()) => out["runnable"] = json!(true),
                 Err(reason) => {
                     out["runnable"] = json!(false);
                     out["notRunnableReason"] = json!(reason);

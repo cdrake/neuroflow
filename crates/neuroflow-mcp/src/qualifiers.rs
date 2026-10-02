@@ -31,6 +31,18 @@ pub fn qualified(decl: &Value) -> bool {
     AXES.iter().any(|axis| decl.get(axis).is_some())
 }
 
+/// Size and modification time; enough to reuse a hash computed earlier in the
+/// same run without reading a multi-gigabyte volume again.
+fn file_stamp(path: &Path) -> Result<Value, String> {
+    let meta = fs::metadata(path).map_err(|e| e.to_string())?;
+    let modified = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_nanos());
+    Ok(json!({ "size": meta.len(), "modified": modified }))
+}
+
 fn file_hash(path: &Path) -> Result<String, String> {
     let mut file = fs::File::open(path).map_err(|e| e.to_string())?;
     let mut hasher = Sha256::new();
@@ -70,21 +82,43 @@ pub fn inspect(
             json!({ "path": path, "declaration": {}, "inspection": { "reason": "no directory-layout inspector" } }),
         );
     }
-    let hash = file_hash(path)?;
-    let prior = match raw.as_str() {
-        Some(uri) if uri.starts_with("neuroflow://") => artifacts::qualifier_evidence(cfg, uri)?,
-        _ => known
-            .get(&path.to_string_lossy().into_owned())
-            .cloned()
-            .unwrap_or(Value::Null),
+    let key = path.to_string_lossy().into_owned();
+    let stamp = file_stamp(path)?;
+    // Evidence recorded earlier in this run is reused only while the file keeps
+    // its size and modification time; a prior run's record is always rehashed.
+    let hash = match known.get(&key) {
+        Some(seen) if seen["stamp"] == stamp && seen["sha256"].is_string() => {
+            seen["sha256"].as_str().unwrap_or_default().to_string()
+        }
+        _ => file_hash(path)?,
     };
+    // Missing provenance is not a failure by itself. The consumer's constrained
+    // axes decide: without a trusted claim they remain unresolved and `enforce`
+    // refuses the launch; an unconstrained consumer proceeds with a `reason`.
+    let mut provenance = Value::Null;
+    let prior = match raw.as_str() {
+        Some(uri) if uri.starts_with("neuroflow://") => match artifacts::qualifier_evidence(cfg, uri) {
+            Ok(evidence) => evidence,
+            Err(reason) => {
+                provenance = json!({ "reason": reason });
+                Value::Null
+            }
+        },
+        _ => known.get(&key).cloned().unwrap_or(Value::Null),
+    };
+    if provenance.is_null() {
+        // Evidence remembered earlier in this run keeps its lookup outcome.
+        provenance = prior.get("provenance").cloned().unwrap_or(Value::Null);
+    }
     if !prior.is_null() && prior["sha256"].as_str() != Some(hash.as_str()) {
         return Err(format!(
             "artifact {} changed since its qualifier evidence was recorded",
             path.display()
         ));
     }
-    let inspection = artifacts::inspect_qualifiers(path)?;
+    // A reader that rejects the bytes leaves every measurable axis unknown.
+    let inspection = artifacts::inspect_qualifiers(path)
+        .unwrap_or_else(|reason| json!({ "facts": {}, "inspector": null, "reason": reason }));
     let mut decl = inspection["facts"].clone();
     let mut identity = json!(format!("artifact-sha256:{hash}"));
     // These facts cannot be obtained from an affine, filename, or an integer
@@ -97,9 +131,13 @@ pub fn inspect(
         }
         identity = prior["spaceIdentity"].clone();
     }
-    Ok(json!({ "path": path, "sha256": hash, "declaration": decl,
+    let mut evidence = json!({ "path": path, "sha256": hash, "stamp": stamp, "declaration": decl,
         "spaceIdentity": identity, "inspection": inspection,
-        "producer": prior.get("producer").cloned().unwrap_or(Value::Null) }))
+        "producer": prior.get("producer").cloned().unwrap_or(Value::Null) });
+    if !provenance.is_null() {
+        evidence["provenance"] = provenance;
+    }
+    Ok(evidence)
 }
 
 /// Record every axis checked, including unresolved constraints on failed steps.
@@ -120,6 +158,7 @@ pub fn enforce(
     let identity = evidence["spaceIdentity"].as_str();
     let comparisons = compare_qualifiers(&evidence["declaration"], target, identity, identity);
     let mut failure = None;
+    let mut details = Vec::new();
     for check in comparisons {
         if check.qualifier != "type" && target.get(&check.qualifier).is_none() {
             continue;
@@ -127,8 +166,12 @@ pub fn enforce(
         let resolved = check.outcome == Compatibility::Compatible;
         let detail = serde_json::to_value(&check).map_err(|e| e.to_string())?;
         if !resolved && failure.is_none() {
+            let reason = evidence["inspection"]["reason"]
+                .as_str()
+                .map(|r| format!(" ({r})"))
+                .unwrap_or_default();
             failure = Some(format!(
-                "{binding}: {} constraint {} (source {}, target {}); {}",
+                "{binding}: {} constraint {} (source {}, target {}); {}{}",
                 check.qualifier,
                 if check.outcome == Compatibility::Incompatible {
                     "violated"
@@ -141,10 +184,16 @@ pub fn enforce(
                     "artifact evidence does not meet the requirement"
                 } else {
                     "no inspector or trusted provenance establishes this requirement"
-                }
+                },
+                reason
             ));
         }
-        checks.push(json!({ "binding": binding, "check": detail, "evidence": evidence }));
+        details.push(detail);
+    }
+    // One record per binding: the evidence is stored once beside its checks
+    // rather than copied into every axis.
+    if !details.is_empty() {
+        checks.push(json!({ "binding": binding, "checks": details, "evidence": evidence }));
     }
     failure.map_or(Ok(()), Err)
 }

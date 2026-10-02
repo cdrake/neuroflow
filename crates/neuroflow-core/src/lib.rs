@@ -13,6 +13,11 @@ pub struct ValidationIssue {
     /// Optional repair hint, e.g. the valid alternatives for an unresolved name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hint: Option<String>,
+    /// RFC 0010 comparison outcome for a qualifier issue. `requires-runtime-check`
+    /// marks a binding the executor must resolve from artifact evidence; it is
+    /// what makes a workflow conditional, independent of the message wording.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<qualifiers::Compatibility>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,6 +70,7 @@ pub fn validate_workflow_value_with_tools(
                 path: None,
                 message: "Workflow document must be a JSON object.".to_string(),
                 hint: None,
+                outcome: None,
             }],
         };
     };
@@ -415,9 +421,11 @@ fn append_qualifier_issues(
     for check in qualifiers::compare_qualifiers(source, target, source_identity, target_identity) {
         match check.outcome {
             qualifiers::Compatibility::Compatible => {}
-            qualifiers::Compatibility::Incompatible => issues.push(error(path, check.message)),
+            qualifiers::Compatibility::Incompatible => {
+                issues.push(with_outcome(error(path, check.message), check.outcome))
+            }
             qualifiers::Compatibility::RequiresRuntimeCheck => {
-                issues.push(warning(path, check.message))
+                issues.push(with_outcome(warning(path, check.message), check.outcome))
             }
         }
     }
@@ -834,11 +842,17 @@ fn error(path: impl Into<String>, message: impl Into<String>) -> ValidationIssue
         path: Some(path.into()),
         message: message.into(),
         hint: None,
+        outcome: None,
     }
 }
 
 fn with_hint(mut issue: ValidationIssue, hint: impl Into<String>) -> ValidationIssue {
     issue.hint = Some(hint.into());
+    issue
+}
+
+fn with_outcome(mut issue: ValidationIssue, outcome: qualifiers::Compatibility) -> ValidationIssue {
+    issue.outcome = Some(outcome);
     issue
 }
 
@@ -848,6 +862,7 @@ fn warning(path: impl Into<String>, message: impl Into<String>) -> ValidationIss
         path: Some(path.into()),
         message: message.into(),
         hint: None,
+        outcome: None,
     }
 }
 

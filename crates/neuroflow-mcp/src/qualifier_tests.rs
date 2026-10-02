@@ -15,11 +15,17 @@ struct Fixture {
 }
 impl Fixture {
     fn new() -> Self {
+        static SEQUENCE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let root = std::env::temp_dir().join(format!(
-            "neuroflow-qualifiers-{}",
+            "neuroflow-qualifiers-{}-{}-{}",
+            std::process::id(),
+            SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             crate::util::new_run_id()
         ));
         fs::create_dir_all(root.join("registry")).unwrap();
+        // Data roots are canonical (main.rs canonicalizes --data-root); on macOS
+        // the temp dir is a symlink, so the fixture must match.
+        let root = fs::canonicalize(&root).unwrap();
         fs::create_dir(root.join("runs")).unwrap();
         fs::write(
             root.join("registry/copy.py"),
@@ -145,11 +151,15 @@ fn encoded_gzip_with_nii_suffix_is_rejected_before_launch() {
         .as_str()
         .unwrap()
         .contains("formats constraint violated"));
-    assert!(f.record(&run)["qualifierChecks"]
+    let checks = f.record(&run)["qualifierChecks"].clone();
+    assert!(checks
         .as_array()
         .unwrap()
         .iter()
-        .any(|c| c["check"]["source"] == json!(["nii-gz"])));
+        .flat_map(|binding| binding["checks"].as_array().unwrap().clone())
+        .any(|c| c["source"] == json!(["nii-gz"])));
+    // Evidence is stored once per binding, not once per axis.
+    assert!(checks.as_array().unwrap().iter().all(|b| b["evidence"].is_object()));
 }
 
 #[test]
@@ -359,7 +369,8 @@ fn one_workflow_carries_registered_and_inherited_evidence_to_its_consumer() {
         .as_array()
         .unwrap()
         .iter()
-        .all(|check| check["check"]["outcome"] == "compatible"));
+        .flat_map(|binding| binding["checks"].as_array().unwrap().clone())
+        .all(|check| check["outcome"] == "compatible"));
 }
 
 #[test]
@@ -561,4 +572,127 @@ fn artifact_uri_semantic_type_is_checked_before_direct_tool_launch() {
         Ok(_) => panic!("incompatible artifact URI should be rejected"),
     }
     assert!(!f.root.join("consumer-marker").exists());
+}
+
+#[test]
+fn unqualified_consumer_accepts_bytes_the_reader_rejects() {
+    let f = Fixture::new();
+    let file = f.image("odd.nii", false, 2, 1);
+    let mut bytes = fs::read(&file).unwrap();
+    bytes[42..44].copy_from_slice(&0i16.to_le_bytes()); // dim[1] = 0
+    fs::write(&file, bytes).unwrap();
+    let registry = f.tool("copy", declaration(json!({})), declaration(json!({})));
+    let run = f.run(&registry, "copy", json!(file), "marker");
+    assert_eq!(run.status, "completed", "{}", run.structured);
+    assert!(f.root.join("marker").exists());
+    let evidence = &f.record(&run)["steps"]["copy"]["inputEvidence"]["image"];
+    assert!(evidence["inspection"]["reason"].as_str().unwrap().contains("invalid NIfTI header"));
+    // The same bytes still fail closed for a consumer that constrains an axis.
+    let registry = f.tool("strict", declaration(json!({ "formats": ["nifti"] })), declaration(json!({})));
+    let strict = f.run(&registry, "strict", json!(file), "strict-marker");
+    assert_eq!(strict.status, "failed");
+    assert!(!f.root.join("strict-marker").exists());
+    assert!(strict.structured["error"].as_str().unwrap().contains("invalid NIfTI header"));
+}
+
+#[test]
+fn unqualified_consumer_accepts_an_artifact_from_a_failed_run() {
+    let f = Fixture::new();
+    let file = f.image("input.nii", false, 2, 1);
+    f.tool("first", declaration(json!({})), declaration(json!({})));
+    let registry = f.tool("second", declaration(json!({})), declaration(json!({})));
+    let workflow = json!({
+        "neuroflow": "0.1.1", "kind": "workflow", "id": "test/partial", "version": "1.0.0",
+        "description": "The second step cannot write its marker and fails.",
+        "inputs": { "image": declaration(json!({})) },
+        "steps": {
+            "first": { "tool": "test/first", "inputs": {
+                "image": { "ref": "inputs.image" }, "marker": { "constant": f.root.join("first-marker") }
+            } },
+            "second": { "tool": "test/second", "inputs": {
+                "image": { "ref": "steps.first.outputs.image" },
+                "marker": { "constant": f.root.join("missing-dir/second-marker") }
+            } }
+        },
+        "outputs": { "image": { "type": "neuro:volume", "ref": "steps.second.outputs.image" } }
+    });
+    let partial = runtime::run_workflow(&f.cfg, &registry, &workflow,
+        json!({ "image": file }).as_object().unwrap(), &json!({}), &mut |_, _, _| {}).unwrap();
+    assert_eq!(partial.status, "failed");
+    assert!(f.root.join("first-marker").exists());
+    let uri = json!(format!("neuroflow://runs/{}/artifacts/first/image", partial.run_id));
+    let registry = f.tool("consume", declaration(json!({})), declaration(json!({})));
+    let run = f.run(&registry, "consume", uri.clone(), "consumer-marker");
+    assert_eq!(run.status, "completed", "{}", run.structured);
+    assert!(f.root.join("consumer-marker").exists());
+    let evidence = &f.record(&run)["steps"]["consume"]["inputEvidence"]["image"];
+    assert!(evidence["provenance"]["reason"].as_str().unwrap().contains("completed producer run"));
+    assert!(evidence["producer"].is_null());
+    // Without trusted provenance a semantic requirement is still unresolved.
+    let strict = declaration(json!({ "space": "fsaverage@7.4.1" }));
+    let registry = f.tool("strict", strict, declaration(json!({})));
+    let refused = f.run(&registry, "strict", uri, "strict-marker");
+    assert_eq!(refused.status, "failed");
+    assert!(!f.root.join("strict-marker").exists());
+}
+
+#[test]
+fn null_context_default_waits_for_its_mapping() {
+    let f = Fixture::new();
+    let file = f.image("input.nii", false, 2, 1);
+    f.tool("first", declaration(json!({})), declaration(json!({})));
+    let registry = f.tool("second", declaration(json!({})), declaration(json!({})));
+    let mut field = declaration(json!({}));
+    field["default"] = Value::Null;
+    let workflow = json!({
+        "neuroflow": "0.1.1", "kind": "workflow", "id": "test/null-default", "version": "1.0.0",
+        "description": "A null default is a placeholder filled by an output mapping.",
+        "inputs": { "image": declaration(json!({})) },
+        "context": { "fields": { "image": field } },
+        "steps": {
+            "first": { "tool": "test/first", "inputs": {
+                "image": { "ref": "inputs.image" }, "marker": { "constant": f.root.join("first-marker") }
+            }, "outputMappings": { "image": "image" } },
+            "second": { "tool": "test/second", "inputs": {
+                "image": { "ref": "context.image" }, "marker": { "constant": f.root.join("second-marker") }
+            } }
+        },
+        "outputs": { "image": { "type": "neuro:volume", "ref": "steps.second.outputs.image" } }
+    });
+    let run = runtime::run_workflow(&f.cfg, &registry, &workflow,
+        json!({ "image": file }).as_object().unwrap(), &json!({}), &mut |_, _, _| {}).unwrap();
+    assert_eq!(run.status, "completed", "{}", run.structured);
+    assert!(f.root.join("first-marker").exists());
+    assert!(f.root.join("second-marker").exists());
+}
+
+#[test]
+fn array_output_delivered_as_one_path_is_accepted() {
+    let f = Fixture::new();
+    let file = f.image("input.nii", false, 2, 1);
+    let mut output = declaration(json!({}));
+    output["type"] = json!("core:array<neuro:volume>");
+    let registry = f.tool("copy", declaration(json!({})), output);
+    let run = f.run(&registry, "copy", json!(file), "marker");
+    assert_eq!(run.status, "completed", "{}", run.structured);
+    let record = f.record(&run);
+    let delivered = &record["steps"]["copy"]["outputs"]["image"];
+    assert_eq!(delivered.as_array().map(Vec::len), Some(1));
+    assert!(record["steps"]["copy"]["outputEvidence"]["image"].is_array());
+}
+
+#[test]
+fn hash_is_reused_within_a_run_and_recomputed_across_runs() {
+    let f = Fixture::new();
+    let file = f.image("input.nii", false, 2, 1);
+    let mut known = HashMap::new();
+    let first = crate::qualifiers::inspect(&f.cfg, &json!(file), &json!(file), &known).unwrap();
+    crate::qualifiers::remember(&first, &mut known);
+    // A stale hash in the map is trusted only while size and mtime match.
+    known.get_mut(file.to_str().unwrap()).unwrap()["sha256"] = json!("cached");
+    let again = crate::qualifiers::inspect(&f.cfg, &json!(file), &json!(file), &known).unwrap();
+    assert_eq!(again["sha256"], "cached");
+    let fresh = crate::qualifiers::inspect(&f.cfg, &json!(file), &json!(file), &HashMap::new()).unwrap();
+    assert_eq!(fresh["sha256"], first["sha256"]);
+    assert_ne!(fresh["sha256"], "cached");
 }

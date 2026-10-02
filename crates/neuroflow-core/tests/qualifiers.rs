@@ -82,6 +82,11 @@ fn unknown_values_constants_and_cycles_never_prove_qualifiers() {
                 .iter()
                 .any(|i| i.message.contains("requires a runtime check"))
     );
+    // The outcome is carried as a field so executors need not parse messages.
+    assert!(report.issues.iter().any(|i| i.severity == "warning"
+        && i.outcome == Some(neuroflow_core::qualifiers::Compatibility::RequiresRuntimeCheck)));
+    assert!(report.issues.iter().all(|i| i.outcome.is_none()
+        || (i.outcome == Some(neuroflow_core::qualifiers::Compatibility::Incompatible)) == (i.severity == "error")));
     workflow["steps"]["a"]["inputs"]["image"] = json!({"constant":"T1.nii.gz"});
     let report = validate_workflow_value_with_tools(&workflow, Some(&tools));
     assert!(report

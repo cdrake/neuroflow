@@ -207,6 +207,8 @@ export interface ValidationIssue {
   path?: string
   severity: 'error' | 'warning'
   message: string
+  /** RFC 0010 comparison outcome when the issue comes from a qualifier check. */
+  outcome?: 'compatible' | 'incompatible' | 'requires-runtime-check'
 }
 
 export interface ValidationReport {

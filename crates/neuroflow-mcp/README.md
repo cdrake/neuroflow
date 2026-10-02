@@ -149,8 +149,18 @@ The MCP executor validates 0.1.1 declarations and checks constrained inputs
 before starting their consuming process. This includes direct tool calls,
 workflow inputs, context defaults and mappings, constants, and every array element. An unknown fact is a failed
 check, even when a caller repeats the requested annotation on its input.
-`neuroflow_validate` and `neuroflow_plan` report an unresolved binding as
-`conditional: true`, `runnable: false`; execution can resolve it from artifacts.
+Inspection itself is best effort: bytes a reader rejects, or a `neuroflow://`
+artifact whose producer run did not complete, leave the evidence empty with a
+`reason`, and only a consumer that constrains an axis is refused. A `null`
+context default is a placeholder for an output mapping and is not inspected.
+
+Validation outcomes follow RFC 0010: an `incompatible` binding, including a
+type mismatch the previous executor reported as a warning, is now an error and
+`neuroflow_run` refuses the document. A binding that `requires-runtime-check`
+is a warning carrying `outcome: "requires-runtime-check"` on the diagnostic;
+`neuroflow_validate` and `neuroflow_plan` report it as `conditional: true`,
+`runnable: true`, and execution resolves it from artifact evidence before each
+launch.
 
 The initialize/discover capability
 `experimental["com.niivue/neuroflow"].qualifierInspectors` states the supported
@@ -163,7 +173,9 @@ readers and provenance checks:
 | `space` | An unambiguous NIfTI scanner-anatomical transform (code 1) establishes an artifact-local `individual` frame. Code 2 alone, matching affines and code 4 do not establish subject or named-template identity. Registered producer contracts and resolved `inputs.*` inheritance can supply semantic identity. |
 | `labelSystem`, `density` | Registered producer provenance or resolved input inheritance. A voxel histogram does not identify an integer table. |
 
-Each file's evidence includes its SHA-256. A new file gets a content-scoped
+Each file's evidence includes its SHA-256, computed once per run per file and
+reused while the file keeps its size and modification time; evidence from an
+earlier run is always rehashed. A new file gets a content-scoped
 frame identity; separate acquisitions are not equated because their geometry
 matches. An inherited output retains the inspected input's frame identity,
 including when no portable space label is known. Registered tools are the trust
@@ -171,6 +183,11 @@ boundary for semantic output claims: their declared template, table revision or
 density is recorded after successful execution. Input declarations and MCP
 arguments cannot supply those claims. Encodings and spacing are read from the
 artifact and a measured contradiction of an output promise fails the run.
+Delivered outputs are normalized on the RFC 0008 delivery side: an array
+output may arrive as one path, an integer as a whole-valued number, and
+artifact paths are canonicalized and confined to the data roots or the session.
+Each `qualifierChecks` entry records one binding with its per-axis `checks`
+and the evidence once.
 
 Evidence survives workflow references and `neuroflow://` references from earlier
 completed runs. The executor checks the content hash again before using recorded

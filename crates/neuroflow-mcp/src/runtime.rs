@@ -276,6 +276,9 @@ pub fn run_workflow(
     }
     if initial_failure.is_none() {
         for (name, value) in &mut context {
+            // A `null` default is a placeholder an output mapping fills later;
+            // `run_step` skips it the same way when a step reads the field.
+            if value.is_null() { continue; }
             let decl = &workflow["context"]["fields"][name];
             let raw = value.clone();
             let checked = resolve_value(cfg, name, decl, value, &[]).and_then(|resolved| {
@@ -646,7 +649,7 @@ fn run_step(
         Ok((mut outputs, types)) => {
             for (name, value) in &mut outputs {
                 let decl = &tool.value["outputs"][name];
-                match resolve_value(cfg, name, decl, value, &value_types) {
+                match normalize_output(cfg, decl, value, &value_types) {
                     Ok(resolved) => *value = resolved,
                     Err(error) => return fail(rec, format!("output {name}: {error}")),
                 }
@@ -677,6 +680,54 @@ fn run_step(
             rec
         }
         Err(e) => fail(rec, e),
+    }
+}
+
+/// Normalize what a tool delivered (RFC 0008) against its output declaration.
+/// This is the delivery side, not the caller-input side: an array output may be
+/// delivered as one path, an integer as a whole-valued number, and `enum`,
+/// `min` and `max` are promises left to the consumer's own input check.
+/// Artifact paths become canonical and must stay inside the data roots or the
+/// sessions root; a scalar artifact output must be exactly one reference.
+fn normalize_output(cfg: &Config, decl: &Value, value: &Value, value_types: &[String]) -> Result<Value, String> {
+    let t = decl.get("type").and_then(Value::as_str).unwrap_or("core:json");
+    if is_artifact_type(t, value_types) {
+        let resolve = |v: &Value| -> Result<Value, String> {
+            if !v.is_string() {
+                return Err("expected an artifact reference string".into());
+            }
+            resolve_artifact(cfg, v).map(Value::String)
+        };
+        return match (is_array_type(t), value) {
+            (true, Value::Array(items)) => items.iter().map(resolve).collect::<Result<Vec<_>, _>>().map(Value::Array),
+            (true, single) => Ok(Value::Array(vec![resolve(single)?])),
+            (false, Value::Array(items)) if items.len() == 1 => resolve(&items[0]),
+            (false, Value::Array(_)) => Err("expected an artifact reference string".into()),
+            (false, single) => resolve(single),
+        };
+    }
+    let coerce = |v: &Value, t: &str| -> Result<Value, String> {
+        match t {
+            "core:string" if v.is_string() => Ok(v.clone()),
+            "core:number" if v.is_number() => Ok(v.clone()),
+            "core:integer" if v.is_i64() || v.is_u64() => Ok(v.clone()),
+            "core:integer" if v.as_f64().is_some_and(|n| n.fract() == 0.0 && n.abs() < 9007199254740992.0) => {
+                Ok(json!(v.as_f64().unwrap_or_default() as i64))
+            }
+            "core:boolean" if v.is_boolean() => Ok(v.clone()),
+            "core:object" if v.is_object() => Ok(v.clone()),
+            "core:string" | "core:number" | "core:integer" | "core:boolean" | "core:object" => {
+                Err(format!("expected {t}, got {v}"))
+            }
+            _ => Ok(v.clone()),
+        }
+    };
+    match neuroflow_core::array_element_type(t) {
+        Some(inner) => match value {
+            Value::Array(items) => items.iter().map(|i| coerce(i, inner)).collect::<Result<Vec<_>, _>>().map(Value::Array),
+            single => Ok(Value::Array(vec![coerce(single, inner)?])),
+        },
+        None => coerce(value, t),
     }
 }
 

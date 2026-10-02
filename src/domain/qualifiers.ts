@@ -185,5 +185,5 @@ export function validateDocumentQualifiers(document: object): ValidationIssue[] 
 }
 
 export function qualifierIssues(path: string, checks: QualifierCheck[]): ValidationIssue[] {
-  return checks.flatMap((check): ValidationIssue[] => check.outcome === 'compatible' ? [] : [{ path, severity: check.outcome === 'incompatible' ? 'error' : 'warning', message: check.message }])
+  return checks.flatMap((check): ValidationIssue[] => check.outcome === 'compatible' ? [] : [{ path, severity: check.outcome === 'incompatible' ? 'error' : 'warning', message: check.message, outcome: check.outcome }])
 }

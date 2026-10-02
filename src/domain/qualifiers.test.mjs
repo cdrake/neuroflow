@@ -68,6 +68,7 @@ test('unknown values, constants and cycles do not establish qualifier facts', ()
   assert.ok(validateWorkflowLocally(workflow, tools).issues.some((i) => i.message.includes('requires a runtime check')))
   workflow.steps.a.inputs.image = { constant: 'T1.nii.gz' }
   assert.ok(validateWorkflowLocally(workflow, tools).issues.some((i) => i.path === 'steps.a.inputs.image' && i.message.includes('requires a runtime check')))
+  assert.ok(validateWorkflowLocally(workflow, tools).issues.some((i) => i.path === 'steps.a.inputs.image' && i.outcome === 'requires-runtime-check' && i.severity === 'warning'))
   workflow.steps.a.inputs.image = { ref: 'steps.b.outputs.image' }
   const cycle = resolveQualifiers('steps.b.outputs.image', workflow, buildToolMap(tools))
   assert.equal(cycle.spaceIdentity, undefined)

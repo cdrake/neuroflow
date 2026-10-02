@@ -345,10 +345,8 @@ fn summarize_dir(p: &Path) -> Value {
     let description = p.join("dataset_description.json");
     if description.is_file() {
         let mut bids = json!({});
-        if let Ok(v) = fs::read_to_string(&description).map(|t| serde_json::from_str::<Value>(&t)) {
-            if let Ok(v) = v {
-                bids["datasetDescription"] = v;
-            }
+        if let Ok(Ok(v)) = fs::read_to_string(&description).map(|t| serde_json::from_str::<Value>(&t)) {
+            bids["datasetDescription"] = v;
         }
         let subjects: Vec<&String> = entries.iter().filter(|e| e.starts_with("sub-")).collect();
         let mut sessions = 0;
@@ -625,8 +623,7 @@ fn qform_affine(b: f64, c: f64, d: f64, offset: [f64; 3], pixdim: &[f64]) -> [[f
 fn axcodes(m: &[[f64; 4]; 3]) -> String {
     let mut used = [false; 3];
     let mut out = String::new();
-    for col in 0..3 {
-        let v = [m[0][col], m[1][col], m[2][col]];
+    for v in (0..3).map(|col| [m[0][col], m[1][col], m[2][col]]) {
         let mut best = None;
         for row in 0..3 {
             if used[row] {
