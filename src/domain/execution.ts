@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { Binding, ToolDefinition, WorkflowDocument } from './neuroflow'
+import type { Binding, ToolDefinition, TypeQualifiers, WorkflowDocument } from './neuroflow'
 import { isConstantBinding, isRefBinding } from './neuroflow'
 import { buildToolMap, getToolExecutor, resolveToolDefinition } from './registry'
 import { validateWorkflowLocally } from './validation'
@@ -76,6 +76,12 @@ class AdapterExecutionError extends Error {
   }
 }
 
+function hasQualifiers(declaration: TypeQualifiers): boolean {
+  return declaration.formats !== undefined || declaration.space !== undefined ||
+    declaration.resolution !== undefined || declaration.density !== undefined ||
+    declaration.labelSystem !== undefined
+}
+
 export async function executeWorkflow(
   workflow: WorkflowDocument,
   tools: ToolDefinition[],
@@ -109,6 +115,17 @@ export async function executeWorkflow(
       status: 'blocked',
       steps
     }
+  }
+
+  if ([...Object.values(workflow.inputs), ...Object.values(workflow.context?.fields ?? {}), ...Object.values(workflow.outputs)].some(hasQualifiers)) {
+    const result = finishStep({
+      ...validationStarted,
+      status: 'blocked',
+      message: 'Workflow qualifiers require artifact evidence. This adapter has no artifact inspector; use a runtime that advertises the required inspectors.'
+    })
+    steps[steps.length - 1] = result
+    onStep?.(result)
+    return { workflowId: workflow.id, status: 'blocked', steps }
   }
 
   const validationDone = finishStep({
@@ -145,6 +162,23 @@ export async function executeWorkflow(
         ...started,
         status: 'blocked',
         message: `Missing runtime value for ${resolved.missing.join(', ')}.`
+      })
+      steps[steps.length - 1] = result
+      onStep?.(result)
+      terminalStatus = 'blocked'
+      break
+    }
+
+    // This adapter has no artifact reader or trusted provenance store. Static
+    // compatibility cannot establish facts about the caller's actual files.
+    const constrained = Object.entries(tool.inputs).find(([, declaration]) =>
+      hasQualifiers(declaration)
+    )
+    if (constrained) {
+      const result = finishStep({
+        ...started,
+        status: 'blocked',
+        message: `Input ${constrained[0]} has unresolved qualifiers: this adapter has no artifact inspector. Run it through a runtime that advertises the required inspectors.`
       })
       steps[steps.length - 1] = result
       onStep?.(result)

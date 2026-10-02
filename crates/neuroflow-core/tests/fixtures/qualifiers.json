@@ -1,0 +1,484 @@
+[
+  {
+    "name": "MGZ to NIfTI",
+    "source": {
+      "formats": [
+        "mgz"
+      ]
+    },
+    "target": {
+      "formats": [
+        "nifti"
+      ]
+    },
+    "outcome": "incompatible"
+  },
+  {
+    "name": "gzip NIfTI to family",
+    "source": {
+      "formats": [
+        "nii-gz"
+      ]
+    },
+    "target": {
+      "formats": [
+        "nifti"
+      ]
+    },
+    "outcome": "compatible"
+  },
+  {
+    "name": "family to uncompressed",
+    "source": {
+      "formats": [
+        "nifti"
+      ]
+    },
+    "target": {
+      "formats": [
+        "nii"
+      ]
+    },
+    "outcome": "requires-runtime-check"
+  },
+  {
+    "name": "mixed output choices",
+    "source": {
+      "formats": [
+        "nifti",
+        "mgh"
+      ]
+    },
+    "target": {
+      "formats": [
+        "nifti"
+      ]
+    },
+    "outcome": "requires-runtime-check"
+  },
+  {
+    "name": "unknown encoding",
+    "source": {},
+    "target": {
+      "formats": [
+        "nifti"
+      ]
+    },
+    "outcome": "requires-runtime-check"
+  },
+  {
+    "name": "unconstrained encoding",
+    "source": {
+      "formats": [
+        "mgz"
+      ]
+    },
+    "target": {},
+    "outcome": "compatible"
+  },
+  {
+    "name": "gzip to uncompressed",
+    "source": {
+      "formats": [
+        "nii-gz"
+      ]
+    },
+    "target": {
+      "formats": [
+        "nii"
+      ]
+    },
+    "outcome": "incompatible"
+  },
+  {
+    "name": "all choices accepted",
+    "source": {
+      "formats": [
+        "nii",
+        "nii-gz"
+      ]
+    },
+    "target": {
+      "formats": [
+        "nifti"
+      ]
+    },
+    "outcome": "compatible"
+  },
+  {
+    "name": "unknown token literal",
+    "source": {
+      "formats": [
+        "vendor:my-format"
+      ]
+    },
+    "target": {
+      "formats": [
+        "vendor:my-format"
+      ]
+    },
+    "outcome": "compatible"
+  },
+  {
+    "name": "unknown tokens differ",
+    "source": {
+      "formats": [
+        "vendor:my-format"
+      ]
+    },
+    "target": {
+      "formats": [
+        "nifti"
+      ]
+    },
+    "outcome": "incompatible"
+  },
+  {
+    "name": "DICOM segment hierarchy",
+    "source": {
+      "formats": [
+        "dicom-seg"
+      ]
+    },
+    "target": {
+      "formats": [
+        "dicom"
+      ]
+    },
+    "outcome": "compatible"
+  },
+  {
+    "name": "CIFTI hierarchy",
+    "source": {
+      "formats": [
+        "cifti-pscalar"
+      ]
+    },
+    "target": {
+      "formats": [
+        "cifti"
+      ]
+    },
+    "outcome": "compatible"
+  },
+  {
+    "name": "BIDS table hierarchy",
+    "source": {
+      "formats": [
+        "dseg-tsv"
+      ]
+    },
+    "target": {
+      "formats": [
+        "tsv"
+      ]
+    },
+    "outcome": "compatible"
+  },
+  {
+    "name": "different templates",
+    "source": {
+      "space": "MNI152NLin6Asym"
+    },
+    "target": {
+      "space": "MNI152NLin2009cAsym"
+    },
+    "outcome": "incompatible"
+  },
+  {
+    "name": "matching template",
+    "source": {
+      "space": "MNI152NLin6Asym"
+    },
+    "target": {
+      "space": "MNI152NLin6Asym"
+    },
+    "outcome": "compatible"
+  },
+  {
+    "name": "missing frame",
+    "source": {},
+    "target": {
+      "space": "MNI152Lin"
+    },
+    "outcome": "requires-runtime-check"
+  },
+  {
+    "name": "space target revision missing",
+    "source": {
+      "space": "fsaverage"
+    },
+    "target": {
+      "space": "fsaverage@7.4.1"
+    },
+    "outcome": "requires-runtime-check"
+  },
+  {
+    "name": "space producer revision narrows",
+    "source": {
+      "space": "fsaverage@7.4.1"
+    },
+    "target": {
+      "space": "fsaverage"
+    },
+    "outcome": "compatible"
+  },
+  {
+    "name": "space revisions differ",
+    "source": {
+      "space": "neurodesk:atlas@1"
+    },
+    "target": {
+      "space": "neurodesk:atlas@2"
+    },
+    "outcome": "requires-runtime-check"
+  },
+  {
+    "name": "literal labels not aliases",
+    "source": {
+      "space": "native"
+    },
+    "target": {
+      "space": "individual"
+    },
+    "outcome": "incompatible"
+  },
+  {
+    "name": "same acquisition",
+    "source": {
+      "space": "individual"
+    },
+    "target": {
+      "space": "individual"
+    },
+    "outcome": "compatible",
+    "sourceIdentity": "inputs.t1",
+    "targetIdentity": "inputs.t1"
+  },
+  {
+    "name": "different acquisitions",
+    "source": {
+      "space": "individual"
+    },
+    "target": {
+      "space": "individual"
+    },
+    "outcome": "requires-runtime-check",
+    "sourceIdentity": "inputs.t1",
+    "targetIdentity": "inputs.t2"
+  },
+  {
+    "name": "missing identity no geometry proof",
+    "source": {
+      "space": "individual"
+    },
+    "target": {
+      "space": "individual"
+    },
+    "outcome": "requires-runtime-check"
+  },
+  {
+    "name": "same surface origin",
+    "source": {
+      "space": "fsnative"
+    },
+    "target": {
+      "space": "fsnative"
+    },
+    "outcome": "compatible",
+    "sourceIdentity": "steps.s.outputs.surface",
+    "targetIdentity": "steps.s.outputs.surface"
+  },
+  {
+    "name": "isotropic expanded",
+    "source": {
+      "resolution": 1
+    },
+    "target": {
+      "resolution": [
+        1,
+        1,
+        1
+      ]
+    },
+    "outcome": "compatible"
+  },
+  {
+    "name": "spacing tolerance",
+    "source": {
+      "resolution": [
+        1,
+        1,
+        1.0005
+      ]
+    },
+    "target": {
+      "resolution": 1
+    },
+    "outcome": "compatible"
+  },
+  {
+    "name": "spacing mismatch",
+    "source": {
+      "resolution": 2
+    },
+    "target": {
+      "resolution": 1
+    },
+    "outcome": "incompatible"
+  },
+  {
+    "name": "per-axis mismatch",
+    "source": {
+      "resolution": [
+        1,
+        1,
+        2
+      ]
+    },
+    "target": {
+      "resolution": 1
+    },
+    "outcome": "incompatible"
+  },
+  {
+    "name": "missing spacing",
+    "source": {},
+    "target": {
+      "resolution": 1
+    },
+    "outcome": "requires-runtime-check"
+  },
+  {
+    "name": "matching mesh",
+    "source": {
+      "density": "32k"
+    },
+    "target": {
+      "density": "32k"
+    },
+    "outcome": "compatible"
+  },
+  {
+    "name": "different mesh",
+    "source": {
+      "density": "32k"
+    },
+    "target": {
+      "density": "164k"
+    },
+    "outcome": "incompatible"
+  },
+  {
+    "name": "unknown mesh",
+    "source": {},
+    "target": {
+      "density": "32k"
+    },
+    "outcome": "requires-runtime-check"
+  },
+  {
+    "name": "table revisions differ",
+    "source": {
+      "labelSystem": "freesurfer@7.3.2"
+    },
+    "target": {
+      "labelSystem": "freesurfer@7.4.1"
+    },
+    "outcome": "requires-runtime-check"
+  },
+  {
+    "name": "different integer tables",
+    "source": {
+      "labelSystem": "freesurfer"
+    },
+    "target": {
+      "labelSystem": "mrtrix-fs-default"
+    },
+    "outcome": "incompatible"
+  },
+  {
+    "name": "embedded table",
+    "source": {
+      "labelSystem": "embedded"
+    },
+    "target": {
+      "labelSystem": "freesurfer"
+    },
+    "outcome": "requires-runtime-check"
+  },
+  {
+    "name": "named table into embedded requirement",
+    "source": {
+      "labelSystem": "freesurfer"
+    },
+    "target": {
+      "labelSystem": "embedded"
+    },
+    "outcome": "requires-runtime-check"
+  },
+  {
+    "name": "table target revision missing",
+    "source": {
+      "labelSystem": "freesurfer"
+    },
+    "target": {
+      "labelSystem": "freesurfer@7.4.1"
+    },
+    "outcome": "requires-runtime-check"
+  },
+  {
+    "name": "table producer revision narrows",
+    "source": {
+      "labelSystem": "freesurfer@7.4.1"
+    },
+    "target": {
+      "labelSystem": "freesurfer"
+    },
+    "outcome": "compatible"
+  },
+  {
+    "name": "matching table URL",
+    "source": {
+      "labelSystem": "https://example.org/table@1.tsv"
+    },
+    "target": {
+      "labelSystem": "https://example.org/table@1.tsv"
+    },
+    "outcome": "compatible"
+  },
+  {
+    "name": "table URLs differ",
+    "source": {
+      "labelSystem": "https://example.org/table@1.tsv"
+    },
+    "target": {
+      "labelSystem": "https://example.org/table@2.tsv"
+    },
+    "outcome": "incompatible"
+  },
+  {
+    "name": "missing label table",
+    "source": {},
+    "target": {
+      "labelSystem": "freesurfer"
+    },
+    "outcome": "requires-runtime-check"
+  },
+  {
+    "name": "type mismatch overrides matching qualifiers",
+    "source": {
+      "type": "neuro:surface",
+      "formats": [
+        "gifti"
+      ]
+    },
+    "target": {
+      "type": "neuro:volume",
+      "formats": [
+        "gifti"
+      ]
+    },
+    "outcome": "incompatible"
+  }
+]

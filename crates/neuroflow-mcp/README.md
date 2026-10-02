@@ -143,6 +143,83 @@ registry so an agent can compose a pipeline.
    replayed, and a changed input file or a deleted session invalidates the
    entry. The run tools carry `idempotentHint: true` for this reason.
 
+## Qualifier enforcement (RFC 0010)
+
+The MCP executor validates 0.1.1 declarations and checks constrained inputs
+before starting their consuming process. This includes direct tool calls,
+workflow inputs, context defaults and mappings, constants, and every array element. An unknown fact is a failed
+check, even when a caller repeats the requested annotation on its input.
+Inspection itself is best effort: bytes a reader rejects, or a `neuroflow://`
+artifact whose producer run did not complete, leave the evidence empty with a
+`reason`, and only a consumer that constrains an axis is refused. A `null`
+context default is a placeholder for an output mapping and is not inspected.
+
+Validation outcomes follow RFC 0010: an `incompatible` binding, including a
+type mismatch the previous executor reported as a warning, is now an error and
+`neuroflow_run` refuses the document. This also applies to 0.1.0 workflows without
+qualifiers. To repair a mismatch, bind a compatible output or add a conversion
+tool. Correct a type declaration only when it misdescribes the actual data.
+A binding that `requires-runtime-check`
+is a warning carrying `outcome: "requires-runtime-check"` on the diagnostic;
+`neuroflow_validate` and `neuroflow_plan` report it as `conditional: true`,
+`runnable: true` when the workflow uses supported execution features. Execution
+resolves the requirement from artifact evidence before each launch. Invalid
+workflows and unsupported execution features report `runnable: false`.
+
+The initialize/discover capability
+`experimental["com.niivue/neuroflow"].qualifierInspectors` states the supported
+readers and provenance checks:
+
+| Axis | Evidence this executor accepts |
+| --- | --- |
+| `formats` | NIfTI-1/2 single-file magic and gzip bytes (`nii`, `nii-gz`), or a successful JSON parse (`json`). Filename suffixes do not establish an encoding. CIFTI needs a separate reader. |
+| `resolution` | Positive NIfTI voxel spacing with explicit metre, millimetre or micrometre units, converted to millimetres. Unknown units stay unknown. |
+| `space` | An unambiguous NIfTI scanner-anatomical transform (code 1) establishes an artifact-local `individual` frame. Code 2 alone, matching affines and code 4 do not establish subject or named-template identity. Registered producer contracts and resolved `inputs.*` inheritance can supply semantic identity. |
+| `labelSystem`, `density` | Registered producer provenance or resolved input inheritance. A voxel histogram does not identify an integer table. |
+
+Each file's evidence includes its SHA-256. On Unix, the executor reuses a hash
+within a run while the path, size, modification time, device, inode, and change
+time match the cached file. Replacing a file or restoring its modification time
+invalidates that cache. On other platforms, or when modification time is
+unavailable, each inspection rehashes the file. Evidence from an earlier run is
+always rehashed. A new file gets a content-scoped
+frame identity; separate acquisitions are not equated because their geometry
+matches. An inherited output retains the inspected input's frame identity,
+including when no portable space label is known. Registered tools are the trust
+boundary for semantic output claims: their declared template, table revision or
+density is recorded after successful execution. Input declarations and MCP
+arguments cannot supply those claims. Encodings and spacing are read from the
+artifact and a measured contradiction of an output promise fails the run.
+The MCP executor normalizes delivered outputs: an array artifact output may
+arrive as one path, an integer as a whole-valued number, and
+artifact paths are canonicalized and confined to the data roots or the session.
+Each `qualifierChecks` entry records one binding with its per-axis `checks`
+and the evidence once.
+
+Evidence survives workflow references and `neuroflow://` references from earlier
+completed runs. The executor checks the content hash again before using recorded
+provenance, returning summaries or replaying cached outputs. Checks and evidence
+are available in `run.json`, artifact summaries, and the
+`extensions["neuroflow/qualifiers"]` section of `run.provenance.json`.
+
+Other encodings always require another byte reader; a producer's format
+annotation cannot replace one. Embedded label tables and template revision
+equivalence also lack readers. Semantic space, label-system and density
+requirements can use exact registered producer provenance; unresolved revision
+comparisons fail before launch. The executor does not silently convert, resample
+or relabel. The separate UI/Tauri adapter has no artifact
+inspector and refuses qualified inputs or workflow boundaries.
+
+Run the subprocess boundary tests with:
+
+```bash
+cargo test -p neuroflow-mcp qualifier_tests
+```
+
+They verify that rejected inputs never create a launch marker, valid inspected
+inputs execute, literal and array bindings are checked, output promises are
+checked per element, and provenance survives both workflow and URI chaining.
+
 ## Not implemented yet
 
 Not yet implemented, relative to RFC 0009:

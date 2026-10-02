@@ -1,11 +1,12 @@
 //! MCP over stdio: JSON-RPC dispatch, the fixed binding tools, and the tools
 //! generated from registry documents (RFC 0009 sections 1 to 3).
 
-use crate::artifacts;
+use crate::{artifacts, qualifiers};
 use crate::registry::{Kind, Registry};
 use crate::runtime::{self, step_order};
 use crate::schema::{element_type, input_schema, run_output_schema, value_types_of};
 use crate::Config;
+use neuroflow_core::qualifiers::Compatibility;
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
 use std::io::{BufRead, Write};
@@ -112,9 +113,11 @@ impl Server {
             "prompts": { "listChanged": false },
             "experimental": {
                 "com.niivue/neuroflow": {
-                    "neuroflow": "0.1.0",
+                    "neuroflow": "0.1.1",
+                    "supportedNeuroflowVersions": ["0.1.0", "0.1.1"],
                     "binding": "0009",
-                    "features": ["summaries"],
+                    "features": ["summaries", "type-qualifier-enforcement"],
+                    "qualifierInspectors": qualifiers::capabilities(),
                     "agentApprovals": false
                 }
             }
@@ -338,12 +341,15 @@ impl Server {
                     let plan = neuroflow_core::plan_workflow_value(&wf);
                     let order = step_order(&wf);
                     let runnable = self.registry.workflow_runnable(&wf);
+                    let validation = self.validate(&wf);
                     Ok(self.ok_json(json!({
                         "plan": plan,
                         "executionOrder": order.as_ref().ok(),
                         "orderError": order.as_ref().err(),
-                        "runnable": runnable.is_ok(),
-                        "notRunnableReason": runnable.err(),
+                        "runnable": runnable.is_ok() && validation["runnable"] == true,
+                        "conditional": validation["conditional"],
+                        "validation": validation,
+                        "notRunnableReason": runnable.err().map(Value::String).unwrap_or_else(|| validation["notRunnableReason"].clone()),
                     })))
                 }
                 Err(e) => Ok(tool_error(e)),
@@ -409,6 +415,11 @@ impl Server {
         let record: Value = serde_json::from_str(&record).ok()?;
         if record.get("status") != Some(&json!("completed")) {
             return None;
+        }
+        for step in record["steps"].as_object()?.values() {
+            if !qualifiers::unchanged(&step["inputEvidence"]) || !qualifiers::unchanged(&step["outputEvidence"]) {
+                return None;
+            }
         }
         let ended = record.get("endedAt").and_then(Value::as_str).unwrap_or("earlier");
         let mut replay = result.clone();
@@ -482,12 +493,18 @@ impl Server {
 
     fn validate(&self, doc: &Value) -> Value {
         let kind = doc.get("kind").and_then(Value::as_str).unwrap_or("");
-        let issues: Vec<Value> = if kind == "tool" {
-            validate_tool(doc)
+        let (issues, conditional): (Vec<Value>, bool) = if kind == "tool" {
+            (validate_tool(doc), false)
         } else {
             let tools = self.registry.tools_array();
             let report = neuroflow_core::validate_workflow_value_with_tools(doc, Some(&tools));
-            report
+            // A binding the executor must settle from artifact evidence carries a
+            // structured outcome; the message wording is not the contract.
+            let conditional = report
+                .issues
+                .iter()
+                .any(|i| i.outcome == Some(Compatibility::RequiresRuntimeCheck));
+            let issues = report
                 .issues
                 .iter()
                 .map(|i| {
@@ -498,13 +515,23 @@ impl Server {
                     if let Some(h) = &i.hint {
                         d["hint"] = json!(h);
                     }
+                    if let Some(o) = &i.outcome {
+                        d["outcome"] = json!(o);
+                    }
                     d
                 })
-                .collect()
+                .collect();
+            (issues, conditional)
         };
         let valid = !issues.iter().any(|i| i["severity"] == "error");
-        let mut out = json!({ "valid": valid, "diagnostics": issues });
+        let mut out = json!({ "valid": valid, "conditional": conditional, "diagnostics": issues,
+            "qualifierInspectors": qualifiers::capabilities() });
+        if kind == "workflow" {
+            out["runnable"] = json!(false);
+        }
         if valid && kind == "workflow" {
+            // Same gate as `run_workflow`: errors block, conditional bindings run
+            // and are checked against artifact evidence before each launch.
             match self.registry.workflow_runnable(doc) {
                 Ok(()) => out["runnable"] = json!(true),
                 Err(reason) => {
@@ -603,7 +630,9 @@ impl Server {
 }
 
 fn validate_tool(doc: &Value) -> Vec<Value> {
-    let mut out = Vec::new();
+    let mut out: Vec<Value> = neuroflow_core::qualifiers::validate_document_qualifiers(doc).iter().map(|issue|
+        json!({ "severity": issue.severity, "pointer": issue.path.as_ref().map(|p| format!("/{}", p.replace('.', "/"))), "message": issue.message })
+    ).collect();
     let mut err = |pointer: &str, message: &str| out.push(json!({ "severity": "error", "pointer": pointer, "message": message }));
     if !neuroflow_core::is_supported_spec_version(doc.get("neuroflow").and_then(Value::as_str)) {
         err("/neuroflow", "neuroflow must be \"0.1.0\" or \"0.1.1\".");
@@ -643,4 +672,76 @@ fn send(v: &Value) {
     let mut out = std::io::stdout().lock();
     let _ = writeln!(out, "{}", serde_json::to_string(v).unwrap_or_default());
     let _ = out.flush();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{fs, path::PathBuf};
+
+    struct Scratch(PathBuf);
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn validation_distinguishes_conditional_blocked_and_invalid_workflows() {
+        let scratch = Scratch(std::env::temp_dir().join(format!(
+            "neuroflow-validation-{}-{}", std::process::id(), crate::util::new_run_id()
+        )));
+        fs::create_dir_all(&scratch.0).unwrap();
+        let root = scratch.0.canonicalize().unwrap();
+        fs::write(root.join("check.py"), "pass\n").unwrap();
+        let tool = json!({
+            "neuroflow": "0.1.1", "kind": "tool", "id": "test/check", "version": "1.0.0",
+            "inputs": { "image": { "type": "neuro:volume", "formats": ["nifti"] } }, "outputs": {},
+            "extensions": { "neuroflow/launch": { "kind": "script", "interpreter": "python3", "script": "check.py" } }
+        });
+        fs::write(root.join("tool.json"), tool.to_string()).unwrap();
+        let cfg = Config {
+            registry_dirs: vec![root.clone()], spec_dir: None, data_roots: vec![root.clone()],
+            sessions_root: root.join("runs"),
+            interpreters: HashMap::from([("python3".into(), std::env::current_exe().unwrap())]),
+            step_timeout: None, summary_max_bytes: 1024,
+        };
+        let registry = Registry::load(&cfg.registry_dirs, &cfg.interpreters).unwrap();
+        let server = Server::new(cfg, registry);
+        let workflow = json!({
+            "neuroflow": "0.1.1", "kind": "workflow", "id": "test/validation", "version": "1.0.0",
+            "description": "Validate a constrained artifact input.",
+            "inputs": { "image": { "type": "neuro:volume" } },
+            "steps": { "check": { "tool": "test/check", "inputs": { "image": { "ref": "inputs.image" } } } },
+            "outputs": {}
+        });
+        let conditional = server.validate(&workflow);
+        assert_eq!(conditional["valid"], true);
+        assert_eq!(conditional["conditional"], true);
+        assert_eq!(conditional["runnable"], true);
+        assert_eq!(conditional["diagnostics"][0]["outcome"], "requires-runtime-check");
+
+        let mut incompatible = workflow.clone();
+        incompatible["inputs"]["image"]["formats"] = json!(["mgz"]);
+        let rejected = server.validate(&incompatible);
+        assert_eq!(rejected["valid"], false);
+        assert_eq!(rejected["conditional"], false);
+        assert_eq!(rejected["runnable"], false);
+        assert_eq!(rejected["diagnostics"][0]["outcome"], "incompatible");
+
+        let mut unsupported = workflow.clone();
+        unsupported["steps"]["check"]["condition"] = json!(true);
+        let blocked = server.validate(&unsupported);
+        assert_eq!(blocked["valid"], true);
+        assert_eq!(blocked["conditional"], true);
+        assert_eq!(blocked["runnable"], false);
+
+        let mut misleading = workflow;
+        misleading["steps"]["check"]["tool"] = json!("test/requires a runtime check");
+        let rejected = server.validate(&misleading);
+        assert!(rejected["diagnostics"].as_array().unwrap().iter()
+            .any(|issue| issue["message"].as_str().unwrap().contains("requires a runtime check")));
+        assert_eq!(rejected["conditional"], false);
+        assert_eq!(rejected["runnable"], false);
+    }
 }

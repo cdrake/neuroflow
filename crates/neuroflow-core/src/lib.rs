@@ -1,3 +1,5 @@
+pub mod qualifiers;
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -11,6 +13,11 @@ pub struct ValidationIssue {
     /// Optional repair hint, e.g. the valid alternatives for an unresolved name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hint: Option<String>,
+    /// RFC 0010 comparison outcome for a qualifier issue. `requires-runtime-check`
+    /// marks a binding the executor must resolve from artifact evidence; it is
+    /// what makes a workflow conditional, independent of the message wording.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<qualifiers::Compatibility>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,7 +60,7 @@ pub fn validate_workflow_value_with_tools(
     workflow: &Value,
     tools: Option<&Value>,
 ) -> ValidationReport {
-    let mut issues = Vec::new();
+    let mut issues = qualifiers::validate_document_qualifiers(workflow);
 
     let Some(root) = workflow.as_object() else {
         return ValidationReport {
@@ -63,6 +70,7 @@ pub fn validate_workflow_value_with_tools(
                 path: None,
                 message: "Workflow document must be a JSON object.".to_string(),
                 hint: None,
+                outcome: None,
             }],
         };
     };
@@ -107,6 +115,20 @@ pub fn validate_workflow_value_with_tools(
         .get("context")
         .and_then(|v| v.get("fields"))
         .and_then(Value::as_object);
+    if let Some(fields) = context_fields {
+        for (name, declaration) in fields {
+            if declaration.get("default").is_some() {
+                append_qualifier_issues(
+                    &mut issues,
+                    &format!("context.fields.{name}.default"),
+                    &serde_json::json!({}),
+                    declaration,
+                    None,
+                    None,
+                );
+            }
+        }
+    }
     let tool_registry = collect_tool_registry(tools);
 
     let steps = root.get("steps").and_then(Value::as_object);
@@ -115,6 +137,24 @@ pub fn validate_workflow_value_with_tools(
         return finish(issues);
     };
 
+    let referenced_tools: std::collections::HashSet<_> = steps
+        .values()
+        .filter_map(|step| step.get("tool").and_then(Value::as_str))
+        .collect();
+    if let Some(tools) = tools {
+        for reference in referenced_tools {
+            if let Some(tool) = qualifiers::tool(tools, reference) {
+                for mut issue in qualifiers::validate_document_qualifiers(tool) {
+                    issue.path = Some(format!(
+                        "tools.{reference}.{}",
+                        issue.path.unwrap_or_default()
+                    ));
+                    issues.push(issue);
+                }
+            }
+        }
+    }
+
     for (step_name, step) in steps {
         let path = format!("steps.{step_name}");
         let Some(step_obj) = step.as_object() else {
@@ -122,10 +162,7 @@ pub fn validate_workflow_value_with_tools(
             continue;
         };
 
-        let tool_ref = step_obj
-            .get("tool")
-            .and_then(Value::as_str)
-            .unwrap_or("");
+        let tool_ref = step_obj.get("tool").and_then(Value::as_str).unwrap_or("");
         if tool_ref.is_empty() {
             issues.push(error(format!("{path}.tool"), "Step tool is required."));
         }
@@ -155,7 +192,10 @@ pub fn validate_workflow_value_with_tools(
 
         let inputs = step_obj.get("inputs").and_then(Value::as_object);
         let Some(inputs) = inputs else {
-            issues.push(error(format!("{path}.inputs"), "Step inputs must be an object."));
+            issues.push(error(
+                format!("{path}.inputs"),
+                "Step inputs must be an object.",
+            ));
             continue;
         };
 
@@ -167,7 +207,10 @@ pub fn validate_workflow_value_with_tools(
                 if binding_is_missing(inputs.get(input_name)) {
                     issues.push(error(
                         format!("{path}.inputs.{input_name}"),
-                        format!("Required input {input_name} for {} is not satisfied.", tool.name),
+                        format!(
+                            "Required input {input_name} for {} is not satisfied.",
+                            tool.name
+                        ),
                     ));
                 }
             }
@@ -188,6 +231,19 @@ pub fn validate_workflow_value_with_tools(
                     "Binding must contain exactly one of ref or constant.",
                 ));
                 continue;
+            }
+
+            if has_constant {
+                if let Some(input_def) = tool.and_then(|tool| tool.inputs.get(input_name)) {
+                    append_qualifier_issues(
+                        &mut issues,
+                        &binding_path,
+                        &serde_json::json!({}),
+                        input_def,
+                        None,
+                        None,
+                    );
+                }
             }
 
             if let Some(reference) = binding_obj.get("ref").and_then(Value::as_str) {
@@ -230,27 +286,19 @@ pub fn validate_workflow_value_with_tools(
 
                 if let Some(tool) = tool {
                     if let Some(input_def) = tool.inputs.get(input_name) {
-                        for qualifier in declared_qualifiers(input_def) {
-                            issues.push(warning(
-                                binding_path.clone(),
-                                format!(
-                                    "Input {input_name} declares the type qualifier {qualifier}; this runtime does not evaluate qualifiers yet, so the binding requires a runtime check."
-                                ),
-                            ));
-                        }
-                        if let (Some(source_type), Some(input_type)) = (
-                            resolve_ref_type(reference, root, steps, &tool_registry),
-                            declaration_type(input_def),
-                        ) {
-                            if !is_type_compatible(&source_type, &input_type) {
-                                issues.push(warning(
-                                    binding_path.clone(),
-                                    format!(
-                                        "Input {input_name} expects {input_type} but {reference} provides {source_type}."
-                                    ),
-                                ));
-                            }
-                        }
+                        let resolved = qualifiers::resolve_qualifiers(
+                            reference,
+                            workflow,
+                            tools.unwrap_or(&Value::Null),
+                        );
+                        append_qualifier_issues(
+                            &mut issues,
+                            &binding_path,
+                            &resolved.declaration,
+                            input_def,
+                            resolved.space_identity.as_deref(),
+                            resolved.space_identity.as_deref(),
+                        );
                     } else {
                         issues.push(warning(
                             binding_path.clone(),
@@ -282,7 +330,21 @@ pub fn validate_workflow_value_with_tools(
                         continue;
                     }
                 }
-                if !context_has_field(context_fields, field) {
+                if let Some(target) = context_fields.and_then(|fields| fields.get(field)) {
+                    let source = qualifiers::resolve_qualifiers(
+                        &format!("steps.{step_name}.outputs.{output_name}"),
+                        workflow,
+                        tools.unwrap_or(&Value::Null),
+                    );
+                    append_qualifier_issues(
+                        &mut issues,
+                        &format!("{path}.outputMappings.{output_name}"),
+                        &source.declaration,
+                        target,
+                        source.space_identity.as_deref(),
+                        None,
+                    );
+                } else {
                     issues.push(warning(
                         format!("{path}.outputMappings.{output_name}"),
                         format!("Output mapping writes undeclared context field {field}."),
@@ -303,6 +365,14 @@ pub fn validate_workflow_value_with_tools(
                 continue;
             }
             if tool_registry.is_empty() {
+                append_qualifier_issues(
+                    &mut issues,
+                    &format!("outputs.{output_name}.ref"),
+                    &serde_json::json!({}),
+                    output,
+                    None,
+                    None,
+                );
                 continue;
             }
             if let Some(issue) = undeclared_step_output(
@@ -314,29 +384,51 @@ pub fn validate_workflow_value_with_tools(
                 issues.push(issue);
                 continue;
             }
-            let Some(source_type) = resolve_ref_type(reference, root, steps, &tool_registry) else {
+            let Some(_source_type) = resolve_ref_type(reference, root, steps, &tool_registry)
+            else {
                 issues.push(error(
                     format!("outputs.{output_name}.ref"),
                     format!("Workflow output references unknown value {reference}."),
                 ));
                 continue;
             };
-            if let Some(output_type) = output.get("type").and_then(Value::as_str) {
-                if !is_type_compatible(&source_type, output_type) {
-                    issues.push(warning(
-                        format!("outputs.{output_name}.ref"),
-                        format!(
-                            "Workflow output {output_name} declares {output_type} but source provides {source_type}."
-                        ),
-                    ));
-                }
-            }
+            let resolved =
+                qualifiers::resolve_qualifiers(reference, workflow, tools.unwrap_or(&Value::Null));
+            append_qualifier_issues(
+                &mut issues,
+                &format!("outputs.{output_name}.ref"),
+                &resolved.declaration,
+                output,
+                resolved.space_identity.as_deref(),
+                resolved.space_identity.as_deref(),
+            );
         }
     } else {
         issues.push(error("outputs", "Workflow outputs must be an object."));
     }
 
     finish(issues)
+}
+
+fn append_qualifier_issues(
+    issues: &mut Vec<ValidationIssue>,
+    path: &str,
+    source: &Value,
+    target: &Value,
+    source_identity: Option<&str>,
+    target_identity: Option<&str>,
+) {
+    for check in qualifiers::compare_qualifiers(source, target, source_identity, target_identity) {
+        match check.outcome {
+            qualifiers::Compatibility::Compatible => {}
+            qualifiers::Compatibility::Incompatible => {
+                issues.push(with_outcome(error(path, check.message), check.outcome))
+            }
+            qualifiers::Compatibility::RequiresRuntimeCheck => {
+                issues.push(with_outcome(warning(path, check.message), check.outcome))
+            }
+        }
+    }
 }
 
 pub fn plan_workflow_value(workflow: &Value) -> WorkflowPlan {
@@ -452,10 +544,7 @@ fn collect_tool_registry<'a>(tools: Option<&'a Value>) -> HashMap<String, ToolCo
         let Some(outputs) = tool_obj.get("outputs").and_then(Value::as_object) else {
             continue;
         };
-        let name = tool_obj
-            .get("name")
-            .and_then(Value::as_str)
-            .unwrap_or(id);
+        let name = tool_obj.get("name").and_then(Value::as_str).unwrap_or(id);
         let contract = ToolContract {
             name,
             inputs,
@@ -463,17 +552,20 @@ fn collect_tool_registry<'a>(tools: Option<&'a Value>) -> HashMap<String, ToolCo
         };
         registry.insert(id.to_string(), contract);
         registry.insert(name.to_string(), contract);
+        if let Some(version) = tool_obj.get("version").and_then(Value::as_str) {
+            registry.insert(format!("{id}@{version}"), contract);
+            registry.insert(format!("{name}@{version}"), contract);
+        }
     }
 
     registry
 }
 
 fn required_input(input_def: &Value) -> bool {
-    input_def
+    !input_def
         .get("optional")
         .and_then(Value::as_bool)
         .unwrap_or(false)
-        == false
         && input_def.get("default").is_none()
 }
 
@@ -555,7 +647,11 @@ fn undeclared_step_output(
 }
 
 fn similar_tools_hint(tool_ref: &str, tools: &HashMap<String, ToolContract<'_>>) -> String {
-    let needle = tool_ref.rsplit('/').next().unwrap_or(tool_ref).to_ascii_lowercase();
+    let needle = tool_ref
+        .rsplit('/')
+        .next()
+        .unwrap_or(tool_ref)
+        .to_ascii_lowercase();
     let mut ids: Vec<&str> = tools
         .keys()
         .map(String::as_str)
@@ -578,17 +674,22 @@ fn similar_tools_hint(tool_ref: &str, tools: &HashMap<String, ToolContract<'_>>)
     }
 }
 
-/// The RFC 0010 type qualifiers a declaration carries. This runtime reads
-/// them (spec 0.1.1) but does not yet compare them, so a binding onto a
-/// qualified input is reported as requiring a runtime check.
+/// The RFC 0010 axes evaluated by both static validation and execution.
 pub const TYPE_QUALIFIERS: &[&str] = &["formats", "space", "resolution", "density", "labelSystem"];
 
 pub fn declared_qualifiers(declaration: &Value) -> Vec<&'static str> {
-    TYPE_QUALIFIERS.iter().copied().filter(|q| declaration.get(q).is_some()).collect()
+    TYPE_QUALIFIERS
+        .iter()
+        .copied()
+        .filter(|q| declaration.get(q).is_some())
+        .collect()
 }
 
 fn declaration_type(value: &Value) -> Option<String> {
-    value.get("type").and_then(Value::as_str).map(str::to_string)
+    value
+        .get("type")
+        .and_then(Value::as_str)
+        .map(str::to_string)
 }
 
 /// Whether a value of `source_type` may be bound to an input of `input_type`.
@@ -602,7 +703,10 @@ pub fn is_type_compatible(source_type: &str, input_type: &str) -> bool {
         return true;
     }
 
-    match (array_element_type(source_type), array_element_type(input_type)) {
+    match (
+        array_element_type(source_type),
+        array_element_type(input_type),
+    ) {
         (Some(source), Some(input)) => is_type_compatible(source, input),
         _ => false,
     }
@@ -615,24 +719,48 @@ const COERCION_RULES: &[(&str, &[&str])] = &[
     ("core:directory", &["core:string"]),
     ("core:file", &["core:string"]),
     ("neuro:volume", &["core:file", "core:string"]),
-    ("neuro:ome-zarr", &["neuro:ngff-zarr", "core:directory", "core:string"]),
+    (
+        "neuro:ome-zarr",
+        &["neuro:ngff-zarr", "core:directory", "core:string"],
+    ),
     (
         "neuro:ngff-zarr",
-        &["neuro:ome-zarr", "core:directory", "core:file", "core:json", "core:string"],
+        &[
+            "neuro:ome-zarr",
+            "core:directory",
+            "core:file",
+            "core:json",
+            "core:string",
+        ],
     ),
     ("neuro:tract", &["core:file", "core:string"]),
     ("neuro:surface", &["core:file", "core:string"]),
     ("neuro:mask", &["neuro:volume", "core:file", "core:string"]),
-    ("neuro:statmap", &["neuro:volume", "core:file", "core:string"]),
-    ("neuro:probseg", &["neuro:volume", "core:file", "core:string"]),
+    (
+        "neuro:statmap",
+        &["neuro:volume", "core:file", "core:string"],
+    ),
+    (
+        "neuro:probseg",
+        &["neuro:volume", "core:file", "core:string"],
+    ),
     ("neuro:cifti", &["core:file", "core:string"]),
     ("neuro:gradient-table", &["core:file", "core:string"]),
-    ("neuro:connectivity-matrix", &["core:tabular", "core:file", "core:string"]),
-    ("neuro:qc-metrics", &["core:json", "core:file", "core:string"]),
+    (
+        "neuro:connectivity-matrix",
+        &["core:tabular", "core:file", "core:string"],
+    ),
+    (
+        "neuro:qc-metrics",
+        &["core:json", "core:file", "core:string"],
+    ),
     ("neuro:report", &["core:file", "core:string"]),
     ("core:tabular", &["core:file", "core:string"]),
     ("neuro:bids-dataset", &["core:directory", "core:string"]),
-    ("neurovue:correction-patch", &["core:json", "core:file", "core:string"]),
+    (
+        "neurovue:correction-patch",
+        &["core:json", "core:file", "core:string"],
+    ),
 ];
 
 fn coercible_to(source_type: &str, input_type: &str) -> bool {
@@ -714,11 +842,17 @@ fn error(path: impl Into<String>, message: impl Into<String>) -> ValidationIssue
         path: Some(path.into()),
         message: message.into(),
         hint: None,
+        outcome: None,
     }
 }
 
 fn with_hint(mut issue: ValidationIssue, hint: impl Into<String>) -> ValidationIssue {
     issue.hint = Some(hint.into());
+    issue
+}
+
+fn with_outcome(mut issue: ValidationIssue, outcome: qualifiers::Compatibility) -> ValidationIssue {
+    issue.outcome = Some(outcome);
     issue
 }
 
@@ -728,6 +862,7 @@ fn warning(path: impl Into<String>, message: impl Into<String>) -> ValidationIss
         path: Some(path.into()),
         message: message.into(),
         hint: None,
+        outcome: None,
     }
 }
 
@@ -784,7 +919,10 @@ mod tests {
         let report = validate_workflow_value(&workflow_with_stage("ingest"));
         assert!(report.ok, "{report:?}");
         assert!(
-            !report.issues.iter().any(|issue| issue.path.as_deref() == Some("steps.convert.stage")),
+            !report
+                .issues
+                .iter()
+                .any(|issue| issue.path.as_deref() == Some("steps.convert.stage")),
             "known stage should not raise an issue: {report:?}"
         );
     }
@@ -819,7 +957,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_0_1_1_and_warns_on_qualified_inputs() {
+    fn accepts_0_1_1_and_reports_unknown_qualified_inputs() {
         let tool = serde_json::json!({
             "neuroflow": "0.1.1", "kind": "tool", "id": "test/strip", "version": "1.0.0", "description": "Strip",
             "inputs": { "image": { "type": "neuro:volume", "description": "T1", "formats": ["nifti"], "space": "individual" } },
@@ -834,12 +972,25 @@ mod tests {
         let tools = serde_json::json!([tool]);
         let report = validate_workflow_value_with_tools(&workflow, Some(&tools));
         assert!(report.ok, "0.1.1 must be accepted: {report:?}");
-        let warnings: Vec<_> = report.issues.iter().filter(|i| i.severity == "warning").collect();
-        assert_eq!(warnings.len(), 2, "one warning per declared qualifier: {report:?}");
-        assert!(warnings.iter().all(|i| i.message.contains("requires a runtime check")));
+        let warnings: Vec<_> = report
+            .issues
+            .iter()
+            .filter(|i| i.severity == "warning")
+            .collect();
+        assert_eq!(
+            warnings.len(),
+            2,
+            "one warning per declared qualifier: {report:?}"
+        );
+        assert!(warnings
+            .iter()
+            .all(|i| i.message.contains("requires a runtime check")));
         let mut old = workflow.clone();
         old["neuroflow"] = serde_json::json!("0.2.0");
-        assert!(!validate_workflow_value_with_tools(&old, None).ok, "0.2.0 is not a supported version");
+        assert!(
+            !validate_workflow_value_with_tools(&old, None).ok,
+            "0.2.0 is not a supported version"
+        );
     }
 
     #[test]
@@ -854,7 +1005,10 @@ mod tests {
             .expect("expected an unresolved-output error");
         assert_eq!(issue.severity, "error");
         let hint = issue.hint.as_deref().unwrap_or("");
-        assert!(hint.contains("brain_volume") && hint.contains("brain_mask"), "{hint}");
+        assert!(
+            hint.contains("brain_volume") && hint.contains("brain_mask"),
+            "{hint}"
+        );
     }
 
     #[test]
@@ -867,14 +1021,20 @@ mod tests {
     #[test]
     fn coercion_table_matches_typescript_rules() {
         assert!(is_type_compatible("neuro:statmap", "neuro:volume"));
-        assert!(is_type_compatible("core:array<neuro:probseg>", "core:array<neuro:volume>"));
+        assert!(is_type_compatible(
+            "core:array<neuro:probseg>",
+            "core:array<neuro:volume>"
+        ));
         assert!(!is_type_compatible("neuro:volume", "neuro:mask"));
     }
 
     #[test]
     fn warns_on_unknown_stage_but_stays_valid() {
         let report = validate_workflow_value(&workflow_with_stage("teleport"));
-        assert!(report.ok, "unknown stage must not be a hard error: {report:?}");
+        assert!(
+            report.ok,
+            "unknown stage must not be a hard error: {report:?}"
+        );
         let issue = report
             .issues
             .iter()

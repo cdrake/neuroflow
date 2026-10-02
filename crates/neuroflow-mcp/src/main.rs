@@ -4,6 +4,9 @@
 
 mod artifacts;
 mod registry;
+mod qualifiers;
+#[cfg(test)]
+mod qualifier_tests;
 mod runtime;
 mod schema;
 mod server;
