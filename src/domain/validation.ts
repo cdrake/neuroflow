@@ -2,17 +2,11 @@ import { invoke } from '@tauri-apps/api/core'
 import type { Binding, ToolDefinition, ValidationIssue, ValidationReport, WorkflowDocument, WorkflowPlan } from './neuroflow'
 import { isConstantBinding, isRefBinding } from './neuroflow'
 import { buildToolMap, resolveToolDefinition } from './registry'
-import { isTypeCompatible } from './typeCompatibility'
+import { compareQualifiers, qualifierIssues, resolveQualifiers, validateDocumentQualifiers } from './qualifiers'
+export { TYPE_QUALIFIERS, declaredQualifiers } from './qualifiers'
 
 /** Spec versions this app reads: 0.1.1 is 0.1.0 plus the RFC 0010 type qualifiers. */
 export const SUPPORTED_SPEC_VERSIONS: readonly string[] = ['0.1.0', '0.1.1']
-
-/** RFC 0010 type qualifiers: read (spec 0.1.1) but not yet compared by this app. */
-export const TYPE_QUALIFIERS = ['formats', 'space', 'resolution', 'density', 'labelSystem'] as const
-
-export function declaredQualifiers(declaration: object): string[] {
-  return TYPE_QUALIFIERS.filter((qualifier) => qualifier in declaration)
-}
 
 const REF_PATTERN =
   /^(inputs\.[A-Za-z][A-Za-z0-9_-]*|context|context\.[A-Za-z][A-Za-z0-9_-]*|steps\.[A-Za-z][A-Za-z0-9_-]*\.outputs\.[A-Za-z][A-Za-z0-9_-]*)$/
@@ -42,10 +36,20 @@ export function validateWorkflowLocally(
   workflow: WorkflowDocument,
   tools: ToolDefinition[] = []
 ): ValidationReport {
-  const issues: ValidationIssue[] = []
+  const issues: ValidationIssue[] = validateDocumentQualifiers(workflow)
   const toolMap = buildToolMap(tools)
+  for (const reference of new Set(Object.values(workflow.steps ?? {}).map((step) => step.tool))) {
+    const tool = resolveToolDefinition(toolMap, reference)
+    if (tool) {
+      for (const issue of validateDocumentQualifiers(tool)) issues.push({ ...issue, path: `tools.${reference}.${issue.path}` })
+    }
+  }
   const stepNames = new Set(Object.keys(workflow.steps ?? {}))
   const contextFields = new Set(Object.keys(workflow.context?.fields ?? {}))
+
+  for (const [name, declaration] of Object.entries(workflow.context?.fields ?? {})) {
+    if ('default' in declaration) issues.push(...qualifierIssues(`context.fields.${name}.default`, compareQualifiers({}, declaration)))
+  }
 
   validateWorkflowEnvelope(workflow, issues)
 
@@ -68,8 +72,8 @@ export function validateWorkflowLocally(
 
     if (tool) {
       validateToolInputs(workflow, toolMap, stepName, step, tool, issues)
-      validateOutputMappings(stepName, step, tool, contextFields, issues)
     }
+    validateOutputMappings(workflow, toolMap, stepName, step, tool, issues)
 
     for (const [inputName, binding] of Object.entries(step.inputs)) {
       if (!validBindingShape(binding)) {
@@ -128,12 +132,11 @@ export function validateWorkflowLocally(
         path: `outputs.${outputName}.ref`,
         message: `Workflow output references unknown value ${output.ref}.`
       })
-    } else if (resolved && !isTypeCompatible(resolved, output.type)) {
-      issues.push({
-        severity: 'warning',
-        path: `outputs.${outputName}.ref`,
-        message: `Workflow output ${outputName} declares ${output.type} but source provides ${resolved}.`
-      })
+    } else if (resolved) {
+      const source = resolveQualifiers(output.ref, workflow, toolMap)
+      issues.push(...qualifierIssues(`outputs.${outputName}.ref`, compareQualifiers(source.declaration, output, source.spaceIdentity, source.spaceIdentity)))
+    } else if (tools.length === 0) {
+      issues.push(...qualifierIssues(`outputs.${outputName}.ref`, compareQualifiers({}, output)))
     }
   }
 
@@ -191,24 +194,12 @@ function validateToolInputs(
     }
 
     if (isRefBinding(binding)) {
-      for (const qualifier of declaredQualifiers(inputDef)) {
-        issues.push({
-          severity: 'warning',
-          path: `steps.${stepName}.inputs.${inputName}`,
-          message: `Input ${inputName} declares the type qualifier ${qualifier}; this runtime does not evaluate qualifiers yet, so the binding requires a runtime check.`
-        })
-      }
-      const sourceType = resolveRefType(binding.ref, workflow, toolMap)
-      if (sourceType && !isTypeCompatible(sourceType, inputDef.type)) {
-        issues.push({
-          severity: 'warning',
-          path: `steps.${stepName}.inputs.${inputName}`,
-          message: `Input ${inputName} expects ${inputDef.type} but ${binding.ref} provides ${sourceType}.`
-        })
-      }
+      const source = resolveQualifiers(binding.ref, workflow, toolMap)
+      issues.push(...qualifierIssues(`steps.${stepName}.inputs.${inputName}`, compareQualifiers(source.declaration, inputDef, source.spaceIdentity, source.spaceIdentity)))
     }
 
     if (isConstantBinding(binding)) {
+      issues.push(...qualifierIssues(`steps.${stepName}.inputs.${inputName}`, compareQualifiers({}, inputDef)))
       validateConstant(stepName, inputName, binding.constant, inputDef, issues)
     }
   }
@@ -225,14 +216,15 @@ function validateToolInputs(
 }
 
 function validateOutputMappings(
+  workflow: WorkflowDocument,
+  toolMap: Map<string, ToolDefinition>,
   stepName: string,
   step: WorkflowDocument['steps'][string],
-  tool: ToolDefinition,
-  contextFields: Set<string>,
+  tool: ToolDefinition | undefined,
   issues: ValidationIssue[]
 ): void {
   for (const [outputName, contextField] of Object.entries(step.outputMappings ?? {})) {
-    if (!(outputName in tool.outputs)) {
+    if (tool && !(outputName in tool.outputs)) {
       issues.push({
         severity: 'error',
         path: `steps.${stepName}.outputMappings.${outputName}`,
@@ -240,7 +232,11 @@ function validateOutputMappings(
       })
       continue
     }
-    if (!contextFields.has(contextField)) {
+    const target = workflow.context?.fields[contextField]
+    if (target) {
+      const source = resolveQualifiers(`steps.${stepName}.outputs.${outputName}`, workflow, toolMap)
+      issues.push(...qualifierIssues(`steps.${stepName}.outputMappings.${outputName}`, compareQualifiers(source.declaration, target, source.spaceIdentity)))
+    } else {
       issues.push({
         severity: 'warning',
         path: `steps.${stepName}.outputMappings.${outputName}`,

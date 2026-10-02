@@ -73,7 +73,15 @@ export interface ToolInputConsumption {
   description?: string
 }
 
-export interface ParameterDef {
+export interface TypeQualifiers {
+  formats?: string[] | `inputs.${string}`
+  space?: string
+  resolution?: number | [number, number, number] | `inputs.${string}`
+  density?: string
+  labelSystem?: string
+}
+
+export interface ParameterDef extends TypeQualifiers {
   type: NeuroflowType
   description: string
   optional?: boolean
@@ -148,6 +156,8 @@ export interface BlockDef {
 }
 
 export interface ToolDefinition {
+  neuroflow?: string
+  kind?: 'tool'
   id: string
   name: string
   version: string
@@ -182,7 +192,7 @@ export interface WorkflowDocument {
     fields: Record<string, ContextFieldDef>
   }
   steps: Record<string, StepDef>
-  outputs: Record<string, { type: NeuroflowType; ref: string }>
+  outputs: Record<string, TypeQualifiers & { type: NeuroflowType; ref: string }>
   extensions?: Record<string, unknown>
 }
 
