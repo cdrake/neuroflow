@@ -2,7 +2,7 @@
 //! file-based session contract (docs/neuroflow-session-contract.md), harvests
 //! outputs per RFC 0008, and writes a provenance document (RFC 0003).
 
-use crate::artifacts;
+use crate::{artifacts, qualifiers};
 use crate::registry::{launch_of, Doc, Registry};
 use crate::schema::{element_type, is_array_type, is_artifact_type, is_directory_type, value_types_of};
 use crate::util::{new_run_id, now_rfc3339, to_local_id, within_any};
@@ -57,7 +57,7 @@ pub fn wrap_tool(tool: &Doc) -> Value {
         .collect();
     let segment = crate::util::to_local_id(&tool.id.replace('/', "-"));
     json!({
-        "neuroflow": "0.1.0",
+        "neuroflow": tool.value.get("neuroflow").cloned().unwrap_or(json!("0.1.0")),
         "kind": "workflow",
         "id": format!("neuroflow.mcp.adhoc/{segment}"),
         "version": tool.version,
@@ -217,6 +217,10 @@ pub fn run_workflow(
     client: &Value,
     progress: Progress<'_>,
 ) -> Result<RunOutcome, String> {
+    let report = neuroflow_core::validate_workflow_value_with_tools(workflow, Some(&registry.tools_array()));
+    if let Some(issue) = report.issues.iter().find(|issue| issue.severity == "error") {
+        return Err(format!("{}: {}", issue.path.as_deref().unwrap_or("workflow"), issue.message));
+    }
     let order = step_order(workflow)?;
     registry.workflow_runnable(workflow)?;
     let wf_id = workflow.get("id").and_then(Value::as_str).unwrap_or("neuroflow.mcp.adhoc/workflow");
@@ -256,27 +260,73 @@ pub fn run_workflow(
         "fingerprint": fingerprint,
         "steps": {}
     });
+    let mut known_evidence: HashMap<String, Value> = HashMap::new();
+    let mut initial_checks = Vec::new();
+    let mut initial_failure = None;
+    for (name, value) in &inputs {
+        let decl = &workflow["inputs"][name];
+        let t = decl["type"].as_str().unwrap_or("core:json");
+        if !is_artifact_type(t, &[]) { continue; }
+        let raw = args.get(name).unwrap_or(value);
+        let checked = qualifiers::inspect(cfg, raw, value, &known_evidence).and_then(|evidence| {
+            qualifiers::remember(&evidence, &mut known_evidence);
+            qualifiers::enforce(&format!("inputs.{name}"), decl, &evidence, &mut initial_checks)
+        });
+        if let Err(error) = checked { initial_failure = Some(("inputs".to_string(), error)); break; }
+    }
+    if initial_failure.is_none() {
+        for (name, value) in &mut context {
+            let decl = &workflow["context"]["fields"][name];
+            let raw = value.clone();
+            let checked = resolve_value(cfg, name, decl, value, &[]).and_then(|resolved| {
+                *value = resolved;
+                if is_artifact_type(decl["type"].as_str().unwrap_or("core:json"), &[]) {
+                    let evidence = qualifiers::inspect(cfg, &raw, value, &known_evidence)?;
+                    qualifiers::remember(&evidence, &mut known_evidence);
+                    qualifiers::enforce(&format!("context.{name}"), decl, &evidence, &mut initial_checks)?;
+                }
+                Ok(())
+            });
+            if let Err(error) = checked { initial_failure = Some((format!("context.{name}"), error)); break; }
+        }
+    }
+    record["qualifierChecks"] = json!(initial_checks);
+    record["qualifierInspectors"] = qualifiers::capabilities();
     let mut step_outputs: HashMap<String, Map<String, Value>> = HashMap::new();
     let mut activities: Vec<StepRecord> = Vec::new();
-    let mut failure: Option<(String, String)> = None;
+    let mut failure: Option<(String, String)> = initial_failure;
     let total = order.len() as f64;
 
     let steps = workflow.get("steps").and_then(Value::as_object).cloned().unwrap_or_default();
     for (index, step_id) in order.iter().enumerate() {
+        if failure.is_some() { break; }
         let step = &steps[step_id];
         let tool_id = step.get("tool").and_then(Value::as_str).unwrap_or("");
         let tool = registry.tool(tool_id).ok_or_else(|| format!("tool {tool_id} disappeared"))?;
         progress(index as f64, total, &format!("step {}/{}: {step_id} ({tool_id})", index + 1, order.len()));
 
-        let result = run_step(cfg, &paths, &run_id, workflow, step_id, step, tool, &inputs, &context, &step_outputs);
-        let failed = result.error.clone();
-        if let Some(mappings) = step.get("outputMappings").and_then(Value::as_object) {
+        let mut result = run_step(cfg, &paths, &run_id, workflow, step_id, step, tool, &inputs, &context, &step_outputs, &mut known_evidence);
+        if let Some(mappings) = step.get("outputMappings").and_then(Value::as_object).filter(|_| result.error.is_none()) {
             for (output, field) in mappings {
                 if let (Some(field), Some(value)) = (field.as_str(), result.outputs.get(output)) {
+                    let decl = &workflow["context"]["fields"][field];
+                    if qualifiers::qualified(decl) {
+                        let checked = qualifiers::inspect(cfg, value, value, &known_evidence).and_then(|evidence| {
+                            qualifiers::enforce(&format!("steps.{step_id}.outputMappings.{output} -> context.{field}"),
+                                decl, &evidence, &mut result.qualifier_checks)
+                        });
+                        if let Err(error) = checked {
+                            result.error = Some(error);
+                            result.status = "failed".into();
+                            result.ended_at = now_rfc3339();
+                            break;
+                        }
+                    }
                     context.insert(field.to_string(), value.clone());
                 }
             }
         }
+        let failed = result.error.clone();
         record["steps"][step_id] = json!({
             "tool": tool.id,
             "toolVersion": tool.version,
@@ -288,6 +338,9 @@ pub fn run_workflow(
             "outputs": result.outputs,
             "types": result.types,
             "error": result.error,
+            "qualifierChecks": result.qualifier_checks,
+            "inputEvidence": result.input_evidence,
+            "outputEvidence": result.output_evidence,
         });
         step_outputs.insert(step_id.clone(), result.outputs.clone());
         activities.push(result);
@@ -308,6 +361,14 @@ pub fn run_workflow(
             let parts: Vec<&str> = reference.split('.').collect();
             if let ["steps", s, "outputs", o] = parts.as_slice() {
                 if let Some(v) = step_outputs.get(*s).and_then(|m| m.get(*o)) {
+                    if qualifiers::qualified(out) {
+                        let mut checks = Vec::new();
+                        let checked = qualifiers::inspect(cfg, v, v, &known_evidence).and_then(|evidence| {
+                            qualifiers::enforce(&format!("outputs.{name}"), out, &evidence, &mut checks)
+                        });
+                        record["outputQualifierChecks"][name] = json!(checks);
+                        if let Err(error) = checked { failure = Some((format!("outputs.{name}"), error)); break; }
+                    }
                     public.insert(name.clone(), v.clone());
                     public_refs.insert(name.clone(), json!({ "step": s, "output": o,
                         "type": out.get("type").cloned().unwrap_or(json!("core:json")) }));
@@ -315,6 +376,7 @@ pub fn run_workflow(
             }
         }
     }
+    if failure.is_some() { public.clear(); public_refs.clear(); }
     let status = if failure.is_some() { "failed" } else { "completed" };
     let ended_at = now_rfc3339();
     record["status"] = json!(status);
@@ -411,6 +473,9 @@ struct StepRecord {
     types: Map<String, Value>,
     input_types: Map<String, Value>,
     error: Option<String>,
+    qualifier_checks: Vec<Value>,
+    input_evidence: Map<String, Value>,
+    output_evidence: Map<String, Value>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -425,6 +490,7 @@ fn run_step(
     wf_inputs: &Map<String, Value>,
     context: &Map<String, Value>,
     step_outputs: &HashMap<String, Map<String, Value>>,
+    known_evidence: &mut HashMap<String, Value>,
 ) -> StepRecord {
     let started_at = now_rfc3339();
     let mut rec = StepRecord {
@@ -440,6 +506,9 @@ fn run_step(
         types: Map::new(),
         input_types: Map::new(),
         error: None,
+        qualifier_checks: Vec::new(),
+        input_evidence: Map::new(),
+        output_evidence: Map::new(),
     };
     let fail = |mut rec: StepRecord, msg: String| {
         rec.error = Some(msg);
@@ -474,6 +543,17 @@ fn run_step(
         // Constants and upstream values are checked like caller input.
         match resolve_value(cfg, name, decl, &value, &value_types) {
             Ok(v) => {
+                let t = decl["type"].as_str().unwrap_or("core:json");
+                if is_artifact_type(t, &value_types) {
+                    let evidence = match qualifiers::inspect(cfg, &value, &v, known_evidence) {
+                        Ok(e) => e,
+                        Err(e) => return fail(rec, format!("input {name}: {e}")),
+                    };
+                    rec.input_evidence.insert(name.clone(), evidence.clone());
+                    if let Err(e) = qualifiers::enforce(&format!("steps.{step_id}.inputs.{name}"), decl, &evidence, &mut rec.qualifier_checks) {
+                        return fail(rec, e);
+                    }
+                }
                 rec.inputs.insert(name.clone(), v);
                 rec.input_types.insert(name.clone(), decl.get("type").cloned().unwrap_or(json!("core:json")));
             }
@@ -563,7 +643,33 @@ fn run_step(
     }
 
     match harvest(tool, &out_dir, &paths.work, &stdout_path, status.code().unwrap_or(0), &value_types) {
-        Ok((outputs, types)) => {
+        Ok((mut outputs, types)) => {
+            for (name, value) in &mut outputs {
+                let decl = &tool.value["outputs"][name];
+                match resolve_value(cfg, name, decl, value, &value_types) {
+                    Ok(resolved) => *value = resolved,
+                    Err(error) => return fail(rec, format!("output {name}: {error}")),
+                }
+            }
+            for (name, value) in &outputs {
+                let decl = &tool.value["outputs"][name];
+                let t = decl["type"].as_str().unwrap_or("core:json");
+                if !is_artifact_type(t, &value_types) { continue; }
+                let mut evidence = match qualifiers::inspect(cfg, value, value, &HashMap::new()) {
+                    Ok(e) => e,
+                    Err(e) => return fail(rec, format!("output {name}: {e}")),
+                };
+                let producer = json!({ "run": run_id, "step": step_id, "output": name,
+                    "tool": tool.id, "version": tool.version, "declaration": decl });
+                qualifiers::produced(decl, &mut evidence, &rec.input_evidence, &producer);
+                let requirements = qualifiers::output_requirements(decl, &rec.input_evidence);
+                if let Err(e) = qualifiers::enforce_measured_output(&format!("steps.{step_id}.outputs.{name}"),
+                    &requirements, &evidence, &mut rec.qualifier_checks) {
+                    return fail(rec, e);
+                }
+                qualifiers::remember(&evidence, known_evidence);
+                rec.output_evidence.insert(name.clone(), evidence);
+            }
             rec.outputs = outputs;
             rec.types = types;
             rec.status = "completed".into();
@@ -579,13 +685,22 @@ fn run_step(
 fn resolve_value(cfg: &Config, name: &str, decl: &Value, value: &Value, value_types: &[String]) -> Result<Value, String> {
     let t = decl.get("type").and_then(Value::as_str).unwrap_or("core:json");
     if is_artifact_type(t, value_types) {
+        let resolve = |value: &Value| -> Result<String, String> {
+            if let Some(uri) = value.as_str().filter(|v| v.starts_with("neuroflow://")) {
+                let source_type = artifacts::artifact_type(cfg, uri)?;
+                if !neuroflow_core::is_type_compatible(&source_type, element_type(t)) {
+                    return Err(format!("artifact type {source_type} is incompatible with {}", element_type(t)));
+                }
+            }
+            resolve_artifact(cfg, value)
+        };
         if is_array_type(t) {
             let items = value.as_array().ok_or("expected an array of artifact references")?;
             let resolved: Result<Vec<Value>, String> =
-                items.iter().map(|v| resolve_artifact(cfg, v).map(Value::String)).collect();
+                items.iter().map(|v| resolve(v).map(Value::String)).collect();
             return resolved.map(Value::Array);
         }
-        return resolve_artifact(cfg, value).map(Value::String);
+        return resolve(value).map(Value::String);
     }
     let check = |v: &Value, t: &str| -> Result<(), String> {
         let ok = match t {
@@ -940,6 +1055,14 @@ fn provenance(record: &Value, steps: &[StepRecord], workflow: &Value, client: &V
         "entities": entities,
         "inputs": inputs_map,
         "outputs": outputs_map,
+        "extensions": { "neuroflow/qualifiers": {
+            "inspectors": record["qualifierInspectors"],
+            "inputChecks": record["qualifierChecks"],
+            "outputChecks": record["outputQualifierChecks"],
+            "steps": steps.iter().map(|step| json!({ "step": step.step_id,
+                "checks": step.qualifier_checks, "inputs": step.input_evidence,
+                "outputs": step.output_evidence })).collect::<Vec<_>>()
+        } },
     })
 }
 

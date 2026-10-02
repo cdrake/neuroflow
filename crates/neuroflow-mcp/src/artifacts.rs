@@ -130,12 +130,41 @@ fn artifact_path(cfg: &Config, run: &str, step: &str, output: &str, index: Optio
     Ok((path.to_string(), element))
 }
 
+pub fn artifact_type(cfg: &Config, uri: &str) -> Result<String, String> {
+    match parse(uri)? {
+        Target::Artifact { run, step, output, index, raw: false } =>
+            artifact_path(cfg, &run, &step, &output, index).map(|(_, t)| t),
+        _ => Err(format!("{uri} is not an artifact URI")),
+    }
+}
+
 pub fn resolve_artifact_uri(cfg: &Config, uri: &str) -> Result<PathBuf, String> {
     match parse(uri)? {
         Target::Artifact { run, step, output, index, raw: false } => {
             artifact_path(cfg, &run, &step, &output, index).map(|(p, _)| PathBuf::from(p))
         }
         _ => Err(format!("{uri} is not an artifact URI")),
+    }
+}
+
+/// Evidence belongs to a completed producer and is checked against file bytes again
+/// by the execution gate. A caller cannot inject this through tool arguments.
+pub fn qualifier_evidence(cfg: &Config, uri: &str) -> Result<Value, String> {
+    match parse(uri)? {
+        Target::Artifact { run, step, output, index, raw: false } => {
+            let record = load_record(cfg, &run)?;
+            if record["status"] != "completed" || record["steps"][&step]["status"] != "completed" {
+                return Err("qualifier evidence requires a completed producer run".into());
+            }
+            let evidence = &record["steps"][&step]["outputEvidence"][&output];
+            match (evidence, index) {
+                (Value::Array(items), Some(i)) => items.get(i).cloned().ok_or_else(|| "missing artifact evidence index".into()),
+                (Value::Object(_), None | Some(0)) => Ok(evidence.clone()),
+                (Value::Null, _) => Ok(Value::Null),
+                _ => Err("artifact qualifier evidence has the wrong shape".into()),
+            }
+        }
+        _ => Err("qualifier evidence requires an artifact URI".into()),
     }
 }
 
@@ -172,6 +201,12 @@ pub fn read(cfg: &Config, registry: &Registry, uri: &str) -> Result<Vec<Value>, 
                 return read_raw(uri, &path);
             }
             let mut s = summarize(&path, &t, cfg.summary_max_bytes);
+            if let Ok(evidence) = qualifier_evidence(cfg, uri) {
+                if !evidence.is_null() {
+                    if !crate::qualifiers::unchanged(&evidence) { return Err("artifact changed since its qualifier evidence was recorded".into()); }
+                    s["qualifierEvidence"] = evidence;
+                }
+            }
             s["uri"] = json!(uri);
             Ok(vec![json!({ "uri": uri, "mimeType": "application/vnd.neuroflow.artifact-summary+json", "text": pretty(&s) })])
         }
@@ -500,6 +535,74 @@ fn parse_header(b: &[u8]) -> Result<Header, String> {
             le,
         })
     }
+}
+
+/// Facts established from bytes, independent of the filename and input annotations.
+/// Unknown units and transform codes deliberately do not become spatial claims.
+pub fn inspect_qualifiers(path: &Path) -> Result<Value, String> {
+    let mut file = fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut prefix = [0u8; 2];
+    let count = file.read(&mut prefix).map_err(|e| e.to_string())?;
+    let gzip = count == 2 && prefix == [0x1f, 0x8b];
+    let file = fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut reader: Box<dyn Read> = if gzip { Box::new(GzDecoder::new(file)) } else { Box::new(file) };
+    let mut bytes = Vec::new();
+    reader.by_ref().take(540).read_to_end(&mut bytes).map_err(|e| e.to_string())?;
+    let nifti1 = bytes.get(344..348) == Some(b"n+1\0");
+    let nifti2 = bytes.get(4..12) == Some(b"n+2\0\r\n\x1a\n");
+    if nifti1 || nifti2 {
+        let h = parse_header(&bytes)?;
+        if nifti2 && (3000..3100).contains(&Reader { b: &bytes, le: h.le }.i32(504)) {
+            return Ok(json!({ "facts": {}, "inspector": null, "reason": "CIFTI requires a CIFTI reader; its NIfTI container does not establish nii compatibility" }));
+        }
+        if (h.version == 1) != nifti1 || h.dims.is_empty() || h.dims.iter().any(|d| *d <= 0) {
+            return Err("invalid NIfTI header dimensions or magic".into());
+        }
+        let mut facts = json!({ "formats": [if gzip { "nii-gz" } else { "nii" }] });
+        let scale = match h.xyzt_units & 7 {
+            1 => Some(1000.0),
+            2 => Some(1.0),
+            3 => Some(0.001),
+            _ => None,
+        };
+        if let Some(scale) = scale {
+            let spacing = [h.pixdim[1], h.pixdim[2], h.pixdim[3]].map(|v| v * scale);
+            if spacing.iter().all(|v| v.is_finite() && *v > 0.0) {
+                facts["resolution"] = json!(spacing);
+            }
+        }
+        // Codes 2 and 4 do not identify a subject or a particular template.
+        // Two competing transforms must agree before establishing a scanner frame.
+        let scanner_codes = (h.qform_code == 1 || h.sform_code == 1)
+            && matches!(h.qform_code, 0 | 1) && matches!(h.sform_code, 0 | 1);
+        let mut consistent = true;
+        if h.qform_code == 1 && h.sform_code == 1 {
+            let r = Reader { b: &bytes, le: h.le };
+            let q = if h.version == 1 {
+                qform_affine(r.f32(256), r.f32(260), r.f32(264), [r.f32(268), r.f32(272), r.f32(276)], &h.pixdim)
+            } else {
+                qform_affine(r.f64(352), r.f64(360), r.f64(368), [r.f64(376), r.f64(384), r.f64(392)], &h.pixdim)
+            };
+            consistent = h.affine.as_ref().is_some_and(|s| q.iter().flatten().zip(s.iter().flatten())
+                .all(|(a, b)| a.is_finite() && b.is_finite() && (a - b).abs() < 0.001));
+        }
+        if scanner_codes && consistent && h.affine.as_ref().is_some_and(|m| m.iter().flatten().all(|v| v.is_finite())) {
+            facts["space"] = json!("individual");
+        }
+        return Ok(json!({ "facts": facts, "inspector": "nifti-header-v1",
+            "niftiVersion": h.version, "qformCode": h.qform_code, "sformCode": h.sform_code,
+            "spatialUnits": h.xyzt_units & 7 }));
+    }
+    if !gzip {
+        let first = bytes.iter().find(|b| !b.is_ascii_whitespace());
+        if first.is_some_and(|b| matches!(*b, b'{' | b'[' | b'"' | b'-' | b'0'..=b'9' | b't' | b'f' | b'n')) {
+            let file = fs::File::open(path).map_err(|e| e.to_string())?;
+            if serde_json::from_reader::<_, Value>(file).is_ok() {
+                return Ok(json!({ "facts": { "formats": ["json"] }, "inspector": "json-parser-v1" }));
+            }
+        }
+    }
+    Ok(json!({ "facts": {}, "inspector": null, "reason": "no inspector recognizes this encoding" }))
 }
 
 fn qform_affine(b: f64, c: f64, d: f64, offset: [f64; 3], pixdim: &[f64]) -> [[f64; 4]; 3] {
