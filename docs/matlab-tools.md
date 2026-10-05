@@ -80,6 +80,25 @@ strings, structs).
   such as `-nojvm`. `singleThread` (default true) passes `-singleCompThread`
   and sets `OMP_NUM_THREADS=1`, which keeps results deterministic across
   machines; turn it off for tools that are known to need the pool.
+- **Licensing is a user intervention, so it is checked before launch.** A
+  MATLAB under online (sign-in) licensing that has no signed-in session does
+  not fail when started headlessly: `matlab -batch` blocks indefinitely on a
+  MathWorks login it cannot display. The adapter therefore reads
+  `<matlabroot>/licenses/license_info.xml` and, when the mode is
+  `onlinelicensing`, requires an interactive MATLAB from the same install to
+  be running (it looks in the process list, ignoring other `-batch` runs). If
+  none is, the step fails immediately with the reason, the install to start,
+  and, when another release's session is up, the `MATLAB=…/bin/matlab`
+  setting that would use it instead. Nothing is written and no engine is
+  launched. `matlab.requireSession` is `auto` by default; `true` demands a
+  session under any license mode and `false` skips the check, as does
+  `NEUROFLOW_MATLAB_REQUIRE_SESSION=0`, for network or file licenses on
+  servers with no desktop. Independently, `matlab.startupTimeout` (seconds,
+  default 120, `0` disables) stops a MATLAB that has run no code by then,
+  which catches the same stall when the session check could not run
+  (Windows, or a check that was switched off) and an unreachable license
+  server. So the expected workflow on a desktop is: open MATLAB, sign in,
+  then run NeuroFlow.
 - **Toolboxes.** Each entry is located like an executable: its override
   variable, then candidate paths (with `~` and one `*` glob, newest first).
   A missing required toolbox fails the step naming the variable to set;
@@ -127,7 +146,10 @@ strings, structs).
 
 - a fake engine (a node script posing as `matlab`) checks wrapper generation,
   headless flags, engine selection and override variables, toolbox
-  resolution, the batch sequence, output mapping and provenance;
+  resolution, the batch sequence, output mapping and provenance, plus the
+  license pre-flight (a fake install with an `onlinelicensing`
+  `license_info.xml`, with and without a posed interactive session) and the
+  startup watchdog (a fake engine that runs no code and must be killed);
 - GNU Octave, when `octave-cli` is on `PATH`, runs the header reader on
   generated NIfTI files (RAS and LAS, gzipped and plain), a failing entry, a
   script entry with typed inputs, and a batch entry against a stub SPM that

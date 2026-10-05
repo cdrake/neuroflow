@@ -15,11 +15,20 @@
  *   engine           "auto" | "matlab" | "octave" | "mcr" (default auto: MATLAB,
  *                    then Octave, then a standalone SPM when SPMMCRCMD is set).
  *                    NEUROFLOW_MATLAB_ENGINE overrides the document.
- *   matlab           { paths[], env, args[] }  where to find `matlab`: the
- *                    override variable (default MATLAB), then `paths` (default
- *                    /Applications/MATLAB_R*.app, /usr/local/MATLAB/R*, newest
- *                    first; a list here replaces the default), then PATH;
- *                    `args` are extra command-line args (e.g. "-nojvm")
+ *   matlab           { paths[], env, args[], requireSession, startupTimeout }
+ *                    where to find `matlab`: the override variable (default
+ *                    MATLAB), then `paths` (default /Applications/MATLAB_R*.app,
+ *                    /usr/local/MATLAB/R*, newest first; a list here replaces
+ *                    the default), then PATH; `args` are extra command-line
+ *                    args (e.g. "-nojvm"). `requireSession` ("auto" | true |
+ *                    false, default auto) fails the step before launch unless an
+ *                    interactive MATLAB from the same install is running; auto
+ *                    requires it only under online (sign-in) licensing, read
+ *                    from <matlabroot>/licenses/license_info.xml, because a
+ *                    headless MATLAB with no signed-in session blocks forever on
+ *                    a login it cannot show. NEUROFLOW_MATLAB_REQUIRE_SESSION
+ *                    (0/1) overrides. `startupTimeout` (seconds, default 120,
+ *                    0 disables) stops a MATLAB that has run no code by then.
  *   octave           { paths[], env, args[] }  same for `octave-cli` ($OCTAVE)
  *   mcr              { env, rootEnv }  standalone SPM launcher (`run_spm12.sh`,
  *                    $SPMMCRCMD) and the MATLAB Runtime root ($MCR_ROOT);
@@ -62,8 +71,8 @@
  * (session contract), NEUROFLOW_MATLAB_ENGINE, MATLAB, OCTAVE, SPMMCRCMD,
  * MCR_ROOT, plus each toolbox's own override variable.
  */
-import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -138,6 +147,61 @@ if (!engine) {
 }
 if (engine === 'mcr' && entry.kind === 'function') {
   console.error('matlab_tool: warning: a standalone SPM can only run functions compiled into it');
+}
+
+// ---- MATLAB license pre-flight ------------------------------------------------------
+// Under online (sign-in) licensing a headless `matlab -batch` that finds no signed-in
+// session blocks forever on a MathWorks login it cannot display. Signing in is a user
+// intervention, so detect the situation and fail before anything is launched.
+const matlabRoot = (exePath) => {
+  let real = exePath;
+  try { real = realpathSync(exePath); } catch { /* keep as given */ }
+  return resolve(dirname(dirname(real)));
+};
+const matlabLicenseMode = (root) => {
+  try {
+    const xml = readFileSync(join(root, 'licenses', 'license_info.xml'), 'utf8');
+    return /<licmode>\s*([^<\s]+)\s*<\/licmode>/.exec(xml)?.[1] ?? 'unknown';
+  } catch { return 'unknown'; }
+};
+// Roots of interactive MATLAB sessions (not -batch), from the process list.
+const runningMatlabRoots = () => {
+  if (process.platform === 'win32') return null;
+  const ps = spawnSync('ps', ['-A', '-o', 'command='], { encoding: 'utf8', env: { ...process.env, COLUMNS: '10000' } });
+  if (ps.status !== 0) return null;
+  const roots = new Set();
+  for (const line of ps.stdout.split('\n')) {
+    if (/\s-batch(\s|$)/.test(line)) continue;
+    const cmd = line.trim().split(/\s+/)[0];
+    if (!cmd || !cmd.startsWith('/')) continue;
+    const m = /^(.*)\/(Contents\/MacOS\/MATLAB_mac[ai]64|bin\/glnxa64\/MATLAB)$/.exec(resolve(cmd));
+    if (!m) continue;
+    try { roots.add(realpathSync(m[1])); } catch { roots.add(m[1]); }
+  }
+  return [...roots];
+};
+if (engine === 'matlab') {
+  const root = matlabRoot(exe);
+  const licmode = matlabLicenseMode(root);
+  const envRequire = process.env.NEUROFLOW_MATLAB_REQUIRE_SESSION;
+  const setting = envRequire !== undefined ? (envRequire !== '0' && envRequire !== 'false') : (engineSpec('matlab').requireSession ?? 'auto');
+  const required = setting === 'auto' ? licmode === 'onlinelicensing' : setting === true;
+  if (required) {
+    const running = runningMatlabRoots();
+    if (running === null) {
+      console.error('matlab_tool: warning: cannot list MATLAB sessions on this platform; relying on the startup timeout');
+    } else if (!running.includes(root)) {
+      const others = running.filter((r) => r !== root);
+      const why = licmode === 'onlinelicensing'
+        ? `MATLAB at ${root} uses online (sign-in) licensing and no MATLAB session from that install is running`
+        : `MATLAB at ${root} requires a running session (matlab.requireSession) and none from that install is running`;
+      const because = 'a headless MATLAB would block indefinitely waiting for a MathWorks sign-in that it cannot display';
+      const fix = `start MATLAB from ${root} and sign in before running this workflow`
+        + (others.length ? `, or set MATLAB to the launcher of an install whose session is running (${others.map((r) => join(r, 'bin', 'matlab')).join(' or ')})` : '')
+        + '; set NEUROFLOW_MATLAB_REQUIRE_SESSION=0 (or matlab.requireSession=false) if a license file or server provides the license instead';
+      fail(`${why}; ${because}. To fix: ${fix}`);
+    }
+  }
 }
 
 const childEnv = { ...process.env };
@@ -326,11 +390,34 @@ if (engine === 'matlab') {
 // ---- run ----------------------------------------------------------------------------
 console.log(`matlab_tool: running ${engine} ${exe} ${args.map((a) => (/\s/.test(a) ? JSON.stringify(a) : a)).join(' ')}`);
 const started = Date.now();
+// Startup watchdog (MATLAB only): the wrapper writes nf_info.json as its first act, so a
+// MATLAB that has not written it after `startupTimeout` seconds is stuck before running
+// any code, which in practice means a license prompt or an unreachable license server.
+const startupTimeout = engine === 'matlab' ? Number(engineSpec('matlab').startupTimeout ?? 120) : 0;
+const infoFile = join(workDir, 'nf_info.json');
+let stalled = false;
 const status = await new Promise((res) => {
   const child = spawn(exe, args, { cwd: workDir, env: childEnv, stdio: ['ignore', 'inherit', 'inherit'] });
-  child.on('error', (err) => { console.error(`matlab_tool: ${err.message}`); res(127); });
-  child.on('exit', (c, signal) => res(c ?? (signal ? 128 : 1)));
+  let timer = null;
+  const stop = () => { if (timer) clearInterval(timer); };
+  child.on('error', (err) => { stop(); console.error(`matlab_tool: ${err.message}`); res(127); });
+  child.on('exit', (c, signal) => { stop(); res(c ?? (signal ? 128 : 1)); });
+  if (startupTimeout > 0) {
+    timer = setInterval(() => {
+      if (existsSync(infoFile)) { stop(); return; }
+      if (Date.now() - started < startupTimeout * 1000) return;
+      stop();
+      stalled = true;
+      child.kill('SIGTERM');
+      setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* already gone */ } }, 5000).unref();
+    }, 500);
+  }
 });
+if (stalled) {
+  fail(`MATLAB started but ran no code within ${startupTimeout} s and was stopped; it was most likely waiting for a MathWorks `
+    + 'sign-in or a license server. To fix: start MATLAB and sign in before running this workflow, or raise matlab.startupTimeout '
+    + 'for a slow machine (0 disables the watchdog)');
+}
 if (status !== 0) fail(`${engine} exited with status ${status}`);
 
 let info = {};

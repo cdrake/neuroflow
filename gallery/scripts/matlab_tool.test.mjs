@@ -5,8 +5,8 @@
 // last with a stub SPM), and against MATLAB when NEUROFLOW_TEST_MATLAB=1.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,7 +15,7 @@ import { globOne } from './adapter_lib.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const adapter = join(here, 'matlab_tool.mjs');
-const root = mkdtempSync(join(tmpdir(), 'matlab-tool-'));
+const root = realpathSync(mkdtempSync(join(tmpdir(), 'matlab-tool-'))); // canonical: the adapter compares real paths
 
 // ---- a minimal NIfTI-1 writer (header + zero data), enough for the header reader ----
 function writeNifti(path, { dim = [4, 3, 2], pixdim = [1.5, 2, 2.5], sform = null, gz = true } = {}) {
@@ -54,15 +54,40 @@ const a = process.argv.slice(2);
 const runArg = a.find((x) => x.startsWith('run('));
 const wrapper = a[1] === 'script' ? a[2] : /run\\('(.*)'\\)/.exec(runArg)[1];
 const text = fs.readFileSync(wrapper, 'utf8');
-if (text.includes('nf_result = ') && !process.env.FAKE_NO_RESULT) fs.writeFileSync(/nf\\.outputFile = '(.*)';/.exec(text)[1], '{"summary":{}}');
 const workDir = path.dirname(wrapper);
+if (process.env.FAKE_HANG) { // pose as a MATLAB stuck on a license prompt: run no code, never exit
+  fs.writeFileSync(path.join(workDir, 'fake_pid'), String(process.pid));
+  setTimeout(() => {}, 120000);
+} else {
+if (text.includes('nf_result = ') && !process.env.FAKE_NO_RESULT) fs.writeFileSync(/nf\\.outputFile = '(.*)';/.exec(text)[1], '{"summary":{}}');
 const outputDir = /nf\\.outputDir = '(.*)';/.exec(text)[1];
 fs.writeFileSync(path.join(workDir, 'fake_engine.json'), JSON.stringify({ argv: a, wrapper: text, env: { OMP_NUM_THREADS: process.env.OMP_NUM_THREADS ?? null, BLOCKED: process.env.BLOCKED ?? null } }));
 fs.writeFileSync(path.join(workDir, 'nf_info.json'), JSON.stringify({ engine: 'matlab', version: '99.1.0 (R2099a)', spm: process.env.FAKE_SPM || undefined }));
 for (const f of (process.env.FAKE_WRITE || '').split(',').filter(Boolean)) fs.writeFileSync(path.join(outputDir, f), f);
 process.exit(Number(process.env.FAKE_EXIT ?? 0));
+}
 `);
 chmodSync(fakeMatlab, 0o755);
+
+// A fake MATLAB install under online (sign-in) licensing: <root>/bin/matlab + licenses/license_info.xml.
+const onlineRoot = join(root, 'MATLAB_R2099a.app');
+mkdirSync(join(onlineRoot, 'bin'), { recursive: true });
+mkdirSync(join(onlineRoot, 'licenses'), { recursive: true });
+copyFileSync(fakeMatlab, join(onlineRoot, 'bin', 'matlab'));
+chmodSync(join(onlineRoot, 'bin', 'matlab'), 0o755);
+writeFileSync(join(onlineRoot, 'licenses', 'license_info.xml'),
+  '<?xml version="1.0"?><root><ActivationEntry hostname="*"><licmode>onlinelicensing</licmode></ActivationEntry></root>');
+const onlineMatlab = join(onlineRoot, 'bin', 'matlab');
+// Pose as an interactive MATLAB session from that install: a `sleep` whose argv[0] is the
+// platform's MATLAB binary path, which is what the adapter looks for in the process list.
+function fakeSession(rootDir) {
+  const rel = process.platform === 'darwin' ? 'Contents/MacOS/MATLAB_maca64' : 'bin/glnxa64/MATLAB';
+  const bin = join(rootDir, rel);
+  mkdirSync(dirname(bin), { recursive: true });
+  if (!existsSync(bin)) symlinkSync('/bin/sleep', bin);
+  const child = spawn(bin, ['60'], { stdio: 'ignore' });
+  return { pid: child.pid, stop: () => child.kill() };
+}
 
 const baseTool = {
   kind: 'tool', id: 'test/matlab', inputs: { image: { type: 'neuro:volume' }, label: { type: 'core:string', optional: true } },
@@ -85,9 +110,11 @@ function run(matlab, inputs, { tool = baseTool, env = {}, engine } = {}) {
   writeFileSync(join(session, 'context.json'), JSON.stringify({ runId: 'run-1', tool: 'test/matlab', step: 'step', inputs, outputDir, workDir }));
   const childEnv = {
     ...process.env, NEUROFLOW_SESSION: session, NEUROFLOW_OUTPUT_DIR: outputDir, NEUROFLOW_STEP: 'step',
-    NEUROFLOW_OUTPUT_FILE: join(session, 'result.json'), NEUROFLOW_TOOL_DOC: join(session, 'tool.json'), ...env,
+    NEUROFLOW_OUTPUT_FILE: join(session, 'result.json'), NEUROFLOW_TOOL_DOC: join(session, 'tool.json'),
   };
   delete childEnv.NEUROFLOW_MATLAB_ENGINE;
+  delete childEnv.NEUROFLOW_MATLAB_REQUIRE_SESSION;
+  Object.assign(childEnv, env); // a test's own variables win over the scrubbed ambient ones
   if (engine) childEnv.NEUROFLOW_MATLAB_ENGINE = engine;
   const r = spawnSync(process.execPath, [adapter], { encoding: 'utf8', env: childEnv });
   const read = (p) => (existsSync(p) ? readFileSync(p, 'utf8') : null);
@@ -226,6 +253,77 @@ test('withholds clearEnv variables from the engine', () => {
   const r = run({ clearEnv: ['BLOCKED'], entry: { kind: 'function', name: 'f', args: [] }, outputs: {} }, {}, { env: { BLOCKED: '1' } });
   assert.equal(r.status, 0, r.stderr);
   assert.equal(r.fake.env.BLOCKED, null);
+});
+
+const fn = { entry: { kind: 'function', name: 'f', args: [] }, outputs: {} };
+const online = (extra = {}) => ({ ...fn, matlab: { paths: [onlineMatlab], ...extra } });
+
+test('refuses to launch an online-licensed MATLAB with no signed-in session, before running anything', () => {
+  const r = run(online(), {});
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /online \(sign-in\) licensing and no MATLAB session from that install is running/);
+  assert.match(r.stderr, /block indefinitely waiting for a MathWorks sign-in/);
+  assert.match(r.stderr, new RegExp(`start MATLAB from ${onlineRoot.replace(/[/.]/g, '\\$&')} and sign in`));
+  assert.match(r.stderr, /NEUROFLOW_MATLAB_REQUIRE_SESSION=0/);
+  assert.equal(r.fake, null, 'the engine must not have been launched');
+  assert.equal(r.wrapper, null, 'nothing is written before the pre-flight');
+  assert.equal(r.prov, null);
+});
+
+test('runs an online-licensed MATLAB when a session from the same install is up, and points at another install\'s session otherwise', () => {
+  const session = fakeSession(onlineRoot);
+  try {
+    const ok = run(online(), {});
+    assert.equal(ok.status, 0, ok.stderr);
+    assert.equal(ok.prov.engine, 'matlab');
+    // Another online-licensed install, with only onlineRoot's session running: name the alternative.
+    const otherRoot = join(root, 'MATLAB_R2098b.app');
+    mkdirSync(join(otherRoot, 'bin'), { recursive: true });
+    mkdirSync(join(otherRoot, 'licenses'), { recursive: true });
+    copyFileSync(fakeMatlab, join(otherRoot, 'bin', 'matlab'));
+    chmodSync(join(otherRoot, 'bin', 'matlab'), 0o755);
+    copyFileSync(join(onlineRoot, 'licenses', 'license_info.xml'), join(otherRoot, 'licenses', 'license_info.xml'));
+    const other = run({ ...fn, matlab: { paths: [join(otherRoot, 'bin', 'matlab')] } }, {});
+    assert.equal(other.status, 1);
+    assert.match(other.stderr, new RegExp(`set MATLAB to the launcher of an install whose session is running \\(.*${join(onlineRoot, 'bin', 'matlab').replace(/[/.]/g, '\\$&')}`));
+  } finally {
+    session.stop();
+  }
+});
+
+test('requireSession can be forced on or off by the document and the environment', () => {
+  const off = run(online({ requireSession: false }), {});
+  assert.equal(off.status, 0, off.stderr);
+  const envOff = run(online(), {}, { env: { NEUROFLOW_MATLAB_REQUIRE_SESSION: '0' } });
+  assert.equal(envOff.status, 0, envOff.stderr);
+  // The plain fake has no license_info.xml, so auto does not require a session; true does.
+  const plain = run(fn, {});
+  assert.equal(plain.status, 0, plain.stderr);
+  const forced = run({ ...fn, matlab: { paths: [fakeMatlab], requireSession: true } }, {});
+  assert.equal(forced.status, 1);
+  assert.match(forced.stderr, /requires a running session \(matlab\.requireSession\) and none from that install is running/);
+  const envOn = run(fn, {}, { env: { NEUROFLOW_MATLAB_REQUIRE_SESSION: '1' } });
+  assert.equal(envOn.status, 1);
+  assert.match(envOn.stderr, /requires a running session/);
+});
+
+test('stops a MATLAB that runs no code within startupTimeout and explains the likely license wait', () => {
+  const t0 = Date.now();
+  const r = run({ ...fn, matlab: { paths: [fakeMatlab], startupTimeout: 1 } }, {}, { env: { FAKE_HANG: '1' } });
+  assert.equal(r.status, 1);
+  assert.ok(Date.now() - t0 < 15000, 'the watchdog must fire promptly');
+  assert.match(r.stderr, /MATLAB started but ran no code within 1 s and was stopped/);
+  assert.match(r.stderr, /waiting for a MathWorks sign-in or a license server/);
+  assert.match(r.stderr, /start MATLAB and sign in before running this workflow/);
+  assert.equal(r.prov, null);
+  const pid = Number(readFileSync(join(r.workDir, 'fake_pid'), 'utf8'));
+  const alive = () => { try { process.kill(pid, 0); return true; } catch { return false; } };
+  const until = Date.now() + 6000;
+  while (alive() && Date.now() < until) spawnSync('sleep', ['0.2']);
+  assert.equal(alive(), false, 'the stalled engine must have been killed');
+  // A fake that does run code is unaffected by a short timeout.
+  const fine = run({ ...fn, matlab: { paths: [fakeMatlab], startupTimeout: 1 } }, {});
+  assert.equal(fine.status, 0, fine.stderr);
 });
 
 test('globOne returns the newest matching directory first', () => {
