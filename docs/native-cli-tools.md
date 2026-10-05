@@ -80,7 +80,8 @@ SynthSeg itself.
   the full argument vector, duration and the produced outputs.
 
 `gallery/scripts/cli_tool.test.mjs` exercises all of this against a fake command
-(`npm run test:gallery`).
+(`npm run test:gallery`). MATLAB, Octave and SPM programs use the sibling
+adapter described in [matlab-tools.md](matlab-tools.md).
 
 ## Installing the lightNIIng tools on macOS
 
