@@ -239,7 +239,7 @@ export function checkTool(toolPath) {
   const launch = tool.extensions?.['neuroflow/launch'];
   if (!launch) return { ...base, status: 'unsupported', detail: 'no neuroflow/launch extension: nothing can start this tool' };
   if (launch.kind === 'uiApp') {
-    return { ...base, adapter: 'uiApp', status: 'interactive', detail: `interactive ${launch.app ?? 'app'}; runs in a host window (MCP Apps, RFC 0009 section 6), not from the builder yet` };
+    return { ...base, adapter: 'uiApp', status: 'interactive', detail: `interactive ${launch.app ?? 'app'}; runs in a host window (RFC 0009 section 6): the desktop builder can launch it, MCP clients cannot` };
   }
   if (launch.kind !== 'script') return { ...base, status: 'unsupported', detail: `launch kind ${JSON.stringify(launch.kind)} is not supported` };
   if (launch.interactive) return { ...base, adapter: 'script', status: 'interactive', detail: 'interactive scripts need a host window' };

@@ -254,11 +254,15 @@ pub fn check_environment(settings: HostSettings) -> Result<EnvironmentReport, St
                 packages: probe.and_then(|p| p.get("packages").cloned()).filter(|p| !p.is_null()),
                 source: doc.source.to_string_lossy().into_owned(),
             };
-            // The runtime's own gate wins over a ready probe (missing interpreter, script outside the registry...).
+            // The runtime's own gate wins over a ready or interactive probe (missing
+            // interpreter, script outside the registry, uiApp command or checkout missing...).
             if let Err(reason) = &doc.runnable {
-                if status.status == "ready" {
+                if status.status == "ready" || status.status == "interactive" {
                     status.status = "needsSetup".into();
                     status.detail = reason.clone();
+                    if status.fix.is_none() {
+                        status.fix = ui_app_fix(doc);
+                    }
                 }
             } else if status.status == "interactive" {
                 // Desktop owns the app process and waits for it to exit; unlike an
@@ -287,6 +291,23 @@ pub fn check_environment(settings: HostSettings) -> Result<EnvironmentReport, St
         workflows,
         warnings,
     })
+}
+
+/// How to make a `uiApp` tool launchable: the runtime's reason says what is
+/// missing; this says what to do about it.
+fn ui_app_fix(doc: &neuroflow_mcp::registry::Doc) -> Option<String> {
+    let launch = doc.value.pointer("/extensions/neuroflow~1launch")?;
+    if launch.get("kind").and_then(Value::as_str) != Some("uiApp") {
+        return None;
+    }
+    let app = launch.get("app").and_then(Value::as_str).unwrap_or("app");
+    let command = launch.get("command").and_then(Value::as_str).unwrap_or("its command");
+    let repo = launch.get("repo").and_then(Value::as_str).unwrap_or(app);
+    let branch = launch.get("branch").and_then(Value::as_str).map(|b| format!(" (branch {b})")).unwrap_or_default();
+    let key = format!("NEUROFLOW_UI_APP_{}", app.to_uppercase().replace('-', "_"));
+    Some(format!(
+        "install {command} so it is on PATH, and clone {repo}{branch} next to the NeuroFlow checkout or set {key} to the checkout directory"
+    ))
 }
 
 /// Why this workflow cannot run here, or None when it can. Cheap: no probes.

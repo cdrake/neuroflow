@@ -126,8 +126,8 @@ export function EnvironmentPanel({
           {interactive.length > 0 && (
             <p className="nf-env-note">
               {interactive.map((tool) => idTail(tool.id)).join(' and ')} {interactive.length === 1 ? 'is' : 'are'} interactive:
-              the host window for these apps is not wired into the builder yet, so workflows containing them stay editable but
-              cannot be run from here.
+              these apps need a host that can open a window and wait for it, which this host cannot, so workflows containing
+              them stay editable but cannot be run from here.
             </p>
           )}
         </>
