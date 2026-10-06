@@ -81,7 +81,8 @@ SynthSeg itself.
 
 `gallery/scripts/cli_tool.test.mjs` exercises all of this against a fake command
 (`npm run test:gallery`). MATLAB, Octave and SPM programs use the sibling
-adapter described in [matlab-tools.md](matlab-tools.md).
+adapter described in [matlab-tools.md](matlab-tools.md), and Python programs
+the one in [python-tools.md](python-tools.md).
 
 ## Installing the lightNIIng tools on macOS
 

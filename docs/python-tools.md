@@ -1,85 +1,108 @@
 # Python tools in NeuroFlow
 
-**Status: scope for a follow-up branch (`feat/python-adapter`, stacked on
-[#5](https://github.com/cdrake/neuroflow/pull/5)).** Nothing below is
-implemented yet; this document fixes what the work is and is not, so the
-implementation can be reviewed against it. Sections marked *decided* are
-settled; sections marked *open* name the choice still to make.
+Status: implemented on `feat/python-adapter`; verified with CPython 3.12
+(nibabel 5.4, numpy 2.1, scipy 1.15, dipy 1.12) and a fake interpreter for
+the adapter's own logic. The scope this was built against is the version of
+this file merged in [#6](https://github.com/cdrake/neuroflow/pull/6).
 
-## Where Python stands today
+Most neuroimaging analysis code is Python: NiBabel for I/O, DIPY for
+diffusion, nilearn, SciPy, lab scripts. NeuroFlow runs such code as a typed
+tool without a bespoke launcher. The tool document says which Python function
+or script to run and which packages it needs; one shared adapter,
+`gallery/scripts/python_tool.mjs`, finds an interpreter, **checks every
+declared requirement before running anything and fails with the fix**, runs
+the entry under the [session contract](neuroflow-session-contract.md), maps
+outputs and appends provenance naming the Python and package versions. A
+stdlib-only helper, `gallery/scripts/python/neuroflow.py`, gives tool code the
+session as one object, the way MATLAB code gets the `nf` struct.
 
-Two gallery tools are Python: `python-volume-filter` (smooth / threshold /
-z-score over a BIDS dataset) and `label-volumes` (per-structure mL from a
-SynthSeg label map). Both run through the generic `script` launch kind with
-`interpreter: python3`, implement the
-[session contract](neuroflow-session-contract.md) by hand, and use NiBabel
-and NumPy (SciPy for smoothing). NiBabel is therefore already a dependency of
-the gallery. DIPY is not used anywhere.
+The organising rule, carried over from MATLAB licensing: anything that needs a
+user to act (install a package, create an environment, point at a different
+Python) is detected up front and reported in one message, never discovered as
+a traceback three steps into a workflow and never papered over.
 
-What they lack, compared with the CLI and MATLAB adapters that arrived since:
+Three gallery tools run on it:
 
-- **No shared adapter.** `adapter_lib.mjs` gives the Node adapters session
-  reading, tool-document lookup, executable search, input existence checks,
-  output mapping and provenance. Each Python script reimplements those, and
-  the two already disagree on how they find the output dir and what they put
-  in provenance.
-- **Requirements are declared but never checked.** Tool documents carry
-  `requirements: ["nibabel", "numpy", "scipy"]`; the runner only resolves the
-  interpreter path. Nothing verifies the packages exist before launch.
-- **Missing packages degrade silently.** The volume filter catches
-  `ImportError` and copies inputs through as "passthrough", and swallows every
-  other exception the same way, so a run with no NiBabel reports success with
-  unfiltered data. `label-volumes` crashes with a traceback and no hint about
-  which environment to fix.
-- **Environment selection is manual and global.** The MCP server takes
-  `--interpreter python3=/path`, one Python for every tool. There is no
-  per-tool environment, and no help when that Python lacks a package.
+| Tool | Module | Needs |
+| --- | --- | --- |
+| `python-volume-filter` (smooth, threshold, z-score or passthrough over a BIDS dataset) | `python/nf_filter_volumes.py` | nibabel, numpy; scipy optional (NumPy convolution otherwise) |
+| `label-volumes` (per-structure mL from a SynthSeg label map, plus inline totals) | `python/nf_label_volumes.py` | nibabel, numpy |
+| `dti-fit` (FA and MD maps from a DWI series and gradient table) | `python/nf_dti_fit.py` | nibabel, numpy, dipy 1.9+ |
 
-## Goal
+## How a run works
 
-A `python_tool.mjs` adapter, driven by `extensions["neuroflow/python"]`, that
-does for Python what `cli_tool.mjs` and `matlab_tool.mjs` do for native
-binaries and MATLAB: find the interpreter, **check every declared requirement
-before running anything and fail with the fix**, run the entry, map outputs,
-and append provenance that names the Python and package versions. A small
-stdlib-only `neuroflow.py` helper gives tool code the session as an object,
-the way MATLAB code gets the `nf` struct. The two existing tools move onto it,
-and one DIPY tool is added as the first new consumer.
+1. The runtime launches `node python_tool.mjs` with `NEUROFLOW_SESSION` and
+   `context.json` (absolute inputs, output dir, work dir). The launch
+   interpreter is `node`, which the MCP runner already allows; Python is the
+   adapter's business.
+2. The adapter picks an interpreter (next section), then runs one probe,
+   `python -c "<import each declared module, print versions as JSON>"`. It
+   takes well under a second even with NumPy. A missing or too-old required
+   module stops the step here, before any tool code is imported.
+3. For a `function` entry it writes `<workDir>/nf_driver.py`, a few lines that
+   import the module and call the function with the resolved arguments, so a
+   failing run leaves something to inspect; for a `script` entry it runs the
+   file. Python runs with the work dir as cwd, the helper importable, and
+   `PYTHONDONTWRITEBYTECODE=1` and `PYTHONUNBUFFERED=1` so tool directories
+   stay clean and logs stream.
+4. An uncaught exception prints its traceback to stderr and the step fails
+   with `python exited with status 1`; a tool reports data problems by raising
+   (`ValueError("gradient table has 5 entries but dwi has 21 volumes")`), not
+   by exiting.
+5. The adapter maps the files written to the output dir onto the tool's
+   declared outputs, checks that the `result` output landed in
+   `$NEUROFLOW_OUTPUT_FILE`, and appends one provenance line.
 
-The organising rule is the one applied to MATLAB licensing in #5: anything
-that needs a user to act (install a package, create an environment, point at
-a different Python) is detected up front and reported in one message, never
-discovered by a traceback three steps into a workflow and never papered over.
+What a user sees when the environment is wrong, from the real adapter:
 
-## Deliverables
+```
+python_tool: /usr/bin/python3 is Python 3.9.6, but neuroflow.gallery.tools/dti-fit needs 3.10 or newer. To fix: set NEUROFLOW_PYTHON to a newer interpreter
+```
 
-1. **`gallery/scripts/python_tool.mjs`** — the adapter (Node, shares
-   `adapter_lib.mjs`; launched by the runner with `interpreter: node`, which
-   is already allowed).
-2. **`gallery/scripts/python/neuroflow.py`** — the helper module, stdlib
-   only, put on `PYTHONPATH` by the adapter.
-3. **Migration** of `python-volume-filter` and `label-volumes` to the
-   adapter and helper. The filter's silent passthrough on missing packages is
-   removed on purpose; its passthrough on an unreadable *input* stays, since
-   that is a data problem a user can see in the output.
-4. **One DIPY tool**, `dti-fit`: DWI + gradient table (+ optional mask) in,
-   FA and MD maps out, plus an inline summary. It is the tool that makes the
-   requirements check matter, because DIPY is not in a default environment.
-5. **Tests** in `python_tool.test.mjs`, tiered like the MATLAB tests: a fake
-   interpreter for the adapter's own logic; the real `python3` with NiBabel
-   when importable; DIPY when importable (so skipped on this machine until
-   it is installed).
-6. **Docs**: this file becomes the user guide, as `matlab-tools.md` did; a
-   row per tool in `gallery/README.md`; the MCP README's interpreter advice
-   updated.
+```
+python_tool: /opt/homebrew/bin/python3 (Python 3.14.2) lacks nibabel, required by neuroflow.gallery.tools/dti-fit (ModuleNotFoundError: No module named 'nibabel'). To fix: pip install nibabel into that environment, or point NEUROFLOW_PYTHON at an environment that has it; lacks dipy, required by neuroflow.gallery.tools/dti-fit (ModuleNotFoundError: No module named 'dipy'). To fix: pip install dipy into that environment, or point NEUROFLOW_PYTHON at one that has it (e.g. python3 -m venv ~/.venvs/neuroflow && ~/.venvs/neuroflow/bin/pip install dipy nibabel)
+```
 
-## The `neuroflow/python` template (*decided* shape, details *open*)
+Every problem is in that one message, so one round of fixes is enough.
+
+## Choosing the Python
+
+In order, the first that exists wins:
+
+1. `NEUROFLOW_PYTHON` (or the variable the template names in
+   `interpreter.env`). A path that does not exist is an error, not a fallback.
+2. The template's `interpreter.paths`: `{{toolDir}}` and `~` expand, one `*`
+   glob per path (newest match first). The gallery tools list
+   `{{toolDir}}/.venv/bin/python` so a tool can ship its own environment, then
+   `~/.venvs/neuroflow/bin/python` as a shared one.
+3. `NEUROFLOW_INTERPRETER_PYTHON3`: the MCP server exports its
+   `--interpreter python3=...` setting to every step under this name (and
+   `NEUROFLOW_INTERPRETER_NODE` and so on for the others), so a Python chosen
+   for the server reaches the adapter even when the client trimmed `PATH`.
+4. `python3`, then `python`, on `PATH`.
+
+An interpreter below `interpreter.minVersion` fails with its path and version.
+The quickest working setup on a machine with none of the packages:
+
+```sh
+python3 -m venv ~/.venvs/neuroflow
+~/.venvs/neuroflow/bin/pip install nibabel numpy scipy dipy
+```
+
+Nothing else to configure: the gallery tools find `~/.venvs/neuroflow` by
+themselves. A conda or miniforge Python works the same way through
+`NEUROFLOW_PYTHON`, which is how the development machine runs the tests.
+
+## The `neuroflow/python` template
+
+From `gallery/tools/dti-fit.tool.json`:
 
 ```json
 "neuroflow/launch": {
   "kind": "script", "interpreter": "node", "script": "../scripts/python_tool.mjs",
   "completion": "exit", "interactive": false,
-  "contract": "../../docs/neuroflow-session-contract.md"
+  "contract": "../../docs/neuroflow-session-contract.md",
+  "requirements": ["Python 3.10+ with dipy 1.9+, nibabel and numpy; set NEUROFLOW_PYTHON to the environment"]
 },
 "neuroflow/python": {
   "interpreter": {
@@ -89,108 +112,173 @@ discovered by a traceback three steps into a workflow and never papered over.
   },
   "requirements": [
     "nibabel",
+    "numpy",
     { "import": "dipy", "package": "dipy", "minVersion": "1.9",
-      "advice": "pip install dipy, or point NEUROFLOW_PYTHON at an environment that has it" },
-    { "import": "scipy.ndimage", "package": "scipy", "optional": true }
+      "advice": "pip install dipy into that environment, or point NEUROFLOW_PYTHON at one that has it (e.g. python3 -m venv ~/.venvs/neuroflow && ~/.venvs/neuroflow/bin/pip install dipy nibabel)" }
   ],
-  "pythonpath": ["../scripts/python"],
   "singleThread": true,
-  "entry": { "kind": "function", "module": "nf_dti_fit", "name": "run",
-             "args": ["{{dwi}}", "{{gradients}}", "{{outputDir}}"], "result": "summary" },
+  "entry": {
+    "kind": "function", "module": "nf_dti_fit", "name": "run",
+    "args": ["{{dwi}}", "{{gradients}}", "{{mask}}", "{{fit_method}}", "{{b0_threshold}}"],
+    "result": "summary"
+  },
   "outputs": { "fa": "fa.nii.gz", "md": "md.nii.gz" }
 }
 ```
 
-- **Interpreter.** `NEUROFLOW_PYTHON` first, then the template's `paths`
-  (`~` and one `*` glob as elsewhere; `{{toolDir}}` lets a tool ship its own
-  `.venv`), then the runner-configured `python3`, then `PATH`. A found
-  interpreter below `minVersion` fails with its path and version. *Open:*
-  whether the runner should export its `--interpreter` map to adapters (one
-  small change in `crates/neuroflow-mcp`) so the third step works without
-  duplicating paths; recommended, but the adapter must not depend on it.
-- **Requirements.** One probe run before anything else:
-  `python -c "<import each module, print versions as JSON>"`. Takes well under
-  a second even with NumPy. A missing required module fails immediately:
+The `neuroflow/launch` `requirements` are human text for a reader of the
+document; the runner does not check them. The checked list is
+`neuroflow/python.requirements`.
 
-  > python3 at /opt/homebrew/.../python3 (3.12.12) lacks dipy, required by
-  > neuroflow.gallery.tools/dti-fit. To fix: pip install dipy, or point
-  > NEUROFLOW_PYTHON at an environment that has it
+- **`interpreter`** `{ env, paths, minVersion }`: as above. All three are
+  optional; the default `env` is `NEUROFLOW_PYTHON`.
+- **`requirements`**: `"nibabel"` means `{ "import": "nibabel", "package":
+  "nibabel" }`. The object form adds `minVersion` (compared against the
+  module's `__version__`, or `importlib.metadata` when a module has none),
+  `advice` (appended after "To fix:"; the default says to pip install the
+  package into that environment or point the override variable elsewhere),
+  and `optional: true`, which records the package as present or `null` in
+  provenance instead of failing, so the tool can adapt. `import` may be dotted
+  (`scipy.ndimage`); `package` is the pip name shown to the user.
+- **`pythonpath`**: directories added to `PYTHONPATH`, relative to the tool
+  document (`~` expands). They come first, then the tool's own directory and
+  `gallery/scripts/python` (the helper), which are always included, then the
+  caller's `PYTHONPATH`.
+- **`singleThread`** (default `true`): sets `OMP_NUM_THREADS`,
+  `OPENBLAS_NUM_THREADS`, `MKL_NUM_THREADS` and `NUMEXPR_NUM_THREADS` to 1 for
+  results that do not depend on the core count. Set `false` for a tool that
+  benefits from BLAS threads.
+- **`entry`**, one of:
+  - `{ "kind": "function", "module", "name", "args", "result" }` imports
+    `module` and calls `name(*args)` from the generated driver. Each argument
+    is a JSON literal or a placeholder. An exact `{{input}}` passes the input
+    with its JSON type, paths as `pathlib.Path`. An input with no value passes
+    its declared `default` as a literal, or `None` when it is optional with no
+    default; a required input without a value fails before launch.
+    `{{outputDir}}`, `{{workDir}}` and `{{outputFile}}` pass those paths.
+    A placeholder inside other text (`"--fwhm={{amount}}"`) yields a `str`.
+    `result` names a `core:result-file` output that receives the return value
+    as JSON; omit it when the function writes its own result.
+  - `{ "kind": "script", "file" }` runs the file (relative to the tool
+    document) with the helper importable, for a tool that owns its flow.
+- **`outputs`**: output name to the file the entry writes in the output dir,
+  or `{ "match": "<regex>", "pick": "first" | "largest" }` when the name is
+  not known in advance, renamed to the declared `delivery.path` exactly as the
+  [CLI adapter](native-cli-tools.md) does. Outputs the entry writes through `s.output_path(name)` already have the
+  declared name and need no mapping entry; `python-volume-filter` has one
+  (`"filtered_volumes": "filtered"`) only to document the directory.
+- **`clearEnv`**: environment-variable names withheld from Python.
 
-  A module below `minVersion` fails the same way. `optional: true` records
-  presence instead of failing, so the tool can adapt (as the filter does for
-  SciPy). The probe's versions go into provenance:
-  `Python 3.12.12 + nibabel 5.4.0 + dipy 1.10.0`. A plain string entry means
-  `{ "import": s, "package": s }`.
-- **Entry.** `function` imports `module` from `pythonpath` plus the tool's
-  directory and calls `name(args...)`; arguments are literals or the same
-  `{{input}}` / `{{outputDir}}` / `{{workDir}}` / `{{outputFile}}`
-  placeholders as the other adapters (an exact `{{name}}` passes the input
-  with its JSON type). `result` names a `core:result-file` output that
-  receives the return value as JSON. `script` runs a file with the helper
-  importable, for tools that want to own their flow. The adapter writes a
-  short generated driver into the work dir for `function` entries, as the
-  MATLAB adapter writes `nf_wrapper.m`, so a failing tool leaves something
-  to inspect.
-- **Threads.** `singleThread` (default true) sets `OMP_NUM_THREADS`,
-  `OPENBLAS_NUM_THREADS`, `MKL_NUM_THREADS` and `NUMEXPR_NUM_THREADS` to 1
-  for deterministic results across machines; tools that benefit from BLAS
-  threads turn it off.
-- **Outputs, environment, provenance.** Exactly as in the
-  [CLI adapter](native-cli-tools.md): `outputs` maps names to files or
-  `{ match, pick }`, `clearEnv` withholds variables, one provenance line per
-  run. Also `PYTHONDONTWRITEBYTECODE=1` and `PYTHONUNBUFFERED=1` so tool
-  directories stay clean and logs stream.
+Python also sees `NEUROFLOW_TOOL_DOC` (the tool document, so the helper can
+type the inputs) and the session contract's `NEUROFLOW_*` variables.
 
-## `neuroflow.py` (*decided*)
+**Provenance.** One line per run:
+
+```json
+{"ts": "...", "step": "dti", "tool": "neuroflow.gallery.tools/dti-fit", "action": "python",
+ "agent": "Python 3.12.12 + nibabel 5.4.0 + numpy 2.1.3 + dipy 1.12.1",
+ "python": "3.12.12", "packages": {"nibabel": "5.4.0", "numpy": "2.1.3", "dipy": "1.12.1"},
+ "executable": "/opt/homebrew/Caskroom/miniforge/base/bin/python3",
+ "entry": {"kind": "function", "module": "nf_dti_fit", "name": "run"},
+ "args": ["<workDir>/nf_driver.py"], "durationMs": 554,
+ "outputs": {"fa": "fa.nii.gz", "md": "md.nii.gz"}}
+```
+
+An optional package that was absent appears as `null` in `packages`, so a run
+that fell back (the filter without SciPy) is distinguishable afterwards.
+
+## Writing the Python side
 
 ```python
 from neuroflow import session
-s = session()                 # reads $NEUROFLOW_SESSION/context.json
-img = s.inputs["image"]       # typed from JSON; paths are pathlib.Path
-out = s.output_dir / "fa.nii.gz"
-s.result({"mean_fa": 0.41})   # writes $NEUROFLOW_OUTPUT_FILE
-s.log("fitted 1.2M voxels")   # stderr, prefixed for the adapter's transcript
+
+def run(dwi, gradients, mask=None, fit_method="WLS", b0_threshold=50.0):
+    s = session()                          # $NEUROFLOW_SESSION/context.json
+    img = nib.load(str(dwi))               # inputs arrive typed; paths are pathlib.Path
+    ...
+    nib.save(fa_img, str(s.output_path("fa")))   # output_dir / declared delivery.path
+    s.log(f"fitted {n} voxels")            # stderr, prefixed "dti-fit:"
+    return {"fit_method": fit_method, "voxels": n}   # stored as the `result` output
 ```
 
-Stdlib only, under 150 lines, no NiBabel import of its own. Provenance is the
-adapter's job; a `script` entry that wants extra provenance fields calls
-`s.provenance(**fields)`, which appends in the contract's format.
+`Session` exposes `session_dir`, `context`, `run_id`, `step`, `tool`,
+`output_dir`, `work_dir`, `output_file`, `tool_doc` and `inputs` (typed:
+anything whose declared type is not a `core:` scalar becomes a `Path`,
+including the elements of a `core:array<...>`). `output_path(name)` returns
+`output_dir / <delivery.path>` for a declared output and creates the output
+dir. `result(mapping)` or `result(**outputs)` writes `$NEUROFLOW_OUTPUT_FILE`
+as `{name: value}` for a `script` entry or a function that wants more than one
+inline output; values may be `Path`, NumPy arrays or scalars. `provenance(**
+fields)` appends an extra line in the contract's format for a tool that wants
+to record more than the adapter does (the filter records its per-file modes).
+`name` is the short tool name used as the log prefix.
 
-## The `dti-fit` tool (*decided* inputs/outputs, *open* defaults)
+Conventions the gallery tools follow:
 
-| | type | note |
-|---|---|---|
-| `dwi` | `neuro:volume` | 4-D diffusion series. *Open:* whether a `dwi` qualifier is worth proposing to the spec, or `neuro:volume` suffices for now. |
-| `gradients` | `neuro:gradient-table` | already in the spec vocabulary; bval + bvec pair or a single table file, resolved by the tool |
-| `mask` | `neuro:mask`, optional | restricts the fit and the summary |
-| `fa`, `md` | `neuro:volume` (result-dir) | *Open:* `neuro:statmap` may fit FA better; decide with the spec authors |
-| `summary` | `core:json` (result-file) | mean/median FA and MD within the mask, voxel count, fit method |
+- Take paths and literals as arguments; read nothing from `pwd`, which is the
+  session work dir, and write only under `s.output_dir` and `s.work_dir`.
+- Raise for data problems with a message that names the inputs
+  (`"mask shape (6, 6, 6) does not match dwi (8, 8, 8)"`). Do not catch
+  `ImportError`: the adapter has already checked the packages, so an import
+  that fails inside tool code is a bug, and a missing *optional* package is
+  handled by trying the import where it is used, as `gaussian_smooth` does.
+- A tool may pass an unreadable *input* through and say so (the filter copies
+  it and records `passthrough (unreadable: ...)`): a data problem the user can
+  see in the output, unlike a missing package.
+- Return a compact summary (counts, means, method) rather than arrays; the
+  runner stores it inline for an agent to read without opening files.
+- The `dti-fit` gradient table (`neuro:gradient-table`) is resolved by file: an
+  FSL `.bval` or `.bvec` reads its sibling of the same stem, and any other
+  file is a text table with one row per volume, `x y z b` (MRtrix `.b`) or
+  `b x y z` when the first column is clearly the b-value. The spec names the
+  type but no format, so this is the gallery's convention until one is agreed.
 
-Implementation: `dipy.reconst.dti.TensorModel` with weighted least squares,
-`dipy.io.gradients.read_bvals_bvecs`, NiBabel for I/O. Test data is a
-synthetic single-tensor DWI generated in the test from the Stejskal–Tanner
-equation over a handful of directions, so the test asserts a known FA.
+## Testing
 
-## Not in scope
+Two files, three tiers (`npm run test:gallery`):
 
-- Per-tool environment *creation* (uv/venv/conda bootstrapping). The adapter
-  finds and checks an environment and tells the user how to fix it; building
-  one is the install-resolver territory of [tool-packaging.md](tool-packaging.md).
-- Nipype, nilearn or any other framework integration. They would be ordinary
-  `neuroflow/python` tools.
-- Jupyter or interactive Python. Tools are headless scripts, `completion: exit`.
-- Changing the session contract. The helper is a reader of it, not an
-  extension.
-- Rewriting the Rust runner. At most the optional interpreter-export change
-  above.
+- `python_tool.test.mjs` runs a fake interpreter (a node script posing as
+  `python`) through interpreter selection and the override variables, the
+  probe (missing, too-old and optional packages, a probe that itself fails),
+  driver generation (typed placeholders, defaults and `None` for unset inputs,
+  text placeholders), the thread variables and `PYTHONPATH`, output mapping,
+  the result-file check and provenance. With a real `python3` that imports
+  nibabel it then runs the helper itself (typed inputs, `output_path`, `result`,
+  `provenance`) and both migrated tools on generated NIfTI files: the filter's
+  threshold and smoothing, its unreadable-input passthrough, its NumPy fallback
+  when SciPy is shadowed, and an unknown operation; the label tool's TSV and
+  inline table with and without a mask.
+- `dti_fit.test.mjs` runs `dti-fit` through its real tool document when
+  `python3` imports dipy, otherwise skips with `pip install dipy to run this
+  tier`. It synthesises a 6×6×6×21 DWI from a single tensor with eigenvalues
+  (1.7, 0.3, 0.3)×10⁻³ mm²/s rotated 30° about z (FA 0.799, MD 0.767×10⁻³),
+  one b0 and twenty directions at b = 1000, and checks that WLS and OLS recover
+  FA and MD from an FSL pair and from an MRtrix `.b` table, with and without a
+  mask, and that bad data (gradient count mismatch, 3-D input, unknown fit
+  method, no b0, a `.bval` with no `.bvec`) raises before any map is written.
 
-## Order of work
+To run a tool by hand: write a `context.json` with absolute `inputs`, set
+`NEUROFLOW_SESSION`, `NEUROFLOW_OUTPUT_DIR`, `NEUROFLOW_OUTPUT_FILE`,
+`NEUROFLOW_STEP` and `NEUROFLOW_TOOL_DOC` (the adapter looks the document up
+by the `tool` id in `context.json` when the variable is unset), optionally
+`NEUROFLOW_PYTHON`, and run `node gallery/scripts/python_tool.mjs`. The MCP
+server does all of this: `cargo build -q -p neuroflow-mcp && python3
+crates/neuroflow-mcp/tests/smoke.py` runs `python-volume-filter` and the
+`filter-qa` workflow end to end.
 
-1. Adapter + helper + fake-interpreter tests (the bulk; one PR-sized unit).
-2. Migrate the two existing tools; the MCP smoke test still passes.
-3. `dti-fit` + its tiered test; install DIPY in the dev environment to run it.
-4. Docs and README rows.
+## Not covered yet
 
-Steps 1–2 can merge without 3 if DIPY review takes longer. The branch is
-stacked on `feat/matlab-adapter` for `adapter_lib.mjs`; once #5 merges it
-rebases onto `main`.
+- A per-tool `.venv` or `~/.venvs/neuroflow` wins over the server's
+  `--interpreter python3` setting, on the grounds that an environment placed
+  for the tools is more specific than one chosen for the server. Set
+  `NEUROFLOW_PYTHON` to override both.
+- Environment *creation* (venv, uv, conda bootstrapping): the adapter finds and
+  checks an environment and tells the user how to fix it; building one is the
+  install-resolver territory of [tool-packaging.md](tool-packaging.md).
+- Spec questions raised by `dti-fit`, to settle with the spec authors: whether
+  a 4-D DWI deserves a qualifier on `neuro:volume`; whether FA and MD are
+  `neuro:statmap` rather than `neuro:volume`; and a defined file format for
+  `neuro:gradient-table`.
+- Nipype, nilearn, Jupyter: a framework-based tool is an ordinary
+  `neuroflow/python` tool; interactive Python is out of scope (`completion:
+  exit`).

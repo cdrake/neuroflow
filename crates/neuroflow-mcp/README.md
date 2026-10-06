@@ -70,10 +70,23 @@ In `~/Library/Application Support/Claude/claude_desktop_config.json`:
 ```
 
 GUI apps on macOS start with a minimal `PATH`, so pass `--interpreter` for any
-interpreter a script tool uses, pointing at the Python environment that has
-the tool's requirements (for the gallery filter: nibabel, numpy, scipy).
-Adjust the paths above to match `which python3` and `which node` on your
-machine.
+interpreter a script tool launches with; every gallery adapter (native CLI,
+MATLAB, Python) launches with `node`. Adjust the paths above to match `which
+node` on your machine.
+
+Every configured interpreter is exported to each step as
+`NEUROFLOW_INTERPRETER_<NAME>` (`NEUROFLOW_INTERPRETER_PYTHON3`,
+`NEUROFLOW_INTERPRETER_NODE`, ...), together with the interpreter the step itself
+launched with, so an adapter that starts a second interpreter finds it without
+searching `PATH`. The Python tools (`python-volume-filter`, `label-volumes`,
+`dti-fit`) pick their Python in this order: `NEUROFLOW_PYTHON` in the server's
+environment (set it under `"env"` in the client's config), a per-tool `.venv`,
+`~/.venvs/neuroflow/bin/python`, the `--interpreter python3=...` setting, then
+`python3` on `PATH`. Point `--interpreter python3` at the environment that has
+the tools' packages (nibabel, numpy; scipy for smoothing; dipy for `dti-fit`);
+before launch the adapter checks them and otherwise fails the step with the
+`pip install` to run, so a wrong environment is one clear error rather than a
+traceback. See `docs/python-tools.md`.
 
 ## Options
 
@@ -83,7 +96,7 @@ machine.
 | `--data-root <DIR>` | Directory file inputs may come from. Repeatable. Paths outside every data root are rejected. |
 | `--sessions <DIR>` | Where run sessions live. Default `~/.neuroflow/runs`. |
 | `--spec <DIR>` | A neuroflow-spec checkout; its schemas become `neuroflow://schemas/...` resources. |
-| `--interpreter NAME=PATH` | Interpreter location. Allowed names: python3, python, node, Rscript. |
+| `--interpreter NAME=PATH` | Interpreter location. Allowed names: python3, python, node, Rscript. Exported to every step as `NEUROFLOW_INTERPRETER_<NAME>`. |
 | `--step-timeout <SECS>` | Kill a step that runs longer than this. |
 | `--summary-max-mb <MB>` | Largest voxel block scanned for intensity and label statistics. Default 512. |
 
@@ -123,7 +136,8 @@ registry so an agent can compose a pipeline.
 2. Steps run in dependency order, using authorial order as the tie-breaker.
    Each step gets a session directory, `context.json`, and the
    `NEUROFLOW_*` environment variables from
-   `docs/neuroflow-session-contract.md`. Scripts start through the declared
+   `docs/neuroflow-session-contract.md`, including `NEUROFLOW_INTERPRETER_<NAME>`
+   for every configured interpreter. Scripts start through the declared
    interpreter with no shell.
 3. Outputs are harvested per RFC 0008 delivery modes: `result-dir`,
    `result-file` (a path, or keys in `result.json`), `stdout-json`,
