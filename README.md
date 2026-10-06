@@ -77,15 +77,17 @@ this repository's gallery and runtime:
   `gallery/scripts/check_tool.mjs` (the same executable, version and package
   rules the adapters apply at launch) and lists anything that needs the user
   to act, with the fix, before any run. Those tools carry a **setup** badge in
-  the palette and on the canvas; interactive apps (BIDSvue, NeuroVue) carry
-  **interactive** and cannot be run from the builder yet. Registry and data
+  the palette and on the canvas. Interactive apps (BIDSvue, NeuroVue) are
+  ready when their command is on PATH and their checkout is found; otherwise
+  they show as **setup** with what to install or clone. Registry and data
   roots, the sessions root and interpreter overrides are editable there.
 - **Run** takes the workflow's declared inputs (persisted per workflow),
   explains why a run is blocked (validation issue, missing input, tool needing
   setup), then executes the document in-process on the `neuroflow-mcp`
   runtime. Progress, per-step status, outputs with **Open** (reveals the file),
   the run folder, the provenance record and, on failure, the step's stderr
-  tail are shown as they arrive. Cancel is not supported yet.
+  tail are shown as they arrive. **Cancel** stops the current step's process
+  tree and records the run as cancelled.
 
 In a plain browser (`npm run dev`) the same UI works as an editor with a
 simulated run; nothing is probed or executed.
