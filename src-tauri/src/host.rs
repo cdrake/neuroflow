@@ -359,17 +359,24 @@ pub fn start_run(app: AppHandle, settings: HostSettings, workflow: Value, inputs
             let _ = emitter.emit("neuroflow:run-finished", payload);
             if let Ok(mut runs) = cancellations().lock() { runs.remove(&ticket); }
         })
-        .map_err(|e| format!("cannot start the run thread: {e}"))?;
+        .map_err(|e| {
+            // The thread never ran, so nothing else will drop the ticket.
+            if let Ok(mut runs) = cancellations().lock() { runs.remove(&ticket_out); }
+            format!("cannot start the run thread: {e}")
+        })?;
     Ok(ticket_out)
 }
 
 /// Ask a running ticket to stop. The runtime kills an active child and marks
 /// the session cancelled; a run between steps stops before starting the next.
+/// A ticket that already finished is not an error: the run-finished event has
+/// the final word, and a Cancel click racing it must not fail.
 #[tauri::command]
 pub fn cancel_run(ticket: String) -> Result<(), String> {
     let runs = cancellations().lock().map_err(|_| "run cancellation registry is unavailable")?;
-    let flag = runs.get(&ticket).ok_or_else(|| format!("run {ticket} is not active"))?;
-    flag.store(true, Ordering::SeqCst);
+    if let Some(flag) = runs.get(&ticket) {
+        flag.store(true, Ordering::SeqCst);
+    }
     Ok(())
 }
 

@@ -15,6 +15,11 @@ use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+/// The failure message a cancellation leaves on the step and the run; the
+/// final status is derived from it, not from the live flag, so a cancel that
+/// arrives after the last step finished does not relabel a completed run.
+const CANCELLED: &str = "run cancelled";
+
 pub struct RunOutcome {
     pub run_id: String,
     pub status: String,
@@ -321,7 +326,7 @@ pub fn run_workflow_with_cancel(
     for (index, step_id) in order.iter().enumerate() {
         if failure.is_some() { break; }
         if cancelled.load(Ordering::SeqCst) {
-            failure = Some((step_id.clone(), "run cancelled".into()));
+            failure = Some((step_id.clone(), CANCELLED.into()));
             break;
         }
         let step = &steps[step_id];
@@ -401,7 +406,11 @@ pub fn run_workflow_with_cancel(
         }
     }
     if failure.is_some() { public.clear(); public_refs.clear(); }
-    let status = if cancelled.load(Ordering::SeqCst) { "cancelled" } else if failure.is_some() { "failed" } else { "completed" };
+    let status = match &failure {
+        Some((_, error)) if error == CANCELLED => "cancelled",
+        Some(_) => "failed",
+        None => "completed",
+    };
     let ended_at = now_rfc3339();
     record["status"] = json!(status);
     record["endedAt"] = json!(ended_at);
@@ -692,7 +701,7 @@ fn run_step(
             Ok(None) => {
                 if cancelled.load(Ordering::SeqCst) {
                     terminate(&mut child);
-                    return fail(rec, "run cancelled".into());
+                    return fail(rec, CANCELLED.into());
                 }
                 if let Some(limit) = cfg.step_timeout {
                     if started.elapsed() > limit {

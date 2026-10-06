@@ -238,10 +238,14 @@ export function App(): JSX.Element {
 
   function cancelHostRun(): void {
     if (!hostRun?.ticket) return
-    void cancelRun(hostRun.ticket).then(() => {
-      setHostRun((current) => current?.ticket === hostRun.ticket ? { ...current, message: 'Cancelling…' } : current)
+    const ticket = hostRun.ticket
+    // The run may finish while the cancel is in flight; only a still-active run takes the update.
+    const active = (current: HostRunState | null): current is HostRunState =>
+      current !== null && current.ticket === ticket && (current.status === 'starting' || current.status === 'running')
+    void cancelRun(ticket).then(() => {
+      setHostRun((current) => (active(current) ? { ...current, message: 'Cancelling…' } : current))
     }).catch((error) => {
-      setHostRun((current) => current ? { ...current, error: error instanceof Error ? error.message : String(error) } : current)
+      setHostRun((current) => (active(current) ? { ...current, error: error instanceof Error ? error.message : String(error) } : current))
     })
   }
 
