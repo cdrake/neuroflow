@@ -24,6 +24,7 @@ node gallery/validate.mjs        # or: npm run validate:gallery
 | `mindgrab.tool.json` | `…tools/mindgrab` | explore | script → native CLI | `brain`, `brain_mask` |
 | `niimath-allineate.tool.json` | `…tools/niimath-allineate` | explore | script → native CLI | `registered`, `transform` (`neuro:transform`) |
 | `nifti-header-matlab.tool.json` | `…tools/nifti-header-matlab` | explore | script → MATLAB/Octave | `header` (JSON), `summary` (inline JSON) |
+| `dti-fit.tool.json` | `…tools/dti-fit` | explore | script → Python (DIPY) | `fa`, `md` (NIfTI), `summary` (inline JSON) |
 
 The two **uiApp** tools (BIDSvue, NeuroVue) are interactive: a NeuroFlow runtime
 launches them with a session context and they block until the user finishes. The
@@ -33,7 +34,10 @@ one adapter, `scripts/cli_tool.mjs`, and describe their command line under
 `extensions["neuroflow/cli"]`. The **MATLAB/Octave** tool (a NIfTI header
 reader) runs through `scripts/matlab_tool.mjs` from
 `extensions["neuroflow/matlab"]`, which also covers SPM batches; see
-`../docs/matlab-tools.md`. Launch details (command, completion, env) live
+`../docs/matlab-tools.md`. The three **Python** tools (volume filter, label
+volumes, DTI fit) run through `scripts/python_tool.mjs` from
+`extensions["neuroflow/python"]`, which checks the declared packages before
+launch; see `../docs/python-tools.md`. Launch details (command, completion, env) live
 in each tool's `extensions["neuroflow/launch"]`, and the runtime handoff format
 is defined in `../docs/neuroflow-session-contract.md`.
 
@@ -71,9 +75,11 @@ Reference implementations the script-tools point at:
   before running anything and fails with the fix when one is missing, generates
   `nf_driver.py` for function entries, maps outputs, appends provenance with the
   Python and package versions. `python/neuroflow.py` is the stdlib helper that
-  gives tool code the session as an object; `python/nf_filter_volumes.py` and
-  `python/nf_label_volumes.py` are the gallery's tools on it.
-  `python_tool.test.mjs` covers the adapter and both tools (`npm run test:gallery`).
+  gives tool code the session as an object; `python/nf_filter_volumes.py`,
+  `python/nf_label_volumes.py` and `python/nf_dti_fit.py` (DIPY tensor fit) are
+  the gallery's tools on it. `python_tool.test.mjs` covers the adapter and the
+  first two; `dti_fit.test.mjs` covers the DIPY tool when dipy is importable
+  (`npm run test:gallery`). See `../docs/python-tools.md`.
 - `generate_qa.mjs` — builds a standalone QA page via `@niivue/nv-ext-save-html`
   (`generateHTML`/`saveHTML`) when installed, else a self-contained NiiVue CDN
   page. Copies volumes next to `index.html` so the page is portable.

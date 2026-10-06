@@ -181,7 +181,7 @@ built page and worker are under `Contents/Resources/offline/site/<app>/`.
 | --- | --- | --- | --- |
 | `tools/neurodesk-brain-extraction.tool.json` | brain-extraction | `t1`, `method` (synthstrip, mindgrab, bet), `threshold` (BET) | `brain`, `brain_mask` |
 | `tools/neurodesk-synthseg.tool.json` | synthseg | `t1`, `mode` (default, fast) | `labels`, `report` |
-| `tools/label-volumes.tool.json` | none (Python) | `labels`, optional `mask` | `volumes` TSV, `table` inline JSON |
+| `tools/label-volumes.tool.json` | none (Python, see [python-tools.md](python-tools.md)) | `labels`, optional `mask` | `volumes` TSV, `table` inline JSON |
 | `workflows/brain-volumes.neuroflow.json` | all three | `t1`, `method`, `mode` | brain, mask, labels, volumes |
 | `workflows/dicom-t1-mni-volumes.neuroflow.json` | synthseg, plus the native CLI tools | `dicom_dir`, `template`, `mode` | T1, brain, brain in MNI, labels, volumes |
 

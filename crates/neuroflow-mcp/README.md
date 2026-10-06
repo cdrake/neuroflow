@@ -70,10 +70,18 @@ In `~/Library/Application Support/Claude/claude_desktop_config.json`:
 ```
 
 GUI apps on macOS start with a minimal `PATH`, so pass `--interpreter` for any
-interpreter a script tool uses, pointing at the Python environment that has
-the tool's requirements (for the gallery filter: nibabel, numpy, scipy).
-Adjust the paths above to match `which python3` and `which node` on your
-machine.
+interpreter a script tool launches with; every gallery adapter (native CLI,
+MATLAB, Python) launches with `node`. Adjust the paths above to match `which
+node` on your machine.
+
+The Python tools (`python-volume-filter`, `label-volumes`, `dti-fit`) pick their
+own Python: `NEUROFLOW_PYTHON` in the server's environment (set it under `"env"`
+in the client's config), else a per-tool `.venv`, else `~/.venvs/neuroflow/bin/python`,
+else `python3` on `PATH`. Before launch the adapter checks that the environment
+has the tool's packages (nibabel, numpy; scipy for smoothing; dipy for `dti-fit`)
+and otherwise fails the step with the `pip install` to run, so a wrong environment
+is one clear error rather than a traceback. `--interpreter python3=...` is not
+passed on to those tools yet; see `docs/python-tools.md`.
 
 ## Options
 
