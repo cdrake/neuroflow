@@ -35,8 +35,9 @@
  *                          args are literals or {{input}}, {{outputDir}},
  *                          {{workDir}}, {{outputFile}} placeholders (an exact
  *                          {{name}} passes the input with its JSON type, paths
- *                          as pathlib.Path; a placeholder inside text yields a
- *                          str). `result` names a core:result-file output that
+ *                          as pathlib.Path, None for an unset optional input; a
+ *                          placeholder inside text yields a str). `result`
+ *                          names a core:result-file output that
  *                          receives the return value as JSON.
  *                      { kind: "script", file }
  *                          runs the file with the helper importable
@@ -203,7 +204,10 @@ function expr(a) {
   if (m) {
     const name = m[1];
     if (special[name]) return special[name];
-    if (!hasValue(inputs, name)) fail(`entry references input ${name}, which has no value`);
+    if (!hasValue(inputs, name)) {
+      if (tool.inputs?.[name]?.optional) return 'None'; // an optional input left unset
+      fail(`entry references input ${name}, which has no value`);
+    }
     return `s.inputs[${JSON.stringify(name)}]`;
   }
   return lit(a.replace(PLACEHOLDER, (_, name) => {

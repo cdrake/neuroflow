@@ -17,13 +17,13 @@ const adapter = join(here, 'python_tool.mjs');
 const root = realpathSync(mkdtempSync(join(tmpdir(), 'python-tool-')));
 
 // ---- a minimal NIfTI-1 file (header + zero data) --------------------------------
-function writeNifti(path, dim = [4, 3, 2], pixdim = [1.5, 2, 2.5]) {
+function writeNifti(path, dim = [4, 3, 2], pixdim = [1.5, 2, 2.5], values = null) {
   const h = Buffer.alloc(348);
   h.writeInt32LE(348, 0);
   h.writeInt16LE(dim.length, 40);
   dim.forEach((d, i) => h.writeInt16LE(d, 42 + 2 * i));
-  h.writeInt16LE(16, 70); // float32
-  h.writeInt16LE(32, 72);
+  h.writeInt16LE(values ? 4 : 16, 70); // int16 when values are given, else float32
+  h.writeInt16LE(values ? 16 : 32, 72);
   h.writeFloatLE(1, 76);
   pixdim.forEach((p, i) => h.writeFloatLE(p, 80 + 4 * i));
   h.writeFloatLE(352, 108);
@@ -33,7 +33,10 @@ function writeNifti(path, dim = [4, 3, 2], pixdim = [1.5, 2, 2.5]) {
   [[pixdim[0], 0, 0, -10], [0, pixdim[1], 0, -20], [0, 0, pixdim[2], -30]]
     .forEach((r, i) => r.forEach((v, j) => h.writeFloatLE(v, 280 + 16 * i + 4 * j)));
   h.write('n+1\0', 344);
-  writeFileSync(path, gzipSync(Buffer.concat([h, Buffer.alloc(4 * dim.reduce((a, b) => a * b, 1) + 4)])));
+  const count = dim.reduce((a, b) => a * b, 1);
+  const data = Buffer.alloc((values ? 2 : 4) * count + 4);
+  if (values) values.forEach((v, i) => data.writeInt16LE(v, 4 + 2 * i));
+  writeFileSync(path, gzipSync(Buffer.concat([h, data])));
   return path;
 }
 const image = writeNifti(join(root, 'img.nii.gz'));
@@ -200,9 +203,15 @@ test('honours singleThread:false and clearEnv', () => {
 });
 
 test('rejects bad entries, placeholders without a value, and missing inputs', () => {
-  const missing = run(fn({ args: ['{{label}}'] }), {});
+  const missing = run(fn({ args: ['{{image}}'] }), {});
   assert.equal(missing.status, 1);
-  assert.match(missing.stderr, /references input label, which has no value/);
+  assert.match(missing.stderr, /references input image, which has no value/);
+  const inText = run(fn({ args: ['tag={{label}}'] }), {});
+  assert.equal(inText.status, 1);
+  assert.match(inText.stderr, /references input label, which has no value/);
+  const optional = run(fn({ args: ['{{label}}', '{{n}}'] }), { n: 1 });
+  assert.equal(optional.status, 0, optional.stderr);
+  assert.match(optional.driver, /nf_module\.run\(None, s\.inputs\["n"\]\)/);
   const absent = run(fn({ args: ['{{image}}'] }), { image: join(root, 'nope.nii.gz') });
   assert.equal(absent.status, 1);
   assert.match(absent.stderr, /input image \(neuro:volume\) does not exist/);
@@ -317,4 +326,77 @@ def run(image, out_dir):
   assert.equal(summary.orientation, 'RAS');
   assert.deepEqual(JSON.parse(readFileSync(join(r.outputDir, 'header.json'), 'utf8')), summary);
   assert.match(r.prov[0].agent, /^Python 3\.\d+\.\d+ \+ nibabel \d+\.\d+\.\d+ \+ numpy \d+\.\d+/);
+});
+
+// ---------------------------------------------------------------------------
+// The gallery's own Python tools, through their real tool documents
+// ---------------------------------------------------------------------------
+const toolsDir = join(here, '..', 'tools');
+function runGalleryTool(file, inputs, env = {}) {
+  const doc = JSON.parse(readFileSync(join(toolsDir, file), 'utf8'));
+  const session = join(root, `g${++n}`);
+  const outputDir = join(session, 'outputs', 'step');
+  const workDir = join(session, 'work');
+  mkdirSync(outputDir, { recursive: true });
+  mkdirSync(workDir, { recursive: true });
+  writeFileSync(join(session, 'context.json'), JSON.stringify({ runId: 'run-g', tool: doc.id, step: 'step', inputs, outputDir, workDir }));
+  const childEnv = {
+    ...process.env, NEUROFLOW_SESSION: session, NEUROFLOW_OUTPUT_DIR: outputDir, NEUROFLOW_STEP: 'step',
+    NEUROFLOW_OUTPUT_FILE: join(session, 'result.json'), NEUROFLOW_TOOL_DOC: join(toolsDir, file), NEUROFLOW_PYTHON: python3, ...env,
+  };
+  const r = spawnSync(process.execPath, [adapter], { encoding: 'utf8', env: childEnv });
+  const read = (p) => (existsSync(p) ? readFileSync(p, 'utf8') : null);
+  const prov = read(join(session, 'provenance.jsonl'));
+  return { ...r, session, outputDir, prov: prov ? prov.trim().split('\n').map((l) => JSON.parse(l)) : null, result: read(join(session, 'result.json')) };
+}
+
+test('gallery label-volumes: TSV plus inline table, mask optional', { skip: !hasNibabel && 'nibabel not importable by python3' }, () => {
+  // 4x3x2 voxels of 1.5 x 2 x 2.5 mm = 7.5 mm^3 = 0.0075 mL each
+  const labels = writeNifti(join(root, 'labels.nii.gz'), [4, 3, 2], [1.5, 2, 2.5], [0, 0, 2, 2, 2, 17, 17, 17, 17, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 999]);
+  const mask = writeNifti(join(root, 'mask.nii.gz'), [4, 3, 2], [1.5, 2, 2.5], [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+  const r = runGalleryTool('label-volumes.tool.json', { labels, mask });
+  assert.equal(r.status, 0, r.stderr);
+  const tsv = readFileSync(join(r.outputDir, 'volumes.tsv'), 'utf8').trim().split('\n');
+  assert.equal(tsv[0], 'label\tname\tvoxels\tvolume_ml');
+  assert.deepEqual(tsv.slice(1), ['2\tLeft-Cerebral-White-Matter\t3\t0.022', '4\tLeft-Lateral-Ventricle\t2\t0.015', '17\tLeft-Hippocampus\t4\t0.03', '999\tlabel-999\t1\t0.007']);
+  const { table } = JSON.parse(r.result);
+  assert.equal(table.voxel_volume_ml, 0.0075);
+  assert.deepEqual(table.totals, { labeled_ml: 0.074, brain_tissue_ml: 0.059, brain_mask_ml: 0.09 }); // Python rounds 0.0225 down
+  assert.equal(table.rows.length, 4);
+  assert.deepEqual(r.prov.at(-1).outputs, { volumes: 'volumes.tsv' });
+  assert.deepEqual(r.prov.at(-1).entry, { kind: 'function', module: 'nf_label_volumes', name: 'run' });
+  const noMask = runGalleryTool('label-volumes.tool.json', { labels });
+  assert.equal(noMask.status, 0, noMask.stderr);
+  assert.equal(JSON.parse(noMask.result).table.totals.brain_mask_ml, undefined);
+});
+
+test('gallery python-volume-filter: filters a dataset, falls back to NumPy smoothing without SciPy, copies unreadable inputs', { skip: !hasNibabel && 'nibabel not importable by python3' }, () => {
+  const bids = join(root, 'bids', 'sub-01', 'anat');
+  mkdirSync(bids, { recursive: true });
+  const values = Array.from({ length: 24 }, (_, i) => (i === 9 ? 1000 : 10));
+  writeNifti(join(bids, 'sub-01_T1w.nii.gz'), [4, 3, 2], [1.5, 2, 2.5], values);
+  writeFileSync(join(bids, 'sub-01_broken.nii'), 'not a nifti');
+  const thr = runGalleryTool('python-volume-filter.tool.json', { bids_dir: join(root, 'bids'), operation: 'threshold', amount: 100 });
+  assert.equal(thr.status, 0, thr.stderr);
+  assert.ok(existsSync(join(thr.outputDir, 'filtered', 'sub-01_T1w.nii.gz')));
+  assert.ok(existsSync(join(thr.outputDir, 'filtered', 'sub-01_broken.nii')), 'unreadable input copied through');
+  const filterLine = thr.prov.find((p) => p.action === 'filter');
+  assert.equal(filterLine.modes['sub-01_T1w.nii.gz'], 'threshold');
+  assert.match(filterLine.modes['sub-01_broken.nii'], /^passthrough \(unreadable: /);
+  assert.deepEqual(thr.prov.at(-1).outputs, { filtered_volumes: 'filtered' });
+  assert.match(thr.prov.at(-1).agent, /^Python 3\.\d+\.\d+ \+ nibabel .* \+ numpy /);
+  // Shadow scipy so the probe records it absent and smoothing takes the NumPy path.
+  const shadow = join(root, 'noscipy', 'scipy');
+  mkdirSync(shadow, { recursive: true });
+  writeFileSync(join(shadow, '__init__.py'), 'raise ImportError("shadowed for the test")\n');
+  const sm = runGalleryTool('python-volume-filter.tool.json', { bids_dir: join(root, 'bids'), operation: 'smooth', amount: 4 }, { PYTHONPATH: join(root, 'noscipy') });
+  assert.equal(sm.status, 0, sm.stderr);
+  assert.equal(sm.prov.at(-1).packages.scipy, null);
+  const peek = spawnSync(python3, ['-c', `import nibabel, numpy; d = nibabel.load(${JSON.stringify(join(sm.outputDir, 'filtered', 'sub-01_T1w.nii.gz'))}).get_fdata(); print(float(d.max()), float(d.min()))`], { encoding: 'utf8' });
+  const [max, min] = peek.stdout.trim().split(' ').map(Number);
+  assert.ok(max < 1000 && max > 10, `spike spread out: ${peek.stdout}`);
+  assert.ok(min >= 10, `no undershoot: ${peek.stdout}`);
+  const bad = runGalleryTool('python-volume-filter.tool.json', { bids_dir: join(root, 'bids'), operation: 'invert' });
+  assert.equal(bad.status, 1);
+  assert.match(bad.stderr, /ValueError: unknown operation 'invert'/);
 });

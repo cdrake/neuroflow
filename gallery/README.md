@@ -14,10 +14,10 @@ node gallery/validate.mjs        # or: npm run validate:gallery
 | --- | --- | --- | --- | --- |
 | `bidsvue.tool.json` | `…tools/bidsvue` | ingest | uiApp | `bids_dir` (result-dir) |
 | `neurovue.tool.json` | `…tools/neurovue` | explore | uiApp | `correction_patch`, `review_state` (result-file) |
-| `python-volume-filter.tool.json` | `…tools/python-volume-filter` | explore | script | `filtered_volumes` (result-dir) |
+| `python-volume-filter.tool.json` | `…tools/python-volume-filter` | explore | script → Python | `filtered_volumes` (result-dir) |
 | `niivue-qa-page.tool.json` | `…tools/niivue-qa-page` | publish | script | `qa_html` (result-file `index.html`) |
 | `provenance-fold.tool.json` | `…tools/provenance-fold` | publish | script | `run_record` (`prov:run-record`, `run.provenance.json`) |
-| `label-volumes.tool.json` | `…tools/label-volumes` | publish | script | `volumes` (TSV), `table` (inline JSON) |
+| `label-volumes.tool.json` | `…tools/label-volumes` | publish | script → Python | `volumes` (TSV), `table` (inline JSON) |
 | `neurodesk-brain-extraction.tool.json` | `neurodesk.webapps/brain-extraction` | explore | script → Neurodesk job | `brain`, `brain_mask` |
 | `neurodesk-synthseg.tool.json` | `neurodesk.webapps/synthseg` | explore | script → Neurodesk job | `labels`, `report` |
 | `dcm2niix.tool.json` | `…tools/dcm2niix` | ingest | script → native CLI | `volume`, `sidecar` |
@@ -66,9 +66,14 @@ its outputs are the produced `bids_dir` and the published QA `qa_page`.
 
 Reference implementations the script-tools point at:
 
-- `filter_volumes.py` — reads the session context, filters NIfTI volumes
-  (smooth / threshold / zscore / passthrough), writes to the session output dir,
-  appends provenance. Uses `nibabel`/`numpy`/`scipy` when present, else copies.
+- `python_tool.mjs` — shared adapter for Python tools: finds the interpreter
+  (`NEUROFLOW_PYTHON`, per-tool `.venv`, PATH), probes every declared package
+  before running anything and fails with the fix when one is missing, generates
+  `nf_driver.py` for function entries, maps outputs, appends provenance with the
+  Python and package versions. `python/neuroflow.py` is the stdlib helper that
+  gives tool code the session as an object; `python/nf_filter_volumes.py` and
+  `python/nf_label_volumes.py` are the gallery's tools on it.
+  `python_tool.test.mjs` covers the adapter and both tools (`npm run test:gallery`).
 - `generate_qa.mjs` — builds a standalone QA page via `@niivue/nv-ext-save-html`
   (`generateHTML`/`saveHTML`) when installed, else a self-contained NiiVue CDN
   page. Copies volumes next to `index.html` so the page is portable.
@@ -83,7 +88,7 @@ Reference implementations the script-tools point at:
   status), runs it headlessly, maps outputs, appends provenance with engine and
   SPM versions. `matlab/nf_nifti_header.m` is the reference entry;
   `matlab_tool.test.mjs` covers the adapter (fake engine, Octave, MATLAB opt-in).
-- `adapter_lib.mjs` — helpers shared by the two adapters (session context,
+- `adapter_lib.mjs` — helpers shared by the three adapters (session context,
   tool-document lookup, executable search with `~` and `*`, input checks,
   output mapping, provenance).
 - `fold_provenance.mjs` — folds the run's append-only `provenance.jsonl` trail

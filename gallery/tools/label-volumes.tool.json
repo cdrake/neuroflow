@@ -49,16 +49,43 @@
     },
     "neuroflow/launch": {
       "kind": "script",
-      "interpreter": "python3",
-      "script": "../scripts/label_volumes.py",
+      "interpreter": "node",
+      "script": "../scripts/python_tool.mjs",
       "completion": "exit",
       "interactive": false,
       "contract": "../../docs/neuroflow-session-contract.md",
       "requirements": [
+        "Python 3.10+ with nibabel and numpy; set NEUROFLOW_PYTHON to the environment"
+      ],
+      "description": "python_tool.mjs checks the Python environment, then calls nf_label_volumes.run(labels, mask); volumes.tsv lands in the output dir and the returned table in $NEUROFLOW_OUTPUT_FILE."
+    },
+    "neuroflow/python": {
+      "interpreter": {
+        "env": "NEUROFLOW_PYTHON",
+        "paths": [
+          "{{toolDir}}/.venv/bin/python",
+          "~/.venvs/neuroflow/bin/python"
+        ],
+        "minVersion": "3.10"
+      },
+      "requirements": [
         "nibabel",
         "numpy"
       ],
-      "description": "Reads inputs.labels (and inputs.mask) from context.json; writes volumes.tsv to the output dir and {\"table\": ...} to $NEUROFLOW_OUTPUT_FILE."
+      "singleThread": true,
+      "entry": {
+        "kind": "function",
+        "module": "nf_label_volumes",
+        "name": "run",
+        "args": [
+          "{{labels}}",
+          "{{mask}}"
+        ],
+        "result": "table"
+      },
+      "outputs": {
+        "volumes": "volumes.tsv"
+      }
     },
     "neuroflow/mcp": {
       "title": "Label volumes (mL per structure)",

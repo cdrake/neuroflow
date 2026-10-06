@@ -1,21 +1,19 @@
-#!/usr/bin/env python3
 """NeuroFlow gallery tool: label-volumes.
 
 Measures the volume of every label in a segmentation and, optionally, of a
-brain mask. Writes volumes.tsv to the session output directory and returns the
-same rows inline as {"table": ...} in $NEUROFLOW_OUTPUT_FILE, so an agent can
-answer "what is the left hippocampal volume?" without reading the file.
+brain mask. Writes volumes.tsv to the step's output directory and returns the
+same rows plus totals, which ``python_tool.mjs`` stores inline as the ``table``
+result so an agent can answer "what is the left hippocampal volume?" without
+reading the file.
 """
 from __future__ import annotations
 
-import datetime
-import json
-import os
-import sys
 from pathlib import Path
 
-TOOL_ID = "neuroflow.gallery.tools/label-volumes"
-STEP = os.environ.get("NEUROFLOW_STEP", "volumes")
+import nibabel as nib
+import numpy as np
+
+from neuroflow import session
 
 # FreeSurfer names for the SynthSeg 2.0 label set (FreeSurferColorLUT.txt).
 NAMES = {
@@ -33,27 +31,18 @@ NAMES = {
 FLUID = {4, 5, 14, 15, 24, 43, 44}
 
 
-def now() -> str:
-    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+def voxel_volume_ml(img) -> float:
+    return float(abs(np.linalg.det(img.affine[:3, :3]))) / 1000.0
 
 
-def main() -> int:
-    import nibabel as nib  # type: ignore
-    import numpy as np  # type: ignore
-
-    session = Path(os.environ["NEUROFLOW_SESSION"])
-    ctx = json.loads((session / "context.json").read_text())
-    inputs = ctx.get("inputs", {})
-    out_dir = Path(os.environ.get("NEUROFLOW_OUTPUT_DIR") or ctx["outputDir"])
-    out_dir.mkdir(parents=True, exist_ok=True)
-    result_file = Path(os.environ.get("NEUROFLOW_OUTPUT_FILE") or out_dir / "result.json")
-
-    img = nib.load(inputs["labels"])
+def run(labels: Path, mask: Path | None = None) -> dict:
+    s = session()
+    img = nib.load(str(labels))
     data = np.asanyarray(img.dataobj)
     if not np.issubdtype(data.dtype, np.integer):
         data = np.rint(data)
     data = data.astype(np.int64)
-    voxel_ml = float(abs(np.linalg.det(img.affine[:3, :3]))) / 1000.0
+    voxel_ml = voxel_volume_ml(img)
 
     ids, counts = np.unique(data, return_counts=True)
     rows = []
@@ -71,26 +60,14 @@ def main() -> int:
         "labeled_ml": round(sum(r["volume_ml"] for r in rows), 3),
         "brain_tissue_ml": round(sum(r["volume_ml"] for r in rows if r["label"] not in FLUID), 3),
     }
-    if inputs.get("mask"):
-        mimg = nib.load(inputs["mask"])
+    if mask:
+        mimg = nib.load(str(mask))
         m = np.asanyarray(mimg.dataobj)
-        mvox = float(abs(np.linalg.det(mimg.affine[:3, :3]))) / 1000.0
-        totals["brain_mask_ml"] = round(int(np.count_nonzero(m)) * mvox, 3)
+        totals["brain_mask_ml"] = round(int(np.count_nonzero(m)) * voxel_volume_ml(mimg), 3)
 
-    with (out_dir / "volumes.tsv").open("w") as fh:
+    with s.output_path("volumes").open("w") as fh:
         fh.write("label\tname\tvoxels\tvolume_ml\n")
         for r in rows:
             fh.write(f"{r['label']}\t{r['name']}\t{r['voxels']}\t{r['volume_ml']}\n")
-    table = {"voxel_volume_ml": round(voxel_ml, 6), "totals": totals, "rows": rows}
-    result_file.write_text(json.dumps({"table": table}, indent=2) + "\n")
-
-    line = {"ts": now(), "step": STEP, "tool": TOOL_ID, "agent": "label-volumes", "action": "measure",
-            "outputs": {"volumes": "volumes.tsv"}}
-    with (session / "provenance.jsonl").open("a") as fh:
-        fh.write(json.dumps(line) + "\n")
-    print(f"label_volumes: {len(rows)} labels, {totals}")
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+    s.log(f"{len(rows)} labels, {totals}")
+    return {"voxel_volume_ml": round(voxel_ml, 6), "totals": totals, "rows": rows}
