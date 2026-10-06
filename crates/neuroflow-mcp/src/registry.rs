@@ -31,6 +31,8 @@ pub struct Launch {
     pub name: String,
     pub interpreter: PathBuf,
     pub script: PathBuf,
+    pub args: Vec<String>,
+    pub cwd: Option<PathBuf>,
 }
 
 /// Environment variables that tell a step where the runner's interpreters are:
@@ -287,7 +289,18 @@ pub fn launch_of(doc: &Doc, interpreters: &HashMap<String, PathBuf>) -> Result<L
     match kind {
         "script" => {}
         "uiApp" => {
-            return Err("interactive uiApp tools need an MCP Apps host (RFC 0009 section 6), not yet implemented".into())
+            let app = launch.get("app").and_then(Value::as_str).ok_or("uiApp has no app name")?;
+            let command = launch.get("command").and_then(Value::as_str).ok_or("uiApp has no command")?;
+            let executable = find_on_path(command).ok_or_else(|| format!("{command} was not found on PATH"))?;
+            // An explicit environment override is safest for non-standard checkouts. The
+            // gallery's reference apps are siblings of the NeuroFlow checkout.
+            let key = format!("NEUROFLOW_UI_APP_{}", app.to_uppercase().replace('-', "_"));
+            let cwd = std::env::var_os(&key).map(PathBuf::from).or_else(|| {
+                launch.get("repo").and_then(Value::as_str).map(|repo| doc.root.parent().unwrap_or(&doc.root).join(repo))
+            }).filter(|path| path.is_dir()).ok_or_else(|| format!("{app} checkout not found; set {key} to its directory"))?;
+            let args = launch.get("args").and_then(Value::as_array).into_iter().flatten()
+                .filter_map(Value::as_str).map(str::to_string).collect();
+            return Ok(Launch { name: command.into(), interpreter: executable.clone(), script: PathBuf::new(), args, cwd: Some(cwd) });
         }
         other => return Err(format!("launch kind {other:?} is not supported by this server yet")),
     }
@@ -324,7 +337,7 @@ pub fn launch_of(doc: &Doc, interpreters: &HashMap<String, PathBuf>) -> Result<L
             doc.root.display()
         ));
     }
-    Ok(Launch { name: interpreter_name.to_string(), interpreter, script })
+    Ok(Launch { name: interpreter_name.to_string(), interpreter, script, args: vec![], cwd: None })
 }
 
 /// RFC 0009 section 1.1: replace `/` with `.`, drop characters outside `[A-Za-z0-9_.-]`.

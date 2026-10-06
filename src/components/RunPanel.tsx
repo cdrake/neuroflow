@@ -17,7 +17,7 @@ import type { RunFinishedEvent, RunStepRecord } from '../domain/host'
 import { isArtifactDescriptor } from '../domain/host'
 import { idTail } from '../data/gallery'
 
-export type HostRunStatus = 'starting' | 'running' | 'completed' | 'failed' | 'rejected'
+export type HostRunStatus = 'starting' | 'running' | 'completed' | 'failed' | 'cancelled' | 'rejected'
 
 export interface HostRunState {
   ticket: string | null
@@ -41,13 +41,14 @@ interface RunPanelProps {
   environmentChecked: boolean
   run: HostRunState | null
   onStart: (inputs: Record<string, unknown>) => void
+  onCancel: () => void
   onOpen: (path: string) => void
 }
 
 const RUN_INPUTS_STORAGE_KEY = 'neuroflow.runInputs.v1'
 
 /** Run monitor (design: RunMonitor artboard): inputs form, progress, steps, outputs. */
-export function RunPanel({ workflow, available, report, runnable, environmentChecked, run, onStart, onOpen }: RunPanelProps): JSX.Element {
+export function RunPanel({ workflow, available, report, runnable, environmentChecked, run, onStart, onCancel, onOpen }: RunPanelProps): JSX.Element {
   const [values, setValues] = useState<Record<string, string>>(() => loadInputs(workflow))
 
   useEffect(() => {
@@ -149,7 +150,7 @@ export function RunPanel({ workflow, available, report, runnable, environmentChe
           {isRunning ? <Loader2 className="nf-spin" size={15} /> : <CirclePlay size={15} />}
           {isRunning ? 'Running' : 'Run'}
         </button>
-        <button className="nf-action" disabled title="Cancel is not supported yet" type="button">
+        <button className="nf-action" disabled={!isRunning || !run?.ticket} onClick={onCancel} title="Stop the current run" type="button">
           <Ban size={15} />
           Cancel
         </button>
@@ -294,6 +295,7 @@ function stateClass(status: HostRunStatus): string {
   if (status === 'starting' || status === 'running') return 'is-active'
   if (status === 'failed') return 'is-failed'
   if (status === 'rejected') return 'is-blocked'
+  if (status === 'cancelled') return 'is-blocked'
   return ''
 }
 
@@ -301,6 +303,7 @@ function stateIcon(status: HostRunStatus): JSX.Element {
   if (status === 'starting' || status === 'running') return <Loader2 className="nf-spin" size={14} />
   if (status === 'completed') return <CheckCircle2 size={14} />
   if (status === 'rejected') return <Ban size={14} />
+  if (status === 'cancelled') return <Ban size={14} />
   return <XCircle size={14} />
 }
 
@@ -314,6 +317,8 @@ function stateLabel(run: HostRunState): string {
       return `Completed · ${run.total} step${run.total === 1 ? '' : 's'}`
     case 'failed':
       return run.currentStep ? `Failed at ${run.currentStep}` : 'Failed'
+    case 'cancelled':
+      return 'Cancelled'
     case 'rejected':
       return 'Rejected before any step started'
   }

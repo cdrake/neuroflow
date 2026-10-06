@@ -14,7 +14,8 @@ use serde_json::{json, Map, Value};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 use tauri::{AppHandle, Emitter};
 
 /// Where the host looks for documents, data and sessions. Persisted by the UI.
@@ -75,6 +76,11 @@ pub struct WorkflowStatus {
 
 const SUMMARY_MAX_BYTES: u64 = 512 * 1024 * 1024;
 static TICKETS: AtomicU64 = AtomicU64::new(1);
+static CANCELLATIONS: OnceLock<Mutex<HashMap<String, Arc<AtomicBool>>>> = OnceLock::new();
+
+fn cancellations() -> &'static Mutex<HashMap<String, Arc<AtomicBool>>> {
+    CANCELLATIONS.get_or_init(|| Mutex::new(HashMap::new()))
+}
 
 fn home() -> PathBuf {
     std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(std::env::temp_dir)
@@ -253,6 +259,11 @@ pub fn check_environment(settings: HostSettings) -> Result<EnvironmentReport, St
                     status.status = "needsSetup".into();
                     status.detail = reason.clone();
                 }
+            } else if status.status == "interactive" {
+                // Desktop owns the app process and waits for it to exit; unlike an
+                // MCP client, it can satisfy the file-based uiApp session contract.
+                status.status = "ready".into();
+                status.detail = "interactive app ready to launch from the desktop builder".into();
             }
             status
         })
@@ -290,6 +301,9 @@ pub fn start_run(app: AppHandle, settings: HostSettings, workflow: Value, inputs
     let cfg = build_config(&settings)?;
     let registry = load_registry(&cfg)?;
     let ticket = format!("run-{}", TICKETS.fetch_add(1, Ordering::SeqCst));
+    let cancellation = Arc::new(AtomicBool::new(false));
+    cancellations().lock().map_err(|_| "run cancellation registry is unavailable")?
+        .insert(ticket.clone(), cancellation.clone());
     let emitter = app.clone();
     let ticket_out = ticket.clone();
     std::thread::Builder::new()
@@ -302,7 +316,7 @@ pub fn start_run(app: AppHandle, settings: HostSettings, workflow: Value, inputs
                     json!({ "ticket": ticket, "progress": done, "total": total, "message": message }),
                 );
             };
-            let payload = match runtime::run_workflow(&cfg, &registry, &workflow, &inputs, &client, &mut progress) {
+            let payload = match runtime::run_workflow_with_cancel(&cfg, &registry, &workflow, &inputs, &client, &mut progress, &cancellation) {
                 Err(e) => json!({ "ticket": ticket, "ok": false, "error": format!("Run rejected before any step started: {e}") }),
                 Ok(outcome) => {
                     let record = std::fs::read_to_string(cfg.sessions_root.join(&outcome.run_id).join("run.json"))
@@ -321,9 +335,20 @@ pub fn start_run(app: AppHandle, settings: HostSettings, workflow: Value, inputs
                 }
             };
             let _ = emitter.emit("neuroflow:run-finished", payload);
+            if let Ok(mut runs) = cancellations().lock() { runs.remove(&ticket); }
         })
         .map_err(|e| format!("cannot start the run thread: {e}"))?;
     Ok(ticket_out)
+}
+
+/// Ask a running ticket to stop. The runtime kills an active child and marks
+/// the session cancelled; a run between steps stops before starting the next.
+#[tauri::command]
+pub fn cancel_run(ticket: String) -> Result<(), String> {
+    let runs = cancellations().lock().map_err(|_| "run cancellation registry is unavailable")?;
+    let flag = runs.get(&ticket).ok_or_else(|| format!("run {ticket} is not active"))?;
+    flag.store(true, Ordering::SeqCst);
+    Ok(())
 }
 
 /// Reveal a file or folder from a run session in the system file manager.

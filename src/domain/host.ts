@@ -165,6 +165,10 @@ export async function startRun(
   return invoke<string>('start_run', { settings, workflow, inputs })
 }
 
+export async function cancelRun(ticket: string): Promise<void> {
+  await invoke('cancel_run', { ticket })
+}
+
 export async function openPath(settings: HostSettings, path: string): Promise<void> {
   await invoke('open_path', { settings, path })
 }

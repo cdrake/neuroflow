@@ -12,6 +12,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 pub struct RunOutcome {
@@ -217,6 +218,22 @@ pub fn run_workflow(
     client: &Value,
     progress: Progress<'_>,
 ) -> Result<RunOutcome, String> {
+    let cancelled = AtomicBool::new(false);
+    run_workflow_with_cancel(cfg, registry, workflow, args, client, progress, &cancelled)
+}
+
+/// As `run_workflow`, but cooperatively terminates the current child process
+/// when `cancelled` becomes true. Hosts own the flag and may set it from another
+/// thread; the runtime still writes a complete cancelled session record.
+pub fn run_workflow_with_cancel(
+    cfg: &Config,
+    registry: &Registry,
+    workflow: &Value,
+    args: &Map<String, Value>,
+    client: &Value,
+    progress: Progress<'_>,
+    cancelled: &AtomicBool,
+) -> Result<RunOutcome, String> {
     let report = neuroflow_core::validate_workflow_value_with_tools(workflow, Some(&registry.tools_array()));
     if let Some(issue) = report.issues.iter().find(|issue| issue.severity == "error") {
         return Err(format!("{}: {}", issue.path.as_deref().unwrap_or("workflow"), issue.message));
@@ -303,12 +320,16 @@ pub fn run_workflow(
     let steps = workflow.get("steps").and_then(Value::as_object).cloned().unwrap_or_default();
     for (index, step_id) in order.iter().enumerate() {
         if failure.is_some() { break; }
+        if cancelled.load(Ordering::SeqCst) {
+            failure = Some((step_id.clone(), "run cancelled".into()));
+            break;
+        }
         let step = &steps[step_id];
         let tool_id = step.get("tool").and_then(Value::as_str).unwrap_or("");
         let tool = registry.tool(tool_id).ok_or_else(|| format!("tool {tool_id} disappeared"))?;
         progress(index as f64, total, &format!("step {}/{}: {step_id} ({tool_id})", index + 1, order.len()));
 
-        let mut result = run_step(cfg, &paths, &run_id, workflow, step_id, step, tool, &inputs, &context, &step_outputs, &mut known_evidence);
+        let mut result = run_step(cfg, &paths, &run_id, workflow, step_id, step, tool, &inputs, &context, &step_outputs, &mut known_evidence, cancelled);
         if let Some(mappings) = step.get("outputMappings").and_then(Value::as_object).filter(|_| result.error.is_none()) {
             for (output, field) in mappings {
                 if let (Some(field), Some(value)) = (field.as_str(), result.outputs.get(output)) {
@@ -380,7 +401,7 @@ pub fn run_workflow(
         }
     }
     if failure.is_some() { public.clear(); public_refs.clear(); }
-    let status = if failure.is_some() { "failed" } else { "completed" };
+    let status = if cancelled.load(Ordering::SeqCst) { "cancelled" } else if failure.is_some() { "failed" } else { "completed" };
     let ended_at = now_rfc3339();
     record["status"] = json!(status);
     record["endedAt"] = json!(ended_at);
@@ -494,6 +515,7 @@ fn run_step(
     context: &Map<String, Value>,
     step_outputs: &HashMap<String, Map<String, Value>>,
     known_evidence: &mut HashMap<String, Value>,
+    cancelled: &AtomicBool,
 ) -> StepRecord {
     let started_at = now_rfc3339();
     let mut rec = StepRecord {
@@ -601,9 +623,13 @@ fn run_step(
         .pointer("/outputDelivery/default")
         .and_then(Value::as_str)
         .unwrap_or("core:result-file");
-    let spawned = Command::new(&launch.interpreter)
-        .arg(&launch.script)
-        .current_dir(&paths.work)
+    let mut command = Command::new(&launch.interpreter);
+    if !launch.script.as_os_str().is_empty() {
+        command.arg(&launch.script);
+    }
+    let spawned = command
+        .args(&launch.args)
+        .current_dir(launch.cwd.as_deref().unwrap_or(&paths.work))
         .env("NEUROFLOW_SESSION", &paths.session)
         .env("NEUROFLOW_OUTPUT_DIR", &out_dir)
         .env("NEUROFLOW_OUTPUT_FILE", out_dir.join("result.json"))
@@ -628,6 +654,11 @@ fn run_step(
         match child.try_wait() {
             Ok(Some(status)) => break status,
             Ok(None) => {
+                if cancelled.load(Ordering::SeqCst) {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return fail(rec, "run cancelled".into());
+                }
                 if let Some(limit) = cfg.step_timeout {
                     if started.elapsed() > limit {
                         let _ = child.kill();

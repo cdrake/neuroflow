@@ -141,6 +141,7 @@ pub fn run() {
             host::check_environment,
             host::workflow_runnable,
             host::start_run,
+            host::cancel_run,
             host::open_path,
             host::read_session_tail
         ])

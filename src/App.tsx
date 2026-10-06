@@ -25,6 +25,7 @@ import type { HostRunState } from './components/RunPanel'
 import { library, tools } from './data/gallery'
 import {
   checkEnvironment,
+  cancelRun,
   defaultSettings,
   isTauriRuntime,
   loadStoredSettings,
@@ -175,10 +176,11 @@ export function App(): JSX.Element {
         }
         const done = event as Extract<typeof event, { record: unknown }>
         const failed = done.status !== 'completed'
+        const cancelled = done.status === 'cancelled'
         return {
           ...current,
           ticket: current.ticket ?? event.ticket,
-          status: failed ? 'failed' : 'completed',
+          status: cancelled ? 'cancelled' : failed ? 'failed' : 'completed',
           progress: current.total,
           finished: done,
           currentStep: done.record.failedStep ?? current.currentStep,
@@ -232,6 +234,15 @@ export function App(): JSX.Element {
     } catch (error) {
       setHostRun({ ...pending, status: 'rejected', error: error instanceof Error ? error.message : String(error) })
     }
+  }
+
+  function cancelHostRun(): void {
+    if (!hostRun?.ticket) return
+    void cancelRun(hostRun.ticket).then(() => {
+      setHostRun((current) => current?.ticket === hostRun.ticket ? { ...current, message: 'Cancelling…' } : current)
+    }).catch((error) => {
+      setHostRun((current) => current ? { ...current, error: error instanceof Error ? error.message : String(error) } : current)
+    })
   }
 
   function revealPath(path: string): void {
@@ -656,6 +667,7 @@ export function App(): JSX.Element {
               environmentChecked={environment !== null}
               run={hostRun && hostRun.workflowId === activeWorkflow.id ? hostRun : null}
               onStart={(inputs) => void startHostRun(inputs)}
+              onCancel={cancelHostRun}
               onOpen={revealPath}
             />
           ) : (

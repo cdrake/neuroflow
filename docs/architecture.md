@@ -121,7 +121,7 @@ guide (Builder, Environment and RunMonitor artboards):
 ### Host boundary
 
 `src-tauri/src/host.rs` exposes `default_settings`, `check_environment`,
-`workflow_runnable`, `start_run`, `open_path` and `read_session_tail`. Runs
+`workflow_runnable`, `start_run`, `cancel_run`, `open_path` and `read_session_tail`. Runs
 execute in-process on `neuroflow_mcp::runtime::run_workflow` (the MCP server's
 runtime, now a library crate) on a background thread and report through the
 `neuroflow:run-progress` and `neuroflow:run-finished` events. The environment

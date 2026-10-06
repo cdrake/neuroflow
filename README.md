@@ -97,8 +97,11 @@ Runs land under `~/.neuroflow/runs/<run-id>/` (`run.json`, `run.provenance.json`
 
 The desktop builder edits and runs the gallery workflows end to end on this
 machine through the Rust/Tauri boundary (`src-tauri/src/host.rs`, backed by the
-`neuroflow-mcp` library crate). Interactive uiApp steps, run cancellation and
-remote hosts are not wired yet.
+`neuroflow-mcp` library crate). Interactive `uiApp` steps launch their declared
+command in a configured checkout (`NEUROFLOW_UI_APP_<APP>`, or the documented
+sibling checkout) and wait for the app to finish its session contract. The Run
+panel can cancel an active local run; the runtime terminates its current child
+process and writes a cancelled session record. Remote hosts are not wired yet.
 
 ## License
 
