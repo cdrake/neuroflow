@@ -35,8 +35,9 @@
  *                          args are literals or {{input}}, {{outputDir}},
  *                          {{workDir}}, {{outputFile}} placeholders (an exact
  *                          {{name}} passes the input with its JSON type, paths
- *                          as pathlib.Path, None for an unset optional input; a
- *                          placeholder inside text yields a str). `result`
+ *                          as pathlib.Path; an unset input passes its declared
+ *                          default, or None when optional; a placeholder inside
+ *                          text yields a str). `result`
  *                          names a core:result-file output that
  *                          receives the return value as JSON.
  *                      { kind: "script", file }
@@ -205,7 +206,9 @@ function expr(a) {
     const name = m[1];
     if (special[name]) return special[name];
     if (!hasValue(inputs, name)) {
-      if (tool.inputs?.[name]?.optional) return 'None'; // an optional input left unset
+      const decl = tool.inputs?.[name];
+      if (decl?.default !== undefined) return lit(decl.default); // declared default
+      if (decl?.optional) return 'None'; // optional, no default, left unset
       fail(`entry references input ${name}, which has no value`);
     }
     return `s.inputs[${JSON.stringify(name)}]`;

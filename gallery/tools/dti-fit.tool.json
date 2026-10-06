@@ -1,0 +1,124 @@
+{
+  "$schema": "../../../neuroflow-spec/schemas/0.1/tool.schema.json",
+  "neuroflow": "0.1.0",
+  "kind": "tool",
+  "id": "neuroflow.gallery.tools/dti-fit",
+  "version": "0.1.0",
+  "description": "Fit a diffusion tensor to a 4-D DWI series with DIPY (weighted least squares by default) and write fractional anisotropy and mean diffusivity maps, plus an inline summary of both within the mask. The reference DIPY tool for the Python adapter.",
+  "inputs": {
+    "dwi": {
+      "type": "neuro:volume",
+      "description": "4-D diffusion-weighted series (NIfTI), one volume per gradient-table entry."
+    },
+    "gradients": {
+      "type": "neuro:gradient-table",
+      "description": "FSL .bval or .bvec (the sibling with the same stem is read too), or a single text table with one row per volume (x y z b, as MRtrix .b)."
+    },
+    "mask": {
+      "type": "neuro:mask",
+      "description": "Optional brain mask restricting the fit and the summary; defaults to voxels with a non-zero mean b0.",
+      "optional": true
+    },
+    "fit_method": {
+      "type": "core:string",
+      "description": "DIPY tensor fit method.",
+      "optional": true,
+      "default": "WLS",
+      "enum": ["WLS", "OLS", "NLLS", "RESTORE"]
+    },
+    "b0_threshold": {
+      "type": "core:number",
+      "description": "b-values at or below this count as b0.",
+      "optional": true,
+      "default": 50
+    }
+  },
+  "outputs": {
+    "fa": {
+      "type": "neuro:volume",
+      "description": "Fractional anisotropy, 0..1, float32.",
+      "delivery": {
+        "mode": "core:result-dir",
+        "path": "fa.nii.gz"
+      }
+    },
+    "md": {
+      "type": "neuro:volume",
+      "description": "Mean diffusivity in the b-values' units (mm^2/s for s/mm^2 b-values), float32.",
+      "delivery": {
+        "mode": "core:result-dir",
+        "path": "md.nii.gz"
+      }
+    },
+    "summary": {
+      "type": "core:json",
+      "description": "fit_method, voxels, directions, b0_volumes, shells, fa {mean, median}, md {mean, median}.",
+      "delivery": {
+        "mode": "core:result-file"
+      }
+    }
+  },
+  "outputDelivery": {
+    "default": "core:result-dir"
+  },
+  "extensions": {
+    "niivue/ui": {
+      "block": {
+        "id": "dti-fit",
+        "label": "DTI fit (DIPY)",
+        "description": "Tensor fit: FA and MD maps.",
+        "category": "Processing",
+        "stage": "explore",
+        "exposedFields": ["fit_method", "b0_threshold"]
+      }
+    },
+    "neuroflow/launch": {
+      "kind": "script",
+      "interpreter": "node",
+      "script": "../scripts/python_tool.mjs",
+      "completion": "exit",
+      "interactive": false,
+      "contract": "../../docs/neuroflow-session-contract.md",
+      "requirements": [
+        "Python 3.10+ with dipy 1.9+, nibabel and numpy; set NEUROFLOW_PYTHON to the environment"
+      ],
+      "description": "python_tool.mjs checks the Python environment (fails with the fix when dipy is missing), then calls nf_dti_fit.run(dwi, gradients, mask, fit_method, b0_threshold); fa.nii.gz and md.nii.gz land in the output dir and the summary in $NEUROFLOW_OUTPUT_FILE."
+    },
+    "neuroflow/python": {
+      "interpreter": {
+        "env": "NEUROFLOW_PYTHON",
+        "paths": ["{{toolDir}}/.venv/bin/python", "~/.venvs/neuroflow/bin/python"],
+        "minVersion": "3.10"
+      },
+      "requirements": [
+        "nibabel",
+        "numpy",
+        {
+          "import": "dipy",
+          "package": "dipy",
+          "minVersion": "1.9",
+          "advice": "pip install dipy into that environment, or point NEUROFLOW_PYTHON at one that has it (e.g. python3 -m venv ~/.venvs/neuroflow && ~/.venvs/neuroflow/bin/pip install dipy nibabel)"
+        }
+      ],
+      "singleThread": true,
+      "entry": {
+        "kind": "function",
+        "module": "nf_dti_fit",
+        "name": "run",
+        "args": ["{{dwi}}", "{{gradients}}", "{{mask}}", "{{fit_method}}", "{{b0_threshold}}"],
+        "result": "summary"
+      },
+      "outputs": {
+        "fa": "fa.nii.gz",
+        "md": "md.nii.gz"
+      }
+    },
+    "neuroflow/mcp": {
+      "title": "DTI fit (FA and MD maps via DIPY)",
+      "annotations": {
+        "readOnlyHint": false,
+        "idempotentHint": true
+      }
+    }
+  }
+}

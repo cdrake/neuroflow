@@ -72,7 +72,7 @@ process.exit(Number(process.env.FAKE_EXIT || 0));
 chmodSync(fakePython, 0o755);
 
 const baseTool = {
-  kind: 'tool', id: 'test/python', inputs: { image: { type: 'neuro:volume' }, label: { type: 'core:string', optional: true }, n: { type: 'core:integer', optional: true } },
+  kind: 'tool', id: 'test/python', inputs: { image: { type: 'neuro:volume' }, label: { type: 'core:string', optional: true }, n: { type: 'core:integer', optional: true }, mode: { type: 'core:string', optional: true, default: 'fast' } },
   outputs: {
     header: { type: 'core:json', delivery: { mode: 'core:result-dir', path: 'header.json' } },
     extra: { type: 'core:file', optional: true, delivery: { mode: 'core:result-dir', path: 'extra.txt' } },
@@ -209,9 +209,9 @@ test('rejects bad entries, placeholders without a value, and missing inputs', ()
   const inText = run(fn({ args: ['tag={{label}}'] }), {});
   assert.equal(inText.status, 1);
   assert.match(inText.stderr, /references input label, which has no value/);
-  const optional = run(fn({ args: ['{{label}}', '{{n}}'] }), { n: 1 });
+  const optional = run(fn({ args: ['{{label}}', '{{n}}', '{{mode}}'] }), { n: 1 });
   assert.equal(optional.status, 0, optional.stderr);
-  assert.match(optional.driver, /nf_module\.run\(None, s\.inputs\["n"\]\)/);
+  assert.match(optional.driver, /nf_module\.run\(None, s\.inputs\["n"\], "fast"\)/, 'None when optional, the declared default when there is one');
   const absent = run(fn({ args: ['{{image}}'] }), { image: join(root, 'nope.nii.gz') });
   assert.equal(absent.status, 1);
   assert.match(absent.stderr, /input image \(neuro:volume\) does not exist/);
