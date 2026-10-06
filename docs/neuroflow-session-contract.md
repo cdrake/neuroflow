@@ -19,6 +19,7 @@ A launched tool receives:
 | `NEUROFLOW_OUTPUT_DIR` | Absolute path where this step writes its declared outputs. Conventionally `<session>/outputs/<step>`. |
 | `NEUROFLOW_WORK_DIR` | Absolute path for scratch/intermediate files. |
 | `NEUROFLOW_STEP` | The workflow step id being executed. |
+| `NEUROFLOW_INTERPRETER_<NAME>` | Optional. Absolute path of an interpreter the runtime knows (`PYTHON3`, `PYTHON`, `NODE`, `RSCRIPT`): one per configured interpreter, plus the one this step launched with. An adapter that starts a second interpreter reads these before searching `PATH`. |
 
 A tool that sees `NEUROFLOW_SESSION` set is running under NeuroFlow and SHOULD
 switch from interactive "pick a folder" defaults to honoring the launch context.

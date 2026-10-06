@@ -3,7 +3,7 @@
 //! outputs per RFC 0008, and writes a provenance document (RFC 0003).
 
 use crate::{artifacts, qualifiers};
-use crate::registry::{launch_of, Doc, Registry};
+use crate::registry::{interpreter_env, launch_of, Doc, Registry};
 use crate::schema::{element_type, is_array_type, is_artifact_type, is_directory_type, value_types_of};
 use crate::util::{new_run_id, now_rfc3339, to_local_id, within_any};
 use crate::Config;
@@ -614,6 +614,7 @@ fn run_step(
         .env("NEUROFLOW_RUN_ID", run_id)
         .env("NEUROFLOW_WORKFLOW_ID", workflow.get("id").and_then(Value::as_str).unwrap_or(""))
         .env("NEUROFLOW_WORKFLOW_VERSION", workflow.get("version").and_then(Value::as_str).unwrap_or(""))
+        .envs(interpreter_env(&cfg.interpreters, &launch))
         .stdin(Stdio::null())
         .stdout(stdout)
         .stderr(stderr)

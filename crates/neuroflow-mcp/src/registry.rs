@@ -27,8 +27,27 @@ impl Kind {
 
 #[derive(Debug, Clone)]
 pub struct Launch {
+    /// The interpreter name the tool declared (one of `ALLOWED_INTERPRETERS`).
+    pub name: String,
     pub interpreter: PathBuf,
     pub script: PathBuf,
+}
+
+/// Environment variables that tell a step where the runner's interpreters are:
+/// `NEUROFLOW_INTERPRETER_<NAME>` (name upper-cased: `PYTHON3`, `NODE`,
+/// `RSCRIPT`) for every `--interpreter` setting, plus the interpreter this step
+/// launches with when it was found on PATH rather than configured. Adapters
+/// that start a second interpreter (the Python adapter launches with node and
+/// then needs a python3) read these instead of searching PATH, which a GUI
+/// MCP client may have trimmed.
+pub fn interpreter_env(interpreters: &HashMap<String, PathBuf>, launch: &Launch) -> Vec<(String, PathBuf)> {
+    let var = |name: &str| format!("NEUROFLOW_INTERPRETER_{}", name.to_uppercase());
+    let mut env: Vec<(String, PathBuf)> = interpreters.iter().map(|(n, p)| (var(n), p.clone())).collect();
+    env.sort();
+    if !interpreters.contains_key(&launch.name) {
+        env.push((var(&launch.name), launch.interpreter.clone()));
+    }
+    env
 }
 
 #[derive(Debug, Clone)]
@@ -305,7 +324,7 @@ pub fn launch_of(doc: &Doc, interpreters: &HashMap<String, PathBuf>) -> Result<L
             doc.root.display()
         ));
     }
-    Ok(Launch { interpreter, script })
+    Ok(Launch { name: interpreter_name.to_string(), interpreter, script })
 }
 
 /// RFC 0009 section 1.1: replace `/` with `.`, drop characters outside `[A-Za-z0-9_.-]`.

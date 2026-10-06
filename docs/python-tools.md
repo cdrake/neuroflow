@@ -75,10 +75,10 @@ In order, the first that exists wins:
    glob per path (newest match first). The gallery tools list
    `{{toolDir}}/.venv/bin/python` so a tool can ship its own environment, then
    `~/.venvs/neuroflow/bin/python` as a shared one.
-3. `NEUROFLOW_INTERPRETER_PYTHON3`, for a runner that exports its
-   `--interpreter python3=...` setting. The MCP server does not export it yet
-   (see "Not covered yet"); the adapter honours it so that change needs no
-   adapter release.
+3. `NEUROFLOW_INTERPRETER_PYTHON3`: the MCP server exports its
+   `--interpreter python3=...` setting to every step under this name (and
+   `NEUROFLOW_INTERPRETER_NODE` and so on for the others), so a Python chosen
+   for the server reaches the adapter even when the client trimmed `PATH`.
 4. `python3`, then `python`, on `PATH`.
 
 An interpreter below `interpreter.minVersion` fails with its path and version.
@@ -268,12 +268,10 @@ crates/neuroflow-mcp/tests/smoke.py` runs `python-volume-filter` and the
 
 ## Not covered yet
 
-- The MCP runner does not export its `--interpreter` map to adapters, so a
-  `--interpreter python3=...` setting does not reach Python tools; use
-  `NEUROFLOW_PYTHON` or a `~/.venvs/neuroflow` environment. The adapter already
-  reads `NEUROFLOW_INTERPRETER_PYTHON3`, so the runner can start exporting the
-  map (one small change in `crates/neuroflow-mcp`) without touching the
-  gallery.
+- A per-tool `.venv` or `~/.venvs/neuroflow` wins over the server's
+  `--interpreter python3` setting, on the grounds that an environment placed
+  for the tools is more specific than one chosen for the server. Set
+  `NEUROFLOW_PYTHON` to override both.
 - Environment *creation* (venv, uv, conda bootstrapping): the adapter finds and
   checks an environment and tells the user how to fix it; building one is the
   install-resolver territory of [tool-packaging.md](tool-packaging.md).

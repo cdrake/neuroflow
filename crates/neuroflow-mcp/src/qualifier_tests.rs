@@ -35,6 +35,7 @@ out=pathlib.Path(ctx['outputDir'])
 marker=pathlib.Path(ctx['inputs']['marker']); marker.write_text('launched')
 shutil.copyfile(ctx['inputs']['image'], out/'image.bin')
 (out/'result.json').write_text(json.dumps({'image': 'image.bin'}))
+marker.with_suffix('.env').write_text(json.dumps({k: v for k, v in os.environ.items() if k.startswith('NEUROFLOW_INTERPRETER_')}))
 "#,
         )
         .unwrap();
@@ -732,4 +733,36 @@ fn hash_is_reused_within_a_run_and_recomputed_across_runs() {
     let fresh = crate::qualifiers::inspect(&f.cfg, &json!(file), &json!(file), &HashMap::new()).unwrap();
     assert_eq!(fresh["sha256"], first["sha256"]);
     assert_ne!(fresh["sha256"], "cached");
+}
+
+#[test]
+fn configured_interpreters_are_exported_to_every_step() {
+    let mut f = Fixture::new();
+    let python3 = crate::util::find_on_path("python3").expect("python3 on PATH");
+    f.cfg.interpreters = HashMap::from([
+        ("python3".to_string(), python3.clone()),
+        ("node".to_string(), PathBuf::from("/opt/fake/node")),
+    ]);
+    let file = f.image("image.nii", false, 2, 1);
+    let registry = f.tool("copy", declaration(json!({})), declaration(json!({})));
+    let run = f.run(&registry, "copy", json!(file), "marker");
+    assert_eq!(run.status, "completed", "{}", run.structured);
+    let env: Value = serde_json::from_str(&fs::read_to_string(f.root.join("marker.env")).unwrap()).unwrap();
+    assert_eq!(env["NEUROFLOW_INTERPRETER_PYTHON3"], json!(python3.to_str().unwrap()));
+    assert_eq!(env["NEUROFLOW_INTERPRETER_NODE"], json!("/opt/fake/node"));
+    assert_eq!(env.as_object().unwrap().len(), 2, "{env}");
+}
+
+#[test]
+fn a_launch_interpreter_found_on_path_is_exported_under_its_name() {
+    let f = Fixture::new();
+    assert!(f.cfg.interpreters.is_empty());
+    let file = f.image("image.nii", false, 2, 1);
+    let registry = f.tool("copy", declaration(json!({})), declaration(json!({})));
+    let run = f.run(&registry, "copy", json!(file), "marker");
+    assert_eq!(run.status, "completed", "{}", run.structured);
+    let env: Value = serde_json::from_str(&fs::read_to_string(f.root.join("marker.env")).unwrap()).unwrap();
+    let exported = PathBuf::from(env["NEUROFLOW_INTERPRETER_PYTHON3"].as_str().expect("python3 exported"));
+    assert!(exported.is_absolute() && exported.exists(), "{}", exported.display());
+    assert_eq!(env.as_object().unwrap().len(), 1, "{env}");
 }
