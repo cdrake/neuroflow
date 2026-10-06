@@ -1,0 +1,84 @@
+{
+  "$schema": "../../../neuroflow-spec/schemas/0.1/tool.schema.json",
+  "neuroflow": "0.1.0",
+  "kind": "tool",
+  "id": "neuroflow.gallery.tools/nifti-header-matlab",
+  "version": "0.1.0",
+  "description": "Read a NIfTI-1/NIfTI-2 header in MATLAB or GNU Octave with no toolbox: dimensions, voxel size, datatype, units, qform and sform affines, whether they agree, and the voxel-axis orientation code (e.g. LAS). Writes header.json and returns the same record inline. The reference tool for the MATLAB adapter.",
+  "inputs": {
+    "image": {
+      "type": "neuro:volume",
+      "description": "NIfTI volume (.nii or .nii.gz). Only the header is read."
+    }
+  },
+  "outputs": {
+    "header": {
+      "type": "core:json",
+      "description": "Header record: dim, pixdim, datatype, units, qform, sform, qformSformAgree, orientation.",
+      "delivery": {
+        "mode": "core:result-dir",
+        "path": "header.json"
+      }
+    },
+    "summary": {
+      "type": "core:json",
+      "description": "The same record, inline.",
+      "delivery": {
+        "mode": "core:result-file"
+      }
+    }
+  },
+  "outputDelivery": {
+    "default": "core:result-dir"
+  },
+  "extensions": {
+    "niivue/ui": {
+      "block": {
+        "id": "nifti-header-matlab",
+        "label": "NIfTI header (MATLAB)",
+        "description": "Header fields and affines, read in MATLAB or Octave.",
+        "category": "Inspect",
+        "stage": "explore",
+        "exposedFields": []
+      }
+    },
+    "neuroflow/launch": {
+      "kind": "script",
+      "interpreter": "node",
+      "script": "../scripts/matlab_tool.mjs",
+      "completion": "exit",
+      "interactive": false,
+      "contract": "../../docs/neuroflow-session-contract.md",
+      "requirements": [
+        "MATLAB R2019a+ (set MATLAB) or GNU Octave 7+ (set OCTAVE)"
+      ],
+      "description": "Generates nf_wrapper.m in the work dir and runs nf_nifti_header(nf.inputs.image, nf.outputDir) headlessly; header.json lands in the output dir and the returned struct in $NEUROFLOW_OUTPUT_FILE."
+    },
+    "neuroflow/matlab": {
+      "engine": "auto",
+      "singleThread": true,
+      "addpath": [
+        "../scripts/matlab"
+      ],
+      "entry": {
+        "kind": "function",
+        "name": "nf_nifti_header",
+        "args": [
+          "{{image}}",
+          "{{outputDir}}"
+        ],
+        "result": "summary"
+      },
+      "outputs": {
+        "header": "header.json"
+      }
+    },
+    "neuroflow/mcp": {
+      "title": "NIfTI header via MATLAB/Octave",
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true
+      }
+    }
+  }
+}

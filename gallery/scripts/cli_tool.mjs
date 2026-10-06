@@ -34,64 +34,26 @@
  * plus the template's own override variable.
  */
 import { spawn, spawnSync } from 'node:child_process';
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { delimiter, dirname, join } from 'node:path';
+import { mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  appendProvenance, checkInputsExist, failer, findExecutable, findToolDoc, hasValue, mapOutputs, readSession,
+} from './adapter_lib.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const fail = (message) => {
-  console.error(`cli_tool: ${message}`);
-  process.exit(1);
-};
+const fail = failer('cli_tool');
 
-const session = process.env.NEUROFLOW_SESSION;
-if (!session) fail('NEUROFLOW_SESSION is not set; run this through a NeuroFlow runtime');
-const ctx = JSON.parse(readFileSync(join(session, 'context.json'), 'utf8'));
-const inputs = ctx.inputs ?? {};
-const step = process.env.NEUROFLOW_STEP || ctx.step || 'cli';
-const outputDir = process.env.NEUROFLOW_OUTPUT_DIR || ctx.outputDir;
-const workDir = process.env.NEUROFLOW_WORK_DIR || ctx.workDir || session;
+const { session, ctx, inputs, step, outputDir, workDir } = readSession(fail);
 
 // Locate the tool document for this step.
-function findToolDoc(id) {
-  if (process.env.NEUROFLOW_TOOL_DOC) return JSON.parse(readFileSync(process.env.NEUROFLOW_TOOL_DOC, 'utf8'));
-  const stack = [join(here, '..', 'tools')];
-  while (stack.length) {
-    const dir = stack.pop();
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const path = join(dir, entry.name);
-      if (entry.isDirectory()) stack.push(path);
-      else if (entry.name.endsWith('.json')) {
-        try {
-          const doc = JSON.parse(readFileSync(path, 'utf8'));
-          if (doc.kind === 'tool' && doc.id === id) return doc;
-        } catch { /* not a tool document */ }
-      }
-    }
-  }
-  return null;
-}
-const tool = findToolDoc(ctx.tool);
+const tool = findToolDoc(ctx.tool, here)?.doc;
 if (!tool) fail(`tool document ${ctx.tool} not found next to ${here}`);
 const template = tool.extensions?.['neuroflow/cli'];
 if (!template) fail(`${ctx.tool} has no extensions["neuroflow/cli"] template`);
 
 // Find the executable: override variable, candidate paths, then PATH.
-const expand = (p) => (p.startsWith('~/') ? join(homedir(), p.slice(2)) : p);
-function findExecutable(t) {
-  if (t.env && process.env[t.env]) {
-    const p = expand(process.env[t.env]);
-    if (!existsSync(p)) fail(`${t.env}=${p} does not exist`);
-    return p;
-  }
-  for (const p of (t.paths ?? []).map(expand)) if (existsSync(p)) return p;
-  for (const dir of (process.env.PATH ?? '').split(delimiter)) {
-    if (dir && existsSync(join(dir, t.command))) return join(dir, t.command);
-  }
-  return null;
-}
-const exe = findExecutable(template);
+const exe = findExecutable(template, fail);
 if (!exe) {
   fail(`${template.command} was not found${template.env ? ` (set ${template.env} to its path)` : ''}; ` +
     `looked in ${(template.paths ?? []).join(', ') || 'no fixed locations'} and on PATH`);
@@ -126,17 +88,10 @@ if (template.probe) {
 
 // File and folder inputs must exist before the command runs, so a broken
 // reference fails here with the input's name rather than as the tool's own error.
-const SCALAR = new Set(['core:string', 'core:integer', 'core:number', 'core:boolean', 'core:object']);
-for (const [name, decl] of Object.entries(tool.inputs ?? {})) {
-  const v = inputs[name];
-  if (v === undefined || v === null || SCALAR.has(decl.type) || typeof decl.type !== 'string') continue;
-  for (const p of Array.isArray(v) ? v : [v]) {
-    if (typeof p === 'string' && p !== '' && !existsSync(p)) fail(`input ${name} (${decl.type}) does not exist: ${p}`);
-  }
-}
+checkInputsExist(tool, inputs, fail);
 
 // Fill the argument template.
-const has = (name) => inputs[name] !== undefined && inputs[name] !== null && inputs[name] !== '';
+const has = (name) => hasValue(inputs, name);
 const fill = (value) => value.replace(/\{\{([A-Za-z0-9_-]+)\}\}/g, (_, name) => {
   if (name === 'outputDir') return outputDir;
   if (name === 'workDir') return workDir;
@@ -169,38 +124,10 @@ const status = await new Promise((resolve) => {
 if (status !== 0) fail(`${template.command} exited with status ${status}`);
 
 // Map what the command wrote to the declared outputs.
-const produced = {};
-const written = readdirSync(outputDir).filter((f) => statSync(join(outputDir, f)).isFile());
-for (const [name, spec] of Object.entries(template.outputs ?? {})) {
-  const decl = tool.outputs?.[name];
-  let file = null;
-  if (typeof spec === 'string') {
-    if (existsSync(join(outputDir, spec))) file = spec;
-  } else {
-    const re = new RegExp(spec.match);
-    const hits = written.filter((f) => re.test(f)).sort();
-    if (hits.length === 1 || (hits.length > 1 && spec.pick === 'first')) file = hits[0];
-    else if (hits.length > 1 && spec.pick === 'largest') {
-      file = hits.map((f) => [f, statSync(join(outputDir, f)).size]).sort((a, b) => b[1] - a[1])[0][0];
-    } else if (hits.length > 1) fail(`output ${name}: ${hits.length} files match /${spec.match}/ (${hits.join(', ')}); set pick`);
-  }
-  if (!file) {
-    if (decl?.optional) continue;
-    fail(`${template.command} did not write output ${name} (${typeof spec === 'string' ? spec : `/${spec.match}/`}); ` +
-      `output dir holds: ${written.join(', ') || 'nothing'}`);
-  }
-  const target = decl?.delivery?.path ?? file;
-  if (target !== file) {
-    mkdirSync(dirname(join(outputDir, target)), { recursive: true });
-    renameSync(join(outputDir, file), join(outputDir, target));
-    console.log(`cli_tool: ${file} -> ${name} (${target})`);
-  }
-  produced[name] = target;
-}
+const produced = mapOutputs(tool, template.outputs, outputDir, fail, { label: template.command });
 
-appendFileSync(join(session, 'provenance.jsonl'), JSON.stringify({
-  ts: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
+appendProvenance(session, {
   step, tool: tool.id, agent: version ? `${template.command} ${version}` : template.command,
   action: 'cli', executable: exe, args, durationMs: Date.now() - started, outputs: produced,
-}) + '\n');
+});
 console.log(`cli_tool: ${template.command} finished in ${((Date.now() - started) / 1000).toFixed(1)} s`);

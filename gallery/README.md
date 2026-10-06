@@ -23,13 +23,17 @@ node gallery/validate.mjs        # or: npm run validate:gallery
 | `dcm2niix.tool.json` | `…tools/dcm2niix` | ingest | script → native CLI | `volume`, `sidecar` |
 | `mindgrab.tool.json` | `…tools/mindgrab` | explore | script → native CLI | `brain`, `brain_mask` |
 | `niimath-allineate.tool.json` | `…tools/niimath-allineate` | explore | script → native CLI | `registered`, `transform` (`neuro:transform`) |
+| `nifti-header-matlab.tool.json` | `…tools/nifti-header-matlab` | explore | script → MATLAB/Octave | `header` (JSON), `summary` (inline JSON) |
 
 The two **uiApp** tools (BIDSvue, NeuroVue) are interactive: a NeuroFlow runtime
 launches them with a session context and they block until the user finishes. The
 **script** tools are headless. The three **native CLI** tools (dcm2niix, mindgrab
 via the brainchop CLI, niimath `-allineate`) are the lightNIIng tool set; they share
 one adapter, `scripts/cli_tool.mjs`, and describe their command line under
-`extensions["neuroflow/cli"]`. Launch details (command, completion, env) live
+`extensions["neuroflow/cli"]`. The **MATLAB/Octave** tool (a NIfTI header
+reader) runs through `scripts/matlab_tool.mjs` from
+`extensions["neuroflow/matlab"]`, which also covers SPM batches; see
+`../docs/matlab-tools.md`. Launch details (command, completion, env) live
 in each tool's `extensions["neuroflow/launch"]`, and the runtime handoff format
 is defined in `../docs/neuroflow-session-contract.md`.
 
@@ -73,6 +77,15 @@ Reference implementations the script-tools point at:
   fills an argument template from the session inputs, maps the files written
   to the declared outputs, appends provenance. `cli_tool.test.mjs` covers it
   (`npm run test:gallery`).
+- `matlab_tool.mjs` — shared adapter for MATLAB, GNU Octave and standalone SPM
+  tools: picks an engine, resolves toolboxes, generates `nf_wrapper.m` (an `nf`
+  struct from the session context, addpath, entry call in try/catch, exit
+  status), runs it headlessly, maps outputs, appends provenance with engine and
+  SPM versions. `matlab/nf_nifti_header.m` is the reference entry;
+  `matlab_tool.test.mjs` covers the adapter (fake engine, Octave, MATLAB opt-in).
+- `adapter_lib.mjs` — helpers shared by the two adapters (session context,
+  tool-document lookup, executable search with `~` and `*`, input checks,
+  output mapping, provenance).
 - `fold_provenance.mjs` — folds the run's append-only `provenance.jsonl` trail
   into a single conformant `kind:"provenance"` document (`run.provenance.json`),
   mapping each line to PROV agents/activities/entities. See
