@@ -200,8 +200,14 @@ pub fn check_environment(settings: HostSettings) -> Result<EnvironmentReport, St
     let mut probed: HashMap<String, Value> = HashMap::new();
     match (node, checker_script(&cfg)) {
         (Some(node), Some(script)) if !tool_docs.is_empty() => {
+            // The runtime exports configured interpreter overrides to adapters.
+            // Give the checker the same view so its readiness result matches a run.
+            let interpreter_env = cfg.interpreters.iter().map(|(name, path)| {
+                (format!("NEUROFLOW_INTERPRETER_{}", name.to_uppercase()), path)
+            });
             let out = Command::new(&node)
                 .arg(&script)
+                .envs(interpreter_env)
                 .args(tool_docs.iter().map(|d| &d.source))
                 .output()
                 .map_err(|e| format!("cannot start {}: {e}", node.display()))?;

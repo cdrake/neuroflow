@@ -151,10 +151,14 @@ export function App(): JSX.Element {
     let disposed = false
     void onRunProgress((event) => {
       setHostRun((current) => {
-        if (!current || current.ticket !== event.ticket) return current
+        // `start_run` returns after spawning its worker. A fast validation failure
+        // (or a fast first step) can emit before that invoke resolves, so let the
+        // first event claim the one pending run rather than dropping it.
+        if (!current || (current.ticket !== null && current.ticket !== event.ticket)) return current
         const parsed = parseProgressMessage(event.message)
         return {
           ...current,
+          ticket: current.ticket ?? event.ticket,
           status: 'running',
           progress: event.progress,
           total: event.total,
@@ -165,14 +169,15 @@ export function App(): JSX.Element {
     }).then((unlisten) => (disposed ? unlisten() : unlisteners.push(unlisten)))
     void onRunFinished((event) => {
       setHostRun((current) => {
-        if (!current || current.ticket !== event.ticket) return current
+        if (!current || (current.ticket !== null && current.ticket !== event.ticket)) return current
         if (event.ok === false && !('record' in event)) {
-          return { ...current, status: 'rejected', finished: event, error: event.error }
+          return { ...current, ticket: current.ticket ?? event.ticket, status: 'rejected', finished: event, error: event.error }
         }
         const done = event as Extract<typeof event, { record: unknown }>
         const failed = done.status !== 'completed'
         return {
           ...current,
+          ticket: current.ticket ?? event.ticket,
           status: failed ? 'failed' : 'completed',
           progress: current.total,
           finished: done,
@@ -195,7 +200,7 @@ export function App(): JSX.Element {
     const step = finished.record.failedStep
     if (!step) return
     const ticket = hostRun.ticket
-    readSessionTail(settings, `${finished.sessionDir}/logs/${step}/stderr`)
+    readSessionTail(settings, `${finished.sessionDir}/logs/${step}.stderr`)
       .then((tail) => setHostRun((current) => (current && current.ticket === ticket ? { ...current, stderrTail: tail || '(empty)' } : current)))
       .catch((error) => setHostRun((current) => (current && current.ticket === ticket ? { ...current, stderrTail: String(error) } : current)))
   }, [hostRun, settings])
