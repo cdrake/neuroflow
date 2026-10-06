@@ -97,6 +97,13 @@ Reference implementations the script-tools point at:
 - `adapter_lib.mjs` — helpers shared by the three adapters (session context,
   tool-document lookup, executable search with `~` and `*`, input checks,
   output mapping, provenance).
+- `check_tool.mjs` — the up-front environment check the desktop builder (and
+  anyone else) runs before a workflow: for each tool document it applies the
+  same executable, version, Python-package, MATLAB-engine, Neurodesk and Node
+  package rules the adapters apply at launch, and prints one JSON row per tool
+  with `status` (`ready`, `needsSetup`, `interactive`, `unsupported`), the
+  reason and the fix. `node gallery/scripts/check_tool.mjs --tools-dir
+  gallery/tools`; `check_tool.test.mjs` covers it (`npm run test:gallery`).
 - `fold_provenance.mjs` — folds the run's append-only `provenance.jsonl` trail
   into a single conformant `kind:"provenance"` document (`run.provenance.json`),
   mapping each line to PROV agents/activities/entities. See

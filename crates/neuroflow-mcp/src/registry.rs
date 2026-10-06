@@ -30,7 +30,10 @@ pub struct Launch {
     /// The interpreter name the tool declared (one of `ALLOWED_INTERPRETERS`).
     pub name: String,
     pub interpreter: PathBuf,
-    pub script: PathBuf,
+    /// The script to run, for `script` launches; a `uiApp` runs its command directly.
+    pub script: Option<PathBuf>,
+    pub args: Vec<String>,
+    pub cwd: Option<PathBuf>,
 }
 
 /// Environment variables that tell a step where the runner's interpreters are:
@@ -95,7 +98,7 @@ pub struct Registry {
 }
 
 impl Registry {
-    pub fn load(dirs: &[PathBuf], interpreters: &HashMap<String, PathBuf>) -> Result<Self, String> {
+    pub fn load(dirs: &[PathBuf], interpreters: &HashMap<String, PathBuf>, interactive: bool) -> Result<Self, String> {
         let mut docs: Vec<Doc> = Vec::new();
         let mut warnings = Vec::new();
         let mut by_id: HashMap<String, usize> = HashMap::new();
@@ -165,7 +168,7 @@ impl Registry {
         for i in 0..registry.docs.len() {
             if registry.docs[i].kind == Kind::Tool {
                 let doc = &registry.docs[i];
-                let runnable = launch_of(doc, interpreters).map(|_| ());
+                let runnable = launch_of(doc, interpreters, interactive).map(|_| ());
                 registry.docs[i].runnable = runnable;
             }
         }
@@ -277,8 +280,23 @@ impl Registry {
     }
 }
 
+/// The default checkout of a `uiApp`'s `repo`: a directory of that name beside the
+/// NeuroFlow checkout the registry lives in. The gallery registry root is
+/// `<neuroflow>/gallery`, but a registry may also be the repo root itself, so the
+/// lookup tries the registry root and its nearest ancestors as "the checkout".
+fn default_checkout(registry_root: &Path, repo: &str) -> Option<PathBuf> {
+    registry_root
+        .ancestors()
+        .take(3)
+        .filter_map(|checkout| checkout.parent())
+        .map(|parent| parent.join(repo))
+        .find(|candidate| candidate.is_dir())
+}
+
 /// Resolve a tool's `neuroflow/launch` into an executable interpreter and script.
-pub fn launch_of(doc: &Doc, interpreters: &HashMap<String, PathBuf>) -> Result<Launch, String> {
+/// `interactive` says whether the host can wait on a window (see `Config::interactive`);
+/// without it, `uiApp` tools are rejected before anything is looked up.
+pub fn launch_of(doc: &Doc, interpreters: &HashMap<String, PathBuf>, interactive: bool) -> Result<Launch, String> {
     let launch = doc
         .value
         .pointer("/extensions/neuroflow~1launch")
@@ -287,7 +305,27 @@ pub fn launch_of(doc: &Doc, interpreters: &HashMap<String, PathBuf>) -> Result<L
     match kind {
         "script" => {}
         "uiApp" => {
-            return Err("interactive uiApp tools need an MCP Apps host (RFC 0009 section 6), not yet implemented".into())
+            if !interactive {
+                return Err("interactive uiApp tools need a host that can wait on a window (the desktop builder); this MCP server cannot".into());
+            }
+            let app = launch.get("app").and_then(Value::as_str).ok_or("uiApp has no app name")?;
+            let command = launch.get("command").and_then(Value::as_str).ok_or("uiApp has no command")?;
+            let executable = find_on_path(command).ok_or_else(|| format!("{command} was not found on PATH"))?;
+            // An explicit environment override is safest for non-standard checkouts;
+            // otherwise the app's repo is expected next to the NeuroFlow checkout.
+            let key = format!("NEUROFLOW_UI_APP_{}", app.to_uppercase().replace('-', "_"));
+            let repo = launch.get("repo").and_then(Value::as_str);
+            let cwd = std::env::var_os(&key)
+                .map(PathBuf::from)
+                .filter(|path| path.is_dir())
+                .or_else(|| repo.and_then(|repo| default_checkout(&doc.root, repo)))
+                .ok_or_else(|| {
+                    let hint = repo.map(|repo| format!(" (looked for a {repo} directory next to the NeuroFlow checkout)")).unwrap_or_default();
+                    format!("{app} checkout not found{hint}; set {key} to its directory")
+                })?;
+            let args = launch.get("args").and_then(Value::as_array).into_iter().flatten()
+                .filter_map(Value::as_str).map(str::to_string).collect();
+            return Ok(Launch { name: command.into(), interpreter: executable, script: None, args, cwd: Some(cwd) });
         }
         other => return Err(format!("launch kind {other:?} is not supported by this server yet")),
     }
@@ -324,7 +362,7 @@ pub fn launch_of(doc: &Doc, interpreters: &HashMap<String, PathBuf>) -> Result<L
             doc.root.display()
         ));
     }
-    Ok(Launch { name: interpreter_name.to_string(), interpreter, script })
+    Ok(Launch { name: interpreter_name.to_string(), interpreter, script: Some(script), args: vec![], cwd: None })
 }
 
 /// RFC 0009 section 1.1: replace `/` with `.`, drop characters outside `[A-Za-z0-9_.-]`.
@@ -364,6 +402,7 @@ fn collect_json(dir: &Path, out: &mut Vec<PathBuf>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     #[test]
     fn derives_names_per_rfc() {
@@ -372,5 +411,49 @@ mod tests {
             "neuroflow.gallery.tools.python-volume-filter"
         );
         assert_eq!(derive_name("niivue.desktop/dicom-to-bids"), "niivue.desktop.dicom-to-bids");
+    }
+
+    fn ui_app_doc() -> Doc {
+        let value = serde_json::json!({
+            "neuroflow": "0.1.1", "kind": "tool", "id": "test/viewer", "version": "1.0.0",
+            "extensions": { "neuroflow/launch": {
+                "kind": "uiApp", "app": "viewer", "command": "neuroflow-test-command-that-does-not-exist",
+                "repo": "viewer", "args": []
+            } }
+        });
+        Doc {
+            kind: Kind::Tool, id: "test/viewer".into(), version: "1.0.0".into(), value,
+            source: PathBuf::from("/nonexistent/tools/viewer.json"), root: PathBuf::from("/nonexistent"),
+            title: "Viewer".into(), runnable: Ok(()), mcp_name: None,
+        }
+    }
+
+    #[test]
+    fn default_checkout_is_a_sibling_of_the_neuroflow_checkout() {
+        let dir = std::env::temp_dir().join(format!("nf-checkout-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let neuroflow = dir.join("neuroflow");
+        let gallery = neuroflow.join("gallery");
+        fs::create_dir_all(&gallery).unwrap();
+        fs::create_dir_all(dir.join("neurovue")).unwrap();
+        // Nothing of that name inside the repo must be mistaken for the checkout.
+        assert!(!neuroflow.join("neurovue").exists());
+        assert_eq!(default_checkout(&gallery, "neurovue"), Some(dir.join("neurovue")), "gallery registry");
+        assert_eq!(default_checkout(&neuroflow, "neurovue"), Some(dir.join("neurovue")), "repo root registry");
+        assert_eq!(default_checkout(&gallery, "bidsui"), None, "missing sibling");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ui_apps_are_not_runnable_on_a_non_interactive_host() {
+        let err = launch_of(&ui_app_doc(), &HashMap::new(), false).unwrap_err();
+        assert!(err.contains("wait on a window"), "{err}");
+    }
+
+    #[test]
+    fn interactive_hosts_resolve_ui_apps_past_the_gate() {
+        // The command is deliberately missing, so an interactive host fails later, on PATH lookup.
+        let err = launch_of(&ui_app_doc(), &HashMap::new(), true).unwrap_err();
+        assert!(err.contains("not found on PATH"), "{err}");
     }
 }

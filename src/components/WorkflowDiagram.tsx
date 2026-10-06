@@ -19,7 +19,7 @@ import {
   type NodeTypes,
   type XYPosition
 } from '@xyflow/react'
-import { Box, Circle, Database, FileInput, Sigma } from 'lucide-react'
+import { AlertTriangle, Box, Circle, Database, FileInput, Sigma } from 'lucide-react'
 import {
   buildWorkflowGraph,
   type NeuroflowNode,
@@ -28,6 +28,7 @@ import {
   type StepNodeData
 } from '../domain/graph'
 import type { ToolDefinition, WorkflowDocument } from '../domain/neuroflow'
+import type { ToolStatus } from '../domain/host'
 import { shortType } from '../domain/neuroflow'
 
 interface WorkflowDiagramProps {
@@ -40,6 +41,7 @@ interface WorkflowDiagramProps {
     detail: string
   }
   nodePositions: NodePositionMap
+  toolStatuses?: Map<string, ToolStatus>
   onSelectStep: (id: string) => void
   onBindInput: (stepId: string, inputName: string, ref: string) => void
   onMoveNode: (nodeId: string, position: XYPosition) => void
@@ -57,14 +59,15 @@ export function WorkflowDiagram({
   selectedStep,
   emptyAction,
   nodePositions,
+  toolStatuses,
   onSelectStep,
   onBindInput,
   onMoveNode,
   onAddTool
 }: WorkflowDiagramProps): JSX.Element {
   const graph = useMemo(
-    () => buildWorkflowGraph(workflow, tools, selectedStep, onSelectStep, nodePositions),
-    [workflow, tools, selectedStep, onSelectStep, nodePositions]
+    () => buildWorkflowGraph(workflow, tools, selectedStep, onSelectStep, nodePositions, toolStatuses),
+    [workflow, tools, selectedStep, onSelectStep, nodePositions, toolStatuses]
   )
 
   return (
@@ -252,14 +255,22 @@ function StepNode({ data }: NodeProps): JSX.Element {
       role="button"
       tabIndex={0}
     >
-      <header>
-        <span className="nf-node-icon">
+      <header style={{ borderLeft: `4px solid ${step.color}` }}>
+        <span className="nf-node-icon" style={{ color: step.color }}>
           <Box size={16} />
         </span>
         <span>
           <strong>{step.id}</strong>
           <small>{step.toolLabel}</small>
         </span>
+        {step.readiness && step.readiness.status !== 'ready' && (
+          <i
+            className={`nf-badge nf-badge-${step.readiness.status === 'needsSetup' ? 'setup' : step.readiness.status === 'interactive' ? 'interactive' : 'unsupported'}`}
+            title={step.readiness.fix ? `${step.readiness.detail}\nFix: ${step.readiness.fix}` : step.readiness.detail}
+          >
+            {step.readiness.status === 'needsSetup' ? 'setup' : step.readiness.status === 'interactive' ? 'interactive' : 'no runner'}
+          </i>
+        )}
         <em>{step.index + 1}</em>
       </header>
 
@@ -287,6 +298,13 @@ function StepNode({ data }: NodeProps): JSX.Element {
           ))}
         </div>
       </div>
+
+      {step.readiness?.status === 'needsSetup' && (
+        <footer className="nf-node-setup" title={step.readiness.fix ?? undefined}>
+          <AlertTriangle size={13} />
+          {step.readiness.detail}
+        </footer>
+      )}
 
       {Object.keys(step.mappings).length > 0 && (
         <footer>

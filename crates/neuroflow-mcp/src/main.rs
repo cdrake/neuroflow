@@ -2,31 +2,11 @@
 //!
 //! Speaks MCP over stdio. See crates/neuroflow-mcp/README.md.
 
-mod artifacts;
-mod registry;
-mod qualifiers;
-#[cfg(test)]
-mod qualifier_tests;
-mod runtime;
-mod schema;
-mod server;
-mod util;
-
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
 
-pub struct Config {
-    pub registry_dirs: Vec<PathBuf>,
-    pub spec_dir: Option<PathBuf>,
-    /// Canonical directories that artifact inputs may come from.
-    pub data_roots: Vec<PathBuf>,
-    /// Canonical directory holding one session directory per run.
-    pub sessions_root: PathBuf,
-    pub interpreters: HashMap<String, PathBuf>,
-    pub step_timeout: Option<Duration>,
-    pub summary_max_bytes: u64,
-}
+use neuroflow_mcp::{registry, server, Config};
 
 const USAGE: &str = "\
 neuroflow-mcp: MCP server for NeuroFlow tools and workflows (stdio)
@@ -116,8 +96,9 @@ fn main() {
         interpreters,
         step_timeout,
         summary_max_bytes,
+        interactive: false,
     };
-    let registry = registry::Registry::load(&cfg.registry_dirs, &cfg.interpreters).unwrap_or_else(|e| fail(&e));
+    let registry = registry::Registry::load(&cfg.registry_dirs, &cfg.interpreters, cfg.interactive).unwrap_or_else(|e| fail(&e));
     for w in &registry.warnings {
         eprintln!("neuroflow-mcp: {w}");
     }

@@ -138,11 +138,16 @@ export function stageInfo(stage: WorkflowStage): StageInfo {
   return WORKFLOW_STAGES.find((item) => item.id === stage) ?? WORKFLOW_STAGES[0]
 }
 
+export type BlockCategory = 'Import' | 'Ingest' | 'Processing' | 'Quality' | 'Inspect' | 'Output'
+
+/** Palette and canvas order; the design's category colors live in registry.ts. */
+export const BLOCK_CATEGORIES: BlockCategory[] = ['Import', 'Ingest', 'Processing', 'Quality', 'Inspect', 'Output']
+
 export interface BlockDef {
   id: string
   label: string
   description: string
-  category: 'Import' | 'Processing' | 'Quality' | 'Output'
+  category: BlockCategory
   stage?: WorkflowStage
   icon?: string
   defaults?: Record<string, unknown>

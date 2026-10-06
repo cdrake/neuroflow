@@ -65,8 +65,11 @@ delivery mode declared in its tool document:
 - `core:result-file` — a single file at `$NEUROFLOW_OUTPUT_DIR/<path>` (e.g.
   NeuroVue's `correction.patch.json`, the QA `index.html`).
 
-The runtime harvests after the process exits (for `uiApp` tools, after the user
-closes the app / required outputs appear).
+The runtime harvests after the process exits. A `uiApp` tool chooses when that
+is through `neuroflow/launch.completion`: `appClosed` (the default) waits for
+the user to close the app; `outputsAvailable` finishes the step as soon as every
+required output exists, at least one output exists, and the files have stopped
+changing, and leaves the app open for the user to close.
 
 ### provenance.jsonl
 

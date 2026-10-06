@@ -11,8 +11,14 @@ use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::time::Instant;
+use std::process::{Child, Command, ExitStatus, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+/// The failure message a cancellation leaves on the step and the run; the
+/// final status is derived from it, not from the live flag, so a cancel that
+/// arrives after the last step finished does not relabel a completed run.
+const CANCELLED: &str = "run cancelled";
 
 pub struct RunOutcome {
     pub run_id: String,
@@ -217,6 +223,22 @@ pub fn run_workflow(
     client: &Value,
     progress: Progress<'_>,
 ) -> Result<RunOutcome, String> {
+    let cancelled = AtomicBool::new(false);
+    run_workflow_with_cancel(cfg, registry, workflow, args, client, progress, &cancelled)
+}
+
+/// As `run_workflow`, but cooperatively terminates the current child process
+/// when `cancelled` becomes true. Hosts own the flag and may set it from another
+/// thread; the runtime still writes a complete cancelled session record.
+pub fn run_workflow_with_cancel(
+    cfg: &Config,
+    registry: &Registry,
+    workflow: &Value,
+    args: &Map<String, Value>,
+    client: &Value,
+    progress: Progress<'_>,
+    cancelled: &AtomicBool,
+) -> Result<RunOutcome, String> {
     let report = neuroflow_core::validate_workflow_value_with_tools(workflow, Some(&registry.tools_array()));
     if let Some(issue) = report.issues.iter().find(|issue| issue.severity == "error") {
         return Err(format!("{}: {}", issue.path.as_deref().unwrap_or("workflow"), issue.message));
@@ -303,12 +325,16 @@ pub fn run_workflow(
     let steps = workflow.get("steps").and_then(Value::as_object).cloned().unwrap_or_default();
     for (index, step_id) in order.iter().enumerate() {
         if failure.is_some() { break; }
+        if cancelled.load(Ordering::SeqCst) {
+            failure = Some((step_id.clone(), CANCELLED.into()));
+            break;
+        }
         let step = &steps[step_id];
         let tool_id = step.get("tool").and_then(Value::as_str).unwrap_or("");
         let tool = registry.tool(tool_id).ok_or_else(|| format!("tool {tool_id} disappeared"))?;
         progress(index as f64, total, &format!("step {}/{}: {step_id} ({tool_id})", index + 1, order.len()));
 
-        let mut result = run_step(cfg, &paths, &run_id, workflow, step_id, step, tool, &inputs, &context, &step_outputs, &mut known_evidence);
+        let mut result = run_step(cfg, &paths, &run_id, workflow, step_id, step, tool, &inputs, &context, &step_outputs, &mut known_evidence, cancelled);
         if let Some(mappings) = step.get("outputMappings").and_then(Value::as_object).filter(|_| result.error.is_none()) {
             for (output, field) in mappings {
                 if let (Some(field), Some(value)) = (field.as_str(), result.outputs.get(output)) {
@@ -380,7 +406,11 @@ pub fn run_workflow(
         }
     }
     if failure.is_some() { public.clear(); public_refs.clear(); }
-    let status = if failure.is_some() { "failed" } else { "completed" };
+    let status = match &failure {
+        Some((_, error)) if error == CANCELLED => "cancelled",
+        Some(_) => "failed",
+        None => "completed",
+    };
     let ended_at = now_rfc3339();
     record["status"] = json!(status);
     record["endedAt"] = json!(ended_at);
@@ -481,6 +511,97 @@ struct StepRecord {
     output_evidence: Map<String, Value>,
 }
 
+/// Start a step's process as the leader of its own process group so that
+/// `terminate` can stop everything it forks: `bun tauri dev` starts cargo, the
+/// app binary and a vite dev server; node adapters exec python3. Killing only
+/// the direct child would orphan those and leave windows open and ports bound.
+fn spawn_in_own_group(command: &mut Command) -> std::io::Result<Child> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
+    command.spawn()
+}
+
+/// What a `uiApp` step with `completion: "outputsAvailable"` waits for: the
+/// files or directories its declared outputs are delivered to. The step is done
+/// when every required output exists, at least one output exists, and nothing
+/// changed size or mtime between two polls at least `SETTLE` apart (the app may
+/// still be writing). Outputs delivered through `result.json` watch that file.
+struct OutputWatch {
+    paths: Vec<(PathBuf, bool)>,
+    seen: Option<Vec<Option<(u64, SystemTime)>>>,
+    last_poll: Instant,
+}
+
+impl OutputWatch {
+    const SETTLE: Duration = Duration::from_millis(250);
+
+    fn new(tool: &Doc, out_dir: &Path, value_types: &[String]) -> Self {
+        let default_mode = tool.value.pointer("/outputDelivery/default").and_then(Value::as_str).unwrap_or("core:result-file");
+        let mut paths: Vec<(PathBuf, bool)> = Vec::new();
+        for (name, decl) in tool.value.get("outputs").and_then(Value::as_object).into_iter().flatten() {
+            let t = decl.get("type").and_then(Value::as_str).unwrap_or("core:json");
+            let artifact = is_artifact_type(t, value_types);
+            let required = !decl.get("optional").and_then(Value::as_bool).unwrap_or(false);
+            let mode = decl.pointer("/delivery/mode").and_then(Value::as_str).unwrap_or(default_mode);
+            let rel = decl.pointer("/delivery/path").and_then(Value::as_str);
+            let path = match (mode, rel) {
+                ("core:result-dir" | "core:result-file", Some(rel)) => out_dir.join(rel),
+                ("core:result-dir", None) => out_dir.join(if artifact { name.clone() } else { format!("{name}.json") }),
+                ("core:result-file", None) => out_dir.join("result.json"),
+                _ => continue,
+            };
+            match paths.iter_mut().find(|(p, _)| *p == path) {
+                Some((_, r)) => *r |= required,
+                None => paths.push((path, required)),
+            }
+        }
+        Self { paths, seen: None, last_poll: Instant::now() - Self::SETTLE }
+    }
+
+    fn ready(&mut self) -> bool {
+        if self.paths.is_empty() || self.last_poll.elapsed() < Self::SETTLE {
+            return false;
+        }
+        self.last_poll = Instant::now();
+        let now: Vec<Option<(u64, SystemTime)>> = self
+            .paths
+            .iter()
+            .map(|(p, _)| fs::metadata(p).ok().map(|m| (m.len(), m.modified().unwrap_or(UNIX_EPOCH))))
+            .collect();
+        let complete = now.iter().any(Option::is_some)
+            && self.paths.iter().zip(&now).all(|((_, required), m)| !required || m.is_some());
+        let stable = self.seen.as_ref() == Some(&now);
+        self.seen = Some(now);
+        complete && stable
+    }
+}
+
+/// Stop a step started by `spawn_in_own_group` together with its descendants:
+/// SIGTERM to the group so servers can release their ports, a short grace
+/// period, then SIGKILL to whatever is left. Always reaps the direct child.
+/// On non-Unix hosts only the direct child is killed (no job object yet).
+fn terminate(child: &mut Child) {
+    #[cfg(unix)]
+    {
+        let group = -(child.id() as i32);
+        // SAFETY: plain signal delivery to a process group this process created.
+        unsafe { libc::kill(group, libc::SIGTERM) };
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while Instant::now() < deadline && !matches!(child.try_wait(), Ok(Some(_))) {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        unsafe { libc::kill(group, libc::SIGKILL) };
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = child.kill();
+    }
+    let _ = child.wait();
+}
+
 #[allow(clippy::too_many_arguments)]
 fn run_step(
     cfg: &Config,
@@ -494,6 +615,7 @@ fn run_step(
     context: &Map<String, Value>,
     step_outputs: &HashMap<String, Map<String, Value>>,
     known_evidence: &mut HashMap<String, Value>,
+    cancelled: &AtomicBool,
 ) -> StepRecord {
     let started_at = now_rfc3339();
     let mut rec = StepRecord {
@@ -564,7 +686,7 @@ fn run_step(
         }
     }
 
-    let launch = match launch_of(tool, &cfg.interpreters) {
+    let launch = match launch_of(tool, &cfg.interpreters, cfg.interactive) {
         Ok(l) => l,
         Err(e) => return fail(rec, e),
     };
@@ -601,9 +723,13 @@ fn run_step(
         .pointer("/outputDelivery/default")
         .and_then(Value::as_str)
         .unwrap_or("core:result-file");
-    let spawned = Command::new(&launch.interpreter)
-        .arg(&launch.script)
-        .current_dir(&paths.work)
+    let mut command = Command::new(&launch.interpreter);
+    if let Some(script) = &launch.script {
+        command.arg(script);
+    }
+    command
+        .args(&launch.args)
+        .current_dir(launch.cwd.as_deref().unwrap_or(&paths.work))
         .env("NEUROFLOW_SESSION", &paths.session)
         .env("NEUROFLOW_OUTPUT_DIR", &out_dir)
         .env("NEUROFLOW_OUTPUT_FILE", out_dir.join("result.json"))
@@ -617,21 +743,33 @@ fn run_step(
         .envs(interpreter_env(&cfg.interpreters, &launch))
         .stdin(Stdio::null())
         .stdout(stdout)
-        .stderr(stderr)
-        .spawn();
+        .stderr(stderr);
+    let spawned = spawn_in_own_group(&mut command);
     let mut child = match spawned {
         Ok(c) => c,
         Err(e) => return fail(rec, format!("failed to start {}: {e}", launch.interpreter.display())),
     };
+    // `completion` (session contract): "appClosed" (default) waits for the process
+    // to exit; "outputsAvailable" finishes the step as soon as the declared outputs
+    // are on disk and leaves the app open for the user to close.
+    let completion = tool.value.pointer("/extensions/neuroflow~1launch/completion").and_then(Value::as_str).unwrap_or("appClosed");
+    let mut output_watch = (completion == "outputsAvailable").then(|| OutputWatch::new(tool, &out_dir, &value_types));
     let started = Instant::now();
-    let status = loop {
+    let status: Option<ExitStatus> = loop {
         match child.try_wait() {
-            Ok(Some(status)) => break status,
+            Ok(Some(status)) => break Some(status),
             Ok(None) => {
+                if cancelled.load(Ordering::SeqCst) {
+                    terminate(&mut child);
+                    return fail(rec, CANCELLED.into());
+                }
+                if output_watch.as_mut().is_some_and(OutputWatch::ready) {
+                    // Detached: the Child is dropped without a kill and the app stays open.
+                    break None;
+                }
                 if let Some(limit) = cfg.step_timeout {
                     if started.elapsed() > limit {
-                        let _ = child.kill();
-                        let _ = child.wait();
+                        terminate(&mut child);
                         return fail(rec, format!("timed out after {}s", limit.as_secs()));
                     }
                 }
@@ -640,13 +778,15 @@ fn run_step(
             Err(e) => return fail(rec, format!("wait failed: {e}")),
         }
     };
-    rec.exit_code = status.code();
-    if !status.success() {
-        let tail = tail_of(&stderr_path, 400);
-        return fail(rec, format!("tool exited with status {}. {}", status.code().unwrap_or(-1), tail));
+    rec.exit_code = status.and_then(|s| s.code());
+    if let Some(status) = status {
+        if !status.success() {
+            let tail = tail_of(&stderr_path, 400);
+            return fail(rec, format!("tool exited with status {}. {}", status.code().unwrap_or(-1), tail));
+        }
     }
 
-    match harvest(tool, &out_dir, &paths.work, &stdout_path, status.code().unwrap_or(0), &value_types) {
+    match harvest(tool, &out_dir, &paths.work, &stdout_path, rec.exit_code.unwrap_or(0), &value_types) {
         Ok((mut outputs, types)) => {
             for (name, value) in &mut outputs {
                 let decl = &tool.value["outputs"][name];
@@ -1136,9 +1276,79 @@ mod tests {
         assert_eq!(step_order(&wf).unwrap(), vec!["filter", "qa"]);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn terminate_stops_the_whole_process_tree() {
+        // sh forks a grandchild and records its pid; killing only sh would leave it running.
+        let dir = std::env::temp_dir().join(format!("neuroflow-pg-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let pidfile = dir.join("grandchild.pid");
+        let mut command = Command::new("sh");
+        command.arg("-c").arg(format!("sleep 60 & echo $! > '{}'; wait", pidfile.display()));
+        let mut child = spawn_in_own_group(&mut command).unwrap();
+        let grandchild = loop {
+            if let Some(pid) = fs::read_to_string(&pidfile).ok().and_then(|t| t.trim().parse::<i32>().ok()) {
+                break pid;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        };
+        terminate(&mut child);
+        // A dead grandchild is reparented and reaped by init; kill(pid, 0) then fails with ESRCH.
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let gone = loop {
+            if unsafe { libc::kill(grandchild, 0) } != 0 { break true; }
+            if Instant::now() > deadline { break false; }
+            std::thread::sleep(Duration::from_millis(20));
+        };
+        let _ = fs::remove_dir_all(&dir);
+        assert!(gone, "grandchild {grandchild} survived terminate");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn outputs_available_completes_the_step_while_the_app_keeps_running() {
+        let root = std::env::temp_dir().join(format!("neuroflow-uiapp-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("registry")).unwrap();
+        fs::create_dir_all(root.join("runs")).unwrap();
+        fs::create_dir_all(root.join("checkout")).unwrap();
+        let root = fs::canonicalize(&root).unwrap();
+        let app = format!("watch-test-{}", std::process::id());
+        std::env::set_var(format!("NEUROFLOW_UI_APP_{}", app.to_uppercase().replace('-', "_")), root.join("checkout"));
+        // The "app" saves its state at once, then stays open for a while.
+        let tool = json!({
+            "neuroflow": "0.1.1", "kind": "tool", "id": "test/viewer", "version": "1.0.0",
+            "description": "Fake interactive viewer.",
+            "inputs": {},
+            "outputs": { "review_state": { "type": "core:json", "description": "Viewer state.",
+                "delivery": { "mode": "core:result-file", "path": "review.state.json" } } },
+            "extensions": { "neuroflow/launch": {
+                "kind": "uiApp", "app": app, "command": "sh", "interactive": true, "completion": "outputsAvailable",
+                "args": ["-c", "echo '{\"saved\": true}' > \"$NEUROFLOW_OUTPUT_DIR/review.state.json\"; sleep 4"]
+            } }
+        });
+        fs::write(root.join("registry/viewer.json"), tool.to_string()).unwrap();
+        let cfg = Config {
+            registry_dirs: vec![root.join("registry")], spec_dir: None, data_roots: vec![root.clone()],
+            sessions_root: root.join("runs"), interpreters: HashMap::new(), step_timeout: None,
+            summary_max_bytes: 1024, interactive: true,
+        };
+        let registry = Registry::load(&cfg.registry_dirs, &cfg.interpreters, cfg.interactive).unwrap();
+        let doc = registry.tool("test/viewer").unwrap();
+        assert_eq!(doc.runnable, Ok(()), "{:?}", doc.runnable);
+        let workflow = wrap_tool(doc);
+        let started = Instant::now();
+        let outcome = run_workflow(&cfg, &registry, &workflow, &Map::new(), &json!({}), &mut |_, _, _| {}).unwrap();
+        let elapsed = started.elapsed();
+        let _ = fs::remove_dir_all(&root);
+        assert_eq!(outcome.status, "completed", "{}", outcome.summary);
+        assert!(elapsed < Duration::from_secs(3), "step waited for the app to exit: {elapsed:?}");
+        assert_eq!(outcome.structured["outputs"]["review_state"]["saved"], json!(true), "{}", outcome.structured);
+    }
+
     #[test]
     fn fingerprint_ignores_key_order_and_tracks_input_files() {
-        let registry = Registry::load(&[], &HashMap::new()).unwrap();
+        let registry = Registry::load(&[], &HashMap::new(), false).unwrap();
         let a = json!({ "id": "x", "steps": { "s": { "tool": "t/a", "inputs": {} } }, "inputs": {} });
         let b = json!({ "inputs": {}, "steps": { "s": { "inputs": {}, "tool": "t/a" } }, "id": "x" });
         let mut inputs = Map::new();

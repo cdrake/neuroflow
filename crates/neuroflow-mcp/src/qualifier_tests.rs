@@ -47,6 +47,7 @@ marker.with_suffix('.env').write_text(json.dumps({k: v for k, v in os.environ.it
             interpreters: HashMap::new(),
             step_timeout: None,
             summary_max_bytes: 1024 * 1024,
+            interactive: false,
         };
         Self { root, cfg }
     }
@@ -93,7 +94,7 @@ marker.with_suffix('.env').write_text(json.dumps({k: v for k, v in os.environ.it
             document.to_string(),
         )
         .unwrap();
-        Registry::load(&self.cfg.registry_dirs, &self.cfg.interpreters).unwrap()
+        Registry::load(&self.cfg.registry_dirs, &self.cfg.interpreters, self.cfg.interactive).unwrap()
     }
     fn run(
         &self,

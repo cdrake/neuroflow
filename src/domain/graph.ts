@@ -1,7 +1,8 @@
 import type { Edge, Node, XYPosition } from '@xyflow/react'
-import type { ToolDefinition, WorkflowDocument } from './neuroflow'
+import type { BlockCategory, ToolDefinition, WorkflowDocument } from './neuroflow'
 import { isConstantBinding, isRefBinding, stableToolName } from './neuroflow'
-import { resolveToolDefinition } from './registry'
+import { categoryColor, getToolBlocks, resolveToolDefinition } from './registry'
+import type { ToolStatus } from './host'
 
 export interface SourceNodeData extends Record<string, unknown> {
   title: string
@@ -13,6 +14,11 @@ export interface StepNodeData extends Record<string, unknown> {
   id: string
   toolLabel: string
   tool?: ToolDefinition
+  category?: BlockCategory
+  /** Design category color for the node's accent strip. */
+  color: string
+  /** Host readiness from the last environment check, when known. */
+  readiness?: ToolStatus
   index: number
   inputs: Array<{ name: string; type: string; binding?: string; constant?: string }>
   outputs: Array<{ name: string; type: string }>
@@ -27,14 +33,15 @@ export type NodePositionMap = Record<string, XYPosition>
 const SOURCE_X = 24
 const STEP_X = 420
 const STEP_Y = 92
-const STEP_GAP = 320
+const STEP_GAP = 350
 
 export function buildWorkflowGraph(
   workflow: WorkflowDocument,
   tools: Map<string, ToolDefinition>,
   selectedStep: string | null,
   onSelectStep: (id: string) => void,
-  positions: NodePositionMap = {}
+  positions: NodePositionMap = {},
+  toolStatuses: Map<string, ToolStatus> = new Map()
 ): { nodes: NeuroflowNode[]; edges: Edge[] } {
   const nodes: NeuroflowNode[] = [
     {
@@ -69,6 +76,7 @@ export function buildWorkflowGraph(
     const tool = resolveToolDefinition(tools, step.tool)
     const inputDefs = tool?.inputs ?? {}
     const outputDefs = tool?.outputs ?? {}
+    const block = tool ? getToolBlocks(tool)[0] : undefined
 
     nodes.push({
       id: `step:${stepId}`,
@@ -80,7 +88,10 @@ export function buildWorkflowGraph(
       data: {
         id: stepId,
         tool,
-        toolLabel: tool?.name ?? stableToolName(step.tool),
+        toolLabel: block?.label ?? tool?.name ?? stableToolName(step.tool),
+        category: block?.category,
+        color: categoryColor(block?.category),
+        readiness: tool ? toolStatuses.get(tool.id) : undefined,
         index,
         selected: selectedStep === stepId,
         inputs: Object.entries(inputDefs).map(([name, def]) => {

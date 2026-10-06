@@ -704,9 +704,9 @@ mod tests {
             registry_dirs: vec![root.clone()], spec_dir: None, data_roots: vec![root.clone()],
             sessions_root: root.join("runs"),
             interpreters: HashMap::from([("python3".into(), std::env::current_exe().unwrap())]),
-            step_timeout: None, summary_max_bytes: 1024,
+            step_timeout: None, summary_max_bytes: 1024, interactive: false,
         };
-        let registry = Registry::load(&cfg.registry_dirs, &cfg.interpreters).unwrap();
+        let registry = Registry::load(&cfg.registry_dirs, &cfg.interpreters, cfg.interactive).unwrap();
         let server = Server::new(cfg, registry);
         let workflow = json!({
             "neuroflow": "0.1.1", "kind": "workflow", "id": "test/validation", "version": "1.0.0",

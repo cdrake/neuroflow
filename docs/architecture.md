@@ -103,14 +103,32 @@ Tauri, and test usage aligned.
 
 ## UI Composition
 
-The UI follows the BIDSvue workbench shape:
+The UI follows the BIDSvue workbench shape, laid out after the Claude Design
+guide (Builder, Environment and RunMonitor artboards):
 
-- workflow library
-- block palette
-- graph canvas
+- workflow library (`gallery/workflows`, bundled by `src/data/gallery.ts`)
+- block palette (`gallery/tools`, grouped by `niivue/ui` block category; fit /
+  ready / setup / interactive badges)
+- graph canvas (React Flow; category color strip and readiness badge per step)
 - step inspector
-- run plan and validation panel
+- environment panel (`check_environment` → interpreters, per-tool readiness
+  with fixes, host settings)
+- run panel in the desktop app (inputs form, `start_run`, progress events,
+  outputs with reveal, stderr tail on failure); run plan with a simulated run in
+  the browser
 - bottom status bar
+
+### Host boundary
+
+`src-tauri/src/host.rs` exposes `default_settings`, `check_environment`,
+`workflow_runnable`, `start_run`, `cancel_run`, `open_path` and `read_session_tail`. Runs
+execute in-process on `neuroflow_mcp::runtime::run_workflow` (the MCP server's
+runtime, now a library crate) on a background thread and report through the
+`neuroflow:run-progress` and `neuroflow:run-finished` events. The environment
+check spawns `gallery/scripts/check_tool.mjs` once for all tool documents and
+merges its probe results with the registry's own runnability rules, so every
+"needs setup" case is known before a run is attempted. `src/domain/host.ts` is
+the typed bridge; in a browser every call resolves to "not available".
 
 Local visual tokens in `src/styles/bidsui.css` mirror
 BIDSvue's `src/lib/styles/theme.css`. BIDSvue is SvelteKit,

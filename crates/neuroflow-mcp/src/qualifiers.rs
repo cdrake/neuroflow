@@ -378,6 +378,7 @@ mod tests {
             interpreters: HashMap::new(),
             step_timeout: None,
             summary_max_bytes: 1024,
+            interactive: false,
         };
         let path = root.join("labels.json");
         let value = json!(path);
