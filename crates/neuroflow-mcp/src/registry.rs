@@ -279,6 +279,19 @@ impl Registry {
     }
 }
 
+/// The default checkout of a `uiApp`'s `repo`: a directory of that name beside the
+/// NeuroFlow checkout the registry lives in. The gallery registry root is
+/// `<neuroflow>/gallery`, but a registry may also be the repo root itself, so the
+/// lookup tries the registry root and its nearest ancestors as "the checkout".
+fn default_checkout(registry_root: &Path, repo: &str) -> Option<PathBuf> {
+    registry_root
+        .ancestors()
+        .take(3)
+        .filter_map(|checkout| checkout.parent())
+        .map(|parent| parent.join(repo))
+        .find(|candidate| candidate.is_dir())
+}
+
 /// Resolve a tool's `neuroflow/launch` into an executable interpreter and script.
 /// `interactive` says whether the host can wait on a window (see `Config::interactive`);
 /// without it, `uiApp` tools are rejected before anything is looked up.
@@ -297,12 +310,18 @@ pub fn launch_of(doc: &Doc, interpreters: &HashMap<String, PathBuf>, interactive
             let app = launch.get("app").and_then(Value::as_str).ok_or("uiApp has no app name")?;
             let command = launch.get("command").and_then(Value::as_str).ok_or("uiApp has no command")?;
             let executable = find_on_path(command).ok_or_else(|| format!("{command} was not found on PATH"))?;
-            // An explicit environment override is safest for non-standard checkouts. The
-            // gallery's reference apps are siblings of the NeuroFlow checkout.
+            // An explicit environment override is safest for non-standard checkouts;
+            // otherwise the app's repo is expected next to the NeuroFlow checkout.
             let key = format!("NEUROFLOW_UI_APP_{}", app.to_uppercase().replace('-', "_"));
-            let cwd = std::env::var_os(&key).map(PathBuf::from).or_else(|| {
-                launch.get("repo").and_then(Value::as_str).map(|repo| doc.root.parent().unwrap_or(&doc.root).join(repo))
-            }).filter(|path| path.is_dir()).ok_or_else(|| format!("{app} checkout not found; set {key} to its directory"))?;
+            let repo = launch.get("repo").and_then(Value::as_str);
+            let cwd = std::env::var_os(&key)
+                .map(PathBuf::from)
+                .filter(|path| path.is_dir())
+                .or_else(|| repo.and_then(|repo| default_checkout(&doc.root, repo)))
+                .ok_or_else(|| {
+                    let hint = repo.map(|repo| format!(" (looked for a {repo} directory next to the NeuroFlow checkout)")).unwrap_or_default();
+                    format!("{app} checkout not found{hint}; set {key} to its directory")
+                })?;
             let args = launch.get("args").and_then(Value::as_array).into_iter().flatten()
                 .filter_map(Value::as_str).map(str::to_string).collect();
             return Ok(Launch { name: command.into(), interpreter: executable.clone(), script: PathBuf::new(), args, cwd: Some(cwd) });
@@ -382,6 +401,7 @@ fn collect_json(dir: &Path, out: &mut Vec<PathBuf>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     #[test]
     fn derives_names_per_rfc() {
@@ -405,6 +425,22 @@ mod tests {
             source: PathBuf::from("/nonexistent/tools/viewer.json"), root: PathBuf::from("/nonexistent"),
             title: "Viewer".into(), runnable: Ok(()), mcp_name: None,
         }
+    }
+
+    #[test]
+    fn default_checkout_is_a_sibling_of_the_neuroflow_checkout() {
+        let dir = std::env::temp_dir().join(format!("nf-checkout-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let neuroflow = dir.join("neuroflow");
+        let gallery = neuroflow.join("gallery");
+        fs::create_dir_all(&gallery).unwrap();
+        fs::create_dir_all(dir.join("neurovue")).unwrap();
+        // Nothing of that name inside the repo must be mistaken for the checkout.
+        assert!(!neuroflow.join("neurovue").exists());
+        assert_eq!(default_checkout(&gallery, "neurovue"), Some(dir.join("neurovue")), "gallery registry");
+        assert_eq!(default_checkout(&neuroflow, "neurovue"), Some(dir.join("neurovue")), "repo root registry");
+        assert_eq!(default_checkout(&gallery, "bidsui"), None, "missing sibling");
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
