@@ -18,3 +18,7 @@ neuroflow-core = { path = "../neuroflow-core" }
 serde_json = { version = "1", features = ["preserve_order"] }
 flate2 = "1"
 sha2 = "0.10"
+
+[target.'cfg(unix)'.dependencies]
+# Process-group signals so cancelling a step stops its whole process tree.
+libc = "0.2"

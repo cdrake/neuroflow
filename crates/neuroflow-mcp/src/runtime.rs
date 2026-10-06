@@ -11,9 +11,9 @@ use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 pub struct RunOutcome {
     pub run_id: String,
@@ -503,6 +503,42 @@ struct StepRecord {
 }
 
 #[allow(clippy::too_many_arguments)]
+/// Start a step's process as the leader of its own process group so that
+/// `terminate` can stop everything it forks: `bun tauri dev` starts cargo, the
+/// app binary and a vite dev server; node adapters exec python3. Killing only
+/// the direct child would orphan those and leave windows open and ports bound.
+fn spawn_in_own_group(command: &mut Command) -> std::io::Result<Child> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
+    command.spawn()
+}
+
+/// Stop a step started by `spawn_in_own_group` together with its descendants:
+/// SIGTERM to the group so servers can release their ports, a short grace
+/// period, then SIGKILL to whatever is left. Always reaps the direct child.
+/// On non-Unix hosts only the direct child is killed (no job object yet).
+fn terminate(child: &mut Child) {
+    #[cfg(unix)]
+    {
+        let group = -(child.id() as i32);
+        // SAFETY: plain signal delivery to a process group this process created.
+        unsafe { libc::kill(group, libc::SIGTERM) };
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while Instant::now() < deadline && !matches!(child.try_wait(), Ok(Some(_))) {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        unsafe { libc::kill(group, libc::SIGKILL) };
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = child.kill();
+    }
+    let _ = child.wait();
+}
+
 fn run_step(
     cfg: &Config,
     paths: &Paths,
@@ -627,7 +663,7 @@ fn run_step(
     if !launch.script.as_os_str().is_empty() {
         command.arg(&launch.script);
     }
-    let spawned = command
+    command
         .args(&launch.args)
         .current_dir(launch.cwd.as_deref().unwrap_or(&paths.work))
         .env("NEUROFLOW_SESSION", &paths.session)
@@ -643,8 +679,8 @@ fn run_step(
         .envs(interpreter_env(&cfg.interpreters, &launch))
         .stdin(Stdio::null())
         .stdout(stdout)
-        .stderr(stderr)
-        .spawn();
+        .stderr(stderr);
+    let spawned = spawn_in_own_group(&mut command);
     let mut child = match spawned {
         Ok(c) => c,
         Err(e) => return fail(rec, format!("failed to start {}: {e}", launch.interpreter.display())),
@@ -655,14 +691,12 @@ fn run_step(
             Ok(Some(status)) => break status,
             Ok(None) => {
                 if cancelled.load(Ordering::SeqCst) {
-                    let _ = child.kill();
-                    let _ = child.wait();
+                    terminate(&mut child);
                     return fail(rec, "run cancelled".into());
                 }
                 if let Some(limit) = cfg.step_timeout {
                     if started.elapsed() > limit {
-                        let _ = child.kill();
-                        let _ = child.wait();
+                        terminate(&mut child);
                         return fail(rec, format!("timed out after {}s", limit.as_secs()));
                     }
                 }
@@ -1165,6 +1199,34 @@ mod tests {
             "filter": { "tool": "t/f", "inputs": { "d": { "ref": "inputs.d" } } }
         }});
         assert_eq!(step_order(&wf).unwrap(), vec!["filter", "qa"]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn terminate_stops_the_whole_process_tree() {
+        // sh forks a grandchild and records its pid; killing only sh would leave it running.
+        let dir = std::env::temp_dir().join(format!("neuroflow-pg-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let pidfile = dir.join("grandchild.pid");
+        let mut command = Command::new("sh");
+        command.arg("-c").arg(format!("sleep 60 & echo $! > '{}'; wait", pidfile.display()));
+        let mut child = spawn_in_own_group(&mut command).unwrap();
+        let grandchild = loop {
+            if let Some(pid) = fs::read_to_string(&pidfile).ok().and_then(|t| t.trim().parse::<i32>().ok()) {
+                break pid;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        };
+        terminate(&mut child);
+        // A dead grandchild is reparented and reaped by init; kill(pid, 0) then fails with ESRCH.
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let gone = loop {
+            if unsafe { libc::kill(grandchild, 0) } != 0 { break true; }
+            if Instant::now() > deadline { break false; }
+            std::thread::sleep(Duration::from_millis(20));
+        };
+        let _ = fs::remove_dir_all(&dir);
+        assert!(gone, "grandchild {grandchild} survived terminate");
     }
 
     #[test]

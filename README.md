@@ -101,8 +101,9 @@ machine through the Rust/Tauri boundary (`src-tauri/src/host.rs`, backed by the
 command in a configured checkout (`NEUROFLOW_UI_APP_<APP>`, or by default the
 tool's `repo` directory next to the NeuroFlow checkout, e.g. `../neurovue`) and
 wait for the app to finish its session contract. The Run
-panel can cancel an active local run; the runtime terminates its current child
-process and writes a cancelled session record. Remote hosts are not wired yet.
+panel can cancel an active local run; the runtime terminates the current step's
+whole process tree (each step runs in its own process group) and writes a
+cancelled session record. Remote hosts are not wired yet.
 
 ## License
 
