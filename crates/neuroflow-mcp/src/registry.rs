@@ -97,7 +97,7 @@ pub struct Registry {
 }
 
 impl Registry {
-    pub fn load(dirs: &[PathBuf], interpreters: &HashMap<String, PathBuf>) -> Result<Self, String> {
+    pub fn load(dirs: &[PathBuf], interpreters: &HashMap<String, PathBuf>, interactive: bool) -> Result<Self, String> {
         let mut docs: Vec<Doc> = Vec::new();
         let mut warnings = Vec::new();
         let mut by_id: HashMap<String, usize> = HashMap::new();
@@ -167,7 +167,7 @@ impl Registry {
         for i in 0..registry.docs.len() {
             if registry.docs[i].kind == Kind::Tool {
                 let doc = &registry.docs[i];
-                let runnable = launch_of(doc, interpreters).map(|_| ());
+                let runnable = launch_of(doc, interpreters, interactive).map(|_| ());
                 registry.docs[i].runnable = runnable;
             }
         }
@@ -280,7 +280,9 @@ impl Registry {
 }
 
 /// Resolve a tool's `neuroflow/launch` into an executable interpreter and script.
-pub fn launch_of(doc: &Doc, interpreters: &HashMap<String, PathBuf>) -> Result<Launch, String> {
+/// `interactive` says whether the host can wait on a window (see `Config::interactive`);
+/// without it, `uiApp` tools are rejected before anything is looked up.
+pub fn launch_of(doc: &Doc, interpreters: &HashMap<String, PathBuf>, interactive: bool) -> Result<Launch, String> {
     let launch = doc
         .value
         .pointer("/extensions/neuroflow~1launch")
@@ -289,6 +291,9 @@ pub fn launch_of(doc: &Doc, interpreters: &HashMap<String, PathBuf>) -> Result<L
     match kind {
         "script" => {}
         "uiApp" => {
+            if !interactive {
+                return Err("interactive uiApp tools need a host that can wait on a window (the desktop builder); this MCP server cannot".into());
+            }
             let app = launch.get("app").and_then(Value::as_str).ok_or("uiApp has no app name")?;
             let command = launch.get("command").and_then(Value::as_str).ok_or("uiApp has no command")?;
             let executable = find_on_path(command).ok_or_else(|| format!("{command} was not found on PATH"))?;
@@ -385,5 +390,33 @@ mod tests {
             "neuroflow.gallery.tools.python-volume-filter"
         );
         assert_eq!(derive_name("niivue.desktop/dicom-to-bids"), "niivue.desktop.dicom-to-bids");
+    }
+
+    fn ui_app_doc() -> Doc {
+        let value = serde_json::json!({
+            "neuroflow": "0.1.1", "kind": "tool", "id": "test/viewer", "version": "1.0.0",
+            "extensions": { "neuroflow/launch": {
+                "kind": "uiApp", "app": "viewer", "command": "neuroflow-test-command-that-does-not-exist",
+                "repo": "viewer", "args": []
+            } }
+        });
+        Doc {
+            kind: Kind::Tool, id: "test/viewer".into(), version: "1.0.0".into(), value,
+            source: PathBuf::from("/nonexistent/tools/viewer.json"), root: PathBuf::from("/nonexistent"),
+            title: "Viewer".into(), runnable: Ok(()), mcp_name: None,
+        }
+    }
+
+    #[test]
+    fn ui_apps_are_not_runnable_on_a_non_interactive_host() {
+        let err = launch_of(&ui_app_doc(), &HashMap::new(), false).unwrap_err();
+        assert!(err.contains("wait on a window"), "{err}");
+    }
+
+    #[test]
+    fn interactive_hosts_resolve_ui_apps_past_the_gate() {
+        // The command is deliberately missing, so an interactive host fails later, on PATH lookup.
+        let err = launch_of(&ui_app_doc(), &HashMap::new(), true).unwrap_err();
+        assert!(err.contains("not found on PATH"), "{err}");
     }
 }

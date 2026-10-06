@@ -96,8 +96,9 @@ fn main() {
         interpreters,
         step_timeout,
         summary_max_bytes,
+        interactive: false,
     };
-    let registry = registry::Registry::load(&cfg.registry_dirs, &cfg.interpreters).unwrap_or_else(|e| fail(&e));
+    let registry = registry::Registry::load(&cfg.registry_dirs, &cfg.interpreters, cfg.interactive).unwrap_or_else(|e| fail(&e));
     for w in &registry.warnings {
         eprintln!("neuroflow-mcp: {w}");
     }

@@ -586,7 +586,7 @@ fn run_step(
         }
     }
 
-    let launch = match launch_of(tool, &cfg.interpreters) {
+    let launch = match launch_of(tool, &cfg.interpreters, cfg.interactive) {
         Ok(l) => l,
         Err(e) => return fail(rec, e),
     };
@@ -1169,7 +1169,7 @@ mod tests {
 
     #[test]
     fn fingerprint_ignores_key_order_and_tracks_input_files() {
-        let registry = Registry::load(&[], &HashMap::new()).unwrap();
+        let registry = Registry::load(&[], &HashMap::new(), false).unwrap();
         let a = json!({ "id": "x", "steps": { "s": { "tool": "t/a", "inputs": {} } }, "inputs": {} });
         let b = json!({ "inputs": {}, "steps": { "s": { "inputs": {}, "tool": "t/a" } }, "id": "x" });
         let mut inputs = Map::new();

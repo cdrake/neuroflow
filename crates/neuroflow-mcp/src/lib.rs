@@ -26,4 +26,9 @@ pub struct Config {
     pub interpreters: HashMap<String, PathBuf>,
     pub step_timeout: Option<Duration>,
     pub summary_max_bytes: u64,
+    /// Whether this host can run tools that open a window and wait for a
+    /// person (`uiApp` launches). The desktop app can; the stdio MCP server
+    /// cannot, because a client's request would block on a window nobody is
+    /// watching. Such tools are listed but not runnable on a non-interactive host.
+    pub interactive: bool,
 }

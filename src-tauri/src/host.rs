@@ -138,11 +138,12 @@ fn build_config(settings: &HostSettings) -> Result<Config, String> {
         interpreters,
         step_timeout: None,
         summary_max_bytes: SUMMARY_MAX_BYTES,
+        interactive: true,
     })
 }
 
 fn load_registry(cfg: &Config) -> Result<Registry, String> {
-    Registry::load(&cfg.registry_dirs, &cfg.interpreters)
+    Registry::load(&cfg.registry_dirs, &cfg.interpreters, cfg.interactive)
 }
 
 fn version_of(path: &Path, args: &[&str]) -> Option<String> {
