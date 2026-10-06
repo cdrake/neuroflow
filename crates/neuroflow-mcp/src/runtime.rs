@@ -669,8 +669,8 @@ fn run_step(
         .and_then(Value::as_str)
         .unwrap_or("core:result-file");
     let mut command = Command::new(&launch.interpreter);
-    if !launch.script.as_os_str().is_empty() {
-        command.arg(&launch.script);
+    if let Some(script) = &launch.script {
+        command.arg(script);
     }
     command
         .args(&launch.args)

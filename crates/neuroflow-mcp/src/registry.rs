@@ -30,7 +30,8 @@ pub struct Launch {
     /// The interpreter name the tool declared (one of `ALLOWED_INTERPRETERS`).
     pub name: String,
     pub interpreter: PathBuf,
-    pub script: PathBuf,
+    /// The script to run, for `script` launches; a `uiApp` runs its command directly.
+    pub script: Option<PathBuf>,
     pub args: Vec<String>,
     pub cwd: Option<PathBuf>,
 }
@@ -324,7 +325,7 @@ pub fn launch_of(doc: &Doc, interpreters: &HashMap<String, PathBuf>, interactive
                 })?;
             let args = launch.get("args").and_then(Value::as_array).into_iter().flatten()
                 .filter_map(Value::as_str).map(str::to_string).collect();
-            return Ok(Launch { name: command.into(), interpreter: executable.clone(), script: PathBuf::new(), args, cwd: Some(cwd) });
+            return Ok(Launch { name: command.into(), interpreter: executable, script: None, args, cwd: Some(cwd) });
         }
         other => return Err(format!("launch kind {other:?} is not supported by this server yet")),
     }
@@ -361,7 +362,7 @@ pub fn launch_of(doc: &Doc, interpreters: &HashMap<String, PathBuf>, interactive
             doc.root.display()
         ));
     }
-    Ok(Launch { name: interpreter_name.to_string(), interpreter, script, args: vec![], cwd: None })
+    Ok(Launch { name: interpreter_name.to_string(), interpreter, script: Some(script), args: vec![], cwd: None })
 }
 
 /// RFC 0009 section 1.1: replace `/` with `.`, drop characters outside `[A-Za-z0-9_.-]`.
