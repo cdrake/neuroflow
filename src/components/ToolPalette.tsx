@@ -1,118 +1,119 @@
 import { useMemo, useState } from 'react'
 import {
-  BadgeCheck,
-  Cloud,
-  Code2,
-  Download,
-  FileText,
-  FormInput,
   AppWindow,
+  ChevronDown,
+  ChevronRight,
+  Code2,
+  Cpu,
+  FlaskConical,
   Plus,
   Search,
-  TableProperties,
-  Upload,
+  Server,
+  Sigma,
+  Terminal,
   Wrench
 } from 'lucide-react'
 import type { ToolRegistryEntry, ToolProviderKind } from '../domain/registry'
-import { getSourceSuggestions } from '../domain/registry'
-import type { WorkflowDocument, WorkflowStage } from '../domain/neuroflow'
-import { shortType, stageInfo, WORKFLOW_STAGES } from '../domain/neuroflow'
-import type { ToolDefinition } from '../domain/neuroflow'
-import { getToolPackaging, packagingModeLabel, packagingTargetSummary } from '../domain/packaging'
+import { categoryColor } from '../domain/registry'
+import type { BlockCategory, ToolDefinition, WorkflowDocument, WorkflowStage } from '../domain/neuroflow'
+import { BLOCK_CATEGORIES, shortType, WORKFLOW_STAGES } from '../domain/neuroflow'
+import { isTypeCompatible } from '../domain/typeCompatibility'
+import type { ToolStatus } from '../domain/host'
+import { resolveToolDefinition } from '../domain/registry'
 
-const BLOCK_ICONS = {
-  Upload,
-  TableProperties,
-  Download,
-  BadgeCheck,
-  FileText
-}
-
-const PROVIDER_ICONS = {
+const PROVIDER_ICONS: Record<ToolProviderKind, typeof Wrench> = {
   console: Code2,
-  webForm: FormInput,
-  webService: Cloud,
+  webForm: Code2,
+  webService: Server,
   uiApp: AppWindow,
-  neuroflow: Wrench
+  neuroflow: Wrench,
+  script: Terminal,
+  cli: Cpu,
+  python: FlaskConical,
+  matlab: Sigma,
+  neurodesk: Server
 }
-
-const PROVIDERS: Array<{ kind: ToolProviderKind | 'all'; label: string }> = [
-  { kind: 'all', label: 'All' },
-  { kind: 'console', label: 'Console' },
-  { kind: 'webForm', label: 'Forms' },
-  { kind: 'uiApp', label: 'Apps' },
-  { kind: 'webService', label: 'Services' },
-  { kind: 'neuroflow', label: 'Built-in' }
-]
 
 const STAGE_FILTERS: Array<{ id: WorkflowStage | 'all'; label: string }> = [
   { id: 'all', label: 'All stages' },
   ...WORKFLOW_STAGES.map((stage) => ({ id: stage.id, label: stage.label }))
 ]
 
-// Stable display order for the grouped list; untagged tools fall into 'other'.
-const STAGE_ORDER: Array<WorkflowStage | 'other'> = [
-  ...WORKFLOW_STAGES.map((stage) => stage.id),
-  'other'
-]
-
-function stageGroupLabel(group: WorkflowStage | 'other'): string {
-  return group === 'other' ? 'Other' : stageInfo(group).label
-}
+export type FitBadge = 'fit' | 'ready' | 'setup' | 'interactive' | 'unsupported'
 
 interface ToolPaletteProps {
   registry: ToolRegistryEntry[]
   workflow: WorkflowDocument
   toolMap: Map<string, ToolDefinition>
+  selectedStep: string | null
+  toolStatuses: Map<string, ToolStatus>
+  environmentChecked: boolean
   onAddTool: (toolId: string, blockId?: string) => void
 }
 
-export function ToolPalette({ registry, workflow, toolMap, onAddTool }: ToolPaletteProps): JSX.Element {
+export function ToolPalette({
+  registry,
+  workflow,
+  toolMap,
+  selectedStep,
+  toolStatuses,
+  environmentChecked,
+  onAddTool
+}: ToolPaletteProps): JSX.Element {
   const [search, setSearch] = useState('')
-  const [provider, setProvider] = useState<ToolProviderKind | 'all'>('all')
   const [stage, setStage] = useState<WorkflowStage | 'all'>('all')
+  const [collapsed, setCollapsed] = useState<Set<BlockCategory>>(() => new Set())
+
+  // Output types the next step could consume: the selected step's outputs, else the
+  // last step's, else the workflow inputs. Drives the "fit" badge.
+  const upstreamTypes = useMemo(() => upstreamOutputTypes(workflow, toolMap, selectedStep), [selectedStep, toolMap, workflow])
 
   const filteredEntries = useMemo(() => {
     const q = search.trim().toLowerCase()
     return registry.filter((entry) => {
-      const providerMatch = provider === 'all' || entry.provider.kind === provider
-      if (!providerMatch) return false
-      const stageMatch = stage === 'all' || entry.stage === stage
-      if (!stageMatch) return false
+      if (stage !== 'all' && entry.stage !== stage) return false
       if (!q) return true
-      return [entry.label, entry.description, entry.tool.name, entry.provider.label, entry.provider.source]
+      return [entry.label, entry.description, entry.tool.name, entry.tool.id, entry.provider.label, entry.category]
         .join(' ')
         .toLowerCase()
         .includes(q)
     })
-  }, [provider, registry, search, stage])
+  }, [registry, search, stage])
 
-  const groupedEntries = useMemo(() => {
-    const groups = new Map<WorkflowStage | 'other', ToolRegistryEntry[]>()
+  const groups = useMemo(() => {
+    const byCategory = new Map<BlockCategory, ToolRegistryEntry[]>()
     for (const entry of filteredEntries) {
-      const key = entry.stage ?? 'other'
-      groups.set(key, [...(groups.get(key) ?? []), entry])
+      byCategory.set(entry.category, [...(byCategory.get(entry.category) ?? []), entry])
     }
-    return STAGE_ORDER.filter((key) => groups.has(key)).map(
-      (key) => [key, groups.get(key) as ToolRegistryEntry[]] as const
+    return BLOCK_CATEGORIES.filter((category) => byCategory.has(category)).map(
+      (category) => [category, byCategory.get(category) as ToolRegistryEntry[]] as const
     )
   }, [filteredEntries])
+
+  function toggle(category: BlockCategory): void {
+    setCollapsed((current) => {
+      const next = new Set(current)
+      if (next.has(category)) next.delete(category)
+      else next.add(category)
+      return next
+    })
+  }
 
   return (
     <section className="nf-panel nf-palette">
       <header className="nf-panel-header">
         <div>
-          <p className="nf-eyebrow">Registry</p>
-          <h2>Tools and Forms</h2>
+          <p className="nf-eyebrow">Gallery</p>
+          <h2>Tools</h2>
         </div>
-        <Search size={16} />
+        <span className="nf-panel-count">{registry.length}</span>
       </header>
 
       <label className="nf-search-field">
         <Search size={13} />
         <input
-          aria-label="Search tool registry"
-          placeholder="Search registry"
+          aria-label="Search tools"
+          placeholder="Search tools"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
         />
@@ -131,38 +132,36 @@ export function ToolPalette({ registry, workflow, toolMap, onAddTool }: ToolPale
         ))}
       </div>
 
-      <div className="nf-segmented" aria-label="Provider filter">
-        {PROVIDERS.map((item) => (
-          <button
-            className={provider === item.kind ? 'is-active' : ''}
-            key={item.kind}
-            onClick={() => setProvider(item.kind)}
-            type="button"
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
-
       <div className="nf-block-list">
-        {groupedEntries.map(([group, entries]) => (
-          <div className="nf-registry-group" key={group}>
-            <div className="nf-registry-group-header">
-              <strong>{stageGroupLabel(group)}</strong>
-              <span>{entries.length}</span>
+        {groups.map(([category, entries]) => {
+          const isCollapsed = collapsed.has(category)
+          return (
+            <div className="nf-registry-group" key={category}>
+              <button
+                aria-expanded={!isCollapsed}
+                className="nf-registry-group-header nf-registry-group-toggle"
+                onClick={() => toggle(category)}
+                type="button"
+              >
+                {isCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
+                <i className="nf-category-dot" style={{ background: categoryColor(category) }} />
+                <strong>{category}</strong>
+                <span>{entries.length}</span>
+              </button>
+              {!isCollapsed &&
+                entries.map((entry) => (
+                  <PaletteBlock
+                    badge={badgeFor(entry, upstreamTypes, toolStatuses, environmentChecked)}
+                    entry={entry}
+                    key={entry.id}
+                    status={toolStatuses.get(entry.tool.id)}
+                    onAddTool={onAddTool}
+                  />
+                ))}
             </div>
-            {entries.map((entry) => (
-              <PaletteBlock
-                entry={entry}
-                key={entry.id}
-                toolMap={toolMap}
-                workflow={workflow}
-                onAddTool={onAddTool}
-              />
-            ))}
-          </div>
-        ))}
-        {filteredEntries.length === 0 && <p className="nf-empty-panel">No matching registry entries.</p>}
+          )
+        })}
+        {filteredEntries.length === 0 && <p className="nf-empty-panel">No matching tools.</p>}
       </div>
     </section>
   )
@@ -170,25 +169,20 @@ export function ToolPalette({ registry, workflow, toolMap, onAddTool }: ToolPale
 
 function PaletteBlock({
   entry,
-  workflow,
-  toolMap,
+  badge,
+  status,
   onAddTool
 }: {
   entry: ToolRegistryEntry
-  workflow: WorkflowDocument
-  toolMap: Map<string, ToolDefinition>
+  badge: FitBadge | null
+  status: ToolStatus | undefined
   onAddTool: (toolId: string, blockId?: string) => void
 }): JSX.Element {
-  const BlockIcon =
-    entry.block?.icon && entry.block.icon in BLOCK_ICONS
-      ? BLOCK_ICONS[entry.block.icon as keyof typeof BLOCK_ICONS]
-      : Wrench
-  const ProviderIcon = PROVIDER_ICONS[entry.provider.kind]
-  const packaging = getToolPackaging(entry.tool)
-  const satisfied = entry.requiredInputs.filter((inputName) => {
-    const input = entry.tool.inputs[inputName]
-    return input ? getSourceSuggestions(workflow, toolMap, input.type).length > 0 : false
-  }).length
+  const ProviderIcon = PROVIDER_ICONS[entry.provider.kind] ?? Wrench
+  const color = categoryColor(entry.category)
+  const title = status?.status === 'needsSetup' && status.fix
+    ? `${status.detail}\nFix: ${status.fix}`
+    : status?.detail ?? 'Drag to the canvas or click to add'
 
   return (
     <button
@@ -202,32 +196,25 @@ function PaletteBlock({
           JSON.stringify({ toolId: entry.tool.id, blockId: entry.block?.id })
         )
       }}
-      title="Drag to the canvas or click to add"
+      style={{ borderLeftColor: color }}
+      title={title}
       type="button"
     >
-      <span className="nf-block-icon">
-        <BlockIcon size={16} />
+      <span className="nf-block-icon" style={{ color }}>
+        <ProviderIcon size={16} />
       </span>
       <span>
         <strong>{entry.label}</strong>
         <small>{entry.description}</small>
       </span>
-      <em>
-        <Plus size={12} />
-        {entry.category}
+      <em className={badge ? `nf-badge nf-badge-${badge}` : 'nf-badge nf-badge-add'}>
+        {badge ? BADGE_LABEL[badge] : <Plus size={12} />}
       </em>
       <div className="nf-registry-meta">
-        <span title={entry.provider.source}>
-          <ProviderIcon size={12} />
-          {entry.provider.label}
-        </span>
-        <span title={packagingTargetSummary(packaging)}>
-          v{entry.tool.version} {packagingModeLabel(packaging)}
-        </span>
-        <span>
-          {satisfied}/{entry.requiredInputs.length} inputs
-        </span>
-        {entry.formComponent && <span>{entry.formComponent}</span>}
+        <span title={entry.provider.source}>{entry.provider.label}</span>
+        <span>v{entry.tool.version}</span>
+        {entry.stage && <span>{entry.stage}</span>}
+        {status?.version && <span title={status.executable ?? undefined}>{status.version}</span>}
       </div>
       {entry.fields.length > 0 && (
         <div className="nf-registry-fields">
@@ -240,4 +227,55 @@ function PaletteBlock({
       )}
     </button>
   )
+}
+
+const BADGE_LABEL: Record<FitBadge, string> = {
+  fit: 'fit',
+  ready: 'ready',
+  setup: 'setup',
+  interactive: 'interactive',
+  unsupported: 'no runner'
+}
+
+/**
+ * Badge priority: an environment problem wins (setup / interactive / no runner),
+ * then "fit" when the tool's required inputs can all be fed from upstream, then
+ * "ready" when the host checked the tool, else nothing.
+ */
+function badgeFor(
+  entry: ToolRegistryEntry,
+  upstreamTypes: string[],
+  statuses: Map<string, ToolStatus>,
+  environmentChecked: boolean
+): FitBadge | null {
+  const status = statuses.get(entry.tool.id)
+  if (status?.status === 'needsSetup') return 'setup'
+  if (status?.status === 'interactive') return 'interactive'
+  if (status?.status === 'unsupported') return 'unsupported'
+  const fileInputs = entry.requiredInputs
+    .map((name) => entry.tool.inputs[name])
+    .filter((def) => def && !def.type.startsWith('core:'))
+  if (fileInputs.length > 0 && fileInputs.every((def) => upstreamTypes.some((t) => isTypeCompatible(t, def.type)))) {
+    return 'fit'
+  }
+  if (environmentChecked && status?.status === 'ready') return 'ready'
+  return null
+}
+
+function upstreamOutputTypes(
+  workflow: WorkflowDocument,
+  toolMap: Map<string, ToolDefinition>,
+  selectedStep: string | null
+): string[] {
+  const stepIds = Object.keys(workflow.steps)
+  const sourceStep = selectedStep && workflow.steps[selectedStep] ? selectedStep : stepIds[stepIds.length - 1]
+  const types = new Set<string>()
+  if (sourceStep) {
+    const tool = resolveToolDefinition(toolMap, workflow.steps[sourceStep].tool)
+    for (const output of Object.values(tool?.outputs ?? {})) types.add(output.type)
+  }
+  if (types.size === 0) {
+    for (const input of Object.values(workflow.inputs)) types.add(input.type)
+  }
+  return Array.from(types)
 }

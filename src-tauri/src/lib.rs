@@ -1,3 +1,5 @@
+mod host;
+
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -134,7 +136,13 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             validate_workflow,
             plan_workflow,
-            execute_console_tool
+            execute_console_tool,
+            host::default_settings,
+            host::check_environment,
+            host::workflow_runnable,
+            host::start_run,
+            host::open_path,
+            host::read_session_tail
         ])
         .run(tauri::generate_context!())
         .expect("error while running NeuroFlow");

@@ -5,6 +5,9 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "Model Context Protocol server for NeuroFlow (RFC 0009 binding)"
 
+[lib]
+path = "src/lib.rs"
+
 [[bin]]
 name = "neuroflow-mcp"
 path = "src/main.rs"

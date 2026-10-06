@@ -1820,6 +1820,7 @@ name = "neuroflow-tauri"
 version = "0.1.0"
 dependencies = [
  "neuroflow-core",
+ "neuroflow-mcp",
  "serde",
  "serde_json",
  "tauri",

@@ -1,5 +1,6 @@
 import type {
   Binding,
+  BlockCategory,
   BlockDef,
   ContextFieldDef,
   StepDef,
@@ -13,8 +14,39 @@ import { isConstantBinding, isRefBinding, parseToolRef, qualifiedToolRef, shortT
 import { isTypeCompatible } from './typeCompatibility'
 
 export const REGISTRY_EXTENSION_KEY = 'neuroflow/registry'
+export const UI_BLOCK_EXTENSION_KEY = 'niivue/ui'
+export const LAUNCH_EXTENSION_KEY = 'neuroflow/launch'
 
-export type ToolProviderKind = 'console' | 'webForm' | 'webService' | 'uiApp' | 'neuroflow'
+/**
+ * How a tool is launched. The gallery adapters (`neuroflow/cli`, `neuroflow/python`,
+ * `neuroflow/matlab`, `neurodesk/job`) refine the generic `script` kind; `uiApp` is an
+ * interactive app the runtime blocks on; the legacy kinds remain for NiiVue Desktop
+ * registries that still describe providers under `neuroflow/registry`.
+ */
+export type ToolProviderKind =
+  | 'console'
+  | 'webForm'
+  | 'webService'
+  | 'uiApp'
+  | 'neuroflow'
+  | 'script'
+  | 'cli'
+  | 'python'
+  | 'matlab'
+  | 'neurodesk'
+
+export const CATEGORY_COLORS: Record<BlockCategory, string> = {
+  Import: '#4f7fd0',
+  Ingest: '#4f7fd0',
+  Processing: '#7c62c9',
+  Quality: '#c9a227',
+  Inspect: '#6d6f91',
+  Output: '#4f7e5c'
+}
+
+export function categoryColor(category: BlockCategory | undefined): string {
+  return category ? CATEGORY_COLORS[category] : CATEGORY_COLORS.Processing
+}
 
 export interface ToolProviderDescriptor {
   kind: ToolProviderKind
@@ -103,7 +135,7 @@ export function buildToolRegistry(tools: ToolDefinition[]): ToolRegistryEntry[] 
     if (blocks.length === 0) {
       entries.push({
         id: `${tool.id}:default`,
-        label: tool.name,
+        label: humanize(tool.name),
         description: tool.description,
         category: 'Processing',
         tool,
@@ -171,12 +203,32 @@ export function getToolProvider(tool: ToolDefinition): ToolProviderDescriptor {
     }
   }
 
+  const launched = providerFromLaunch(tool)
+  if (launched) return launched
+
   return {
     kind: 'neuroflow',
     label: 'NeuroFlow component',
     source: 'Built-in NeuroFlow registry',
     runtime: 'internal'
   }
+}
+
+/** Derive the provider from `neuroflow/launch` plus the adapter extension present. */
+function providerFromLaunch(tool: ToolDefinition): ToolProviderDescriptor | null {
+  const launch = tool.extensions?.[LAUNCH_EXTENSION_KEY]
+  if (!isObject(launch)) return null
+  const source = typeof launch.script === 'string' ? launch.script.replace(/^(\.\.\/)+/, '') : 'neuroflow/launch'
+  if (launch.kind === 'uiApp') {
+    return { kind: 'uiApp', label: 'Interactive app', source: String(launch.command ?? launch.app ?? 'uiApp'), runtime: 'desktop' }
+  }
+  if (launch.kind !== 'script') return null
+  const ext = tool.extensions ?? {}
+  if ('neuroflow/cli' in ext) return { kind: 'cli', label: 'Native CLI', source, runtime: 'sidecar' }
+  if ('neuroflow/python' in ext) return { kind: 'python', label: 'Python', source, runtime: 'sidecar' }
+  if ('neuroflow/matlab' in ext) return { kind: 'matlab', label: 'MATLAB / Octave', source, runtime: 'sidecar' }
+  if ('neurodesk/job' in ext) return { kind: 'neurodesk', label: 'Neurodesk job', source, runtime: 'external' }
+  return { kind: 'script', label: 'Node script', source, runtime: 'sidecar' }
 }
 
 export function getToolExecutor(tool: ToolDefinition): ToolExecutorDescriptor | null {
@@ -395,9 +447,29 @@ function requiredInputNames(tool: ToolDefinition): string[] {
     .map(([name]) => name)
 }
 
-function getToolBlocks(tool: ToolDefinition): BlockDef[] {
-  if (!tool.block) return []
-  return Array.isArray(tool.block) ? tool.block : [tool.block]
+export function getToolBlocks(tool: ToolDefinition): BlockDef[] {
+  const declared = tool.block ?? blockFromUiExtension(tool)
+  if (!declared) return []
+  return Array.isArray(declared) ? declared : [declared]
+}
+
+/** Gallery tools describe their palette block under `extensions["niivue/ui"].block`. */
+function blockFromUiExtension(tool: ToolDefinition): BlockDef | BlockDef[] | undefined {
+  const ui = tool.extensions?.[UI_BLOCK_EXTENSION_KEY]
+  if (!isObject(ui) || !isObject(ui.block)) return undefined
+  const raw = ui.block as Record<string, unknown>
+  if (typeof raw.id !== 'string' || typeof raw.label !== 'string') return undefined
+  return {
+    ...(raw as unknown as BlockDef),
+    description: typeof raw.description === 'string' ? raw.description : tool.description,
+    category: isBlockCategory(raw.category) ? raw.category : 'Processing',
+    exposedFields: Array.isArray(raw.exposedFields) ? (raw.exposedFields as string[]) : []
+  }
+}
+
+function isBlockCategory(value: unknown): value is BlockCategory {
+  return value === 'Import' || value === 'Ingest' || value === 'Processing'
+    || value === 'Quality' || value === 'Inspect' || value === 'Output'
 }
 
 function bindingFromDefault(value: unknown): Binding {
@@ -418,6 +490,11 @@ function isProviderKind(value: unknown): value is ToolProviderKind {
     || value === 'webService'
     || value === 'uiApp'
     || value === 'neuroflow'
+    || value === 'script'
+    || value === 'cli'
+    || value === 'python'
+    || value === 'matlab'
+    || value === 'neurodesk'
 }
 
 function providerLabel(kind: ToolProviderKind): string {
@@ -432,6 +509,16 @@ function providerLabel(kind: ToolProviderKind): string {
       return 'UI app'
     case 'neuroflow':
       return 'NeuroFlow component'
+    case 'script':
+      return 'Node script'
+    case 'cli':
+      return 'Native CLI'
+    case 'python':
+      return 'Python'
+    case 'matlab':
+      return 'MATLAB / Octave'
+    case 'neurodesk':
+      return 'Neurodesk job'
   }
 }
 

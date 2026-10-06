@@ -19,8 +19,25 @@ import { WorkflowLibrary } from './components/WorkflowLibrary'
 import { ToolPalette } from './components/ToolPalette'
 import { Inspector } from './components/Inspector'
 import { RunTimeline } from './components/RunTimeline'
-import { WorkflowAppsPanel } from './components/WorkflowAppsPanel'
-import { library, tools } from './data/sample'
+import { EnvironmentPanel } from './components/EnvironmentPanel'
+import { RunPanel } from './components/RunPanel'
+import type { HostRunState } from './components/RunPanel'
+import { library, tools } from './data/gallery'
+import {
+  checkEnvironment,
+  defaultSettings,
+  isTauriRuntime,
+  loadStoredSettings,
+  onRunFinished,
+  onRunProgress,
+  openPath,
+  parseProgressMessage,
+  readSessionTail,
+  startRun,
+  storeSettings,
+  toolStatusMap
+} from './domain/host'
+import type { EnvironmentReport, HostSettings } from './domain/host'
 import {
   buildToolMap,
   buildToolRegistry,
@@ -42,18 +59,28 @@ import type { RunStepResult, WorkflowRunResult } from './domain/execution'
 import type { NodePositionMap } from './domain/graph'
 import { isRefBinding, stableToolName } from './domain/neuroflow'
 
-const WORKSPACE_STORAGE_KEY = 'neuroflow.workspace.v1'
+const WORKSPACE_STORAGE_KEY = 'neuroflow.workspace.v2'
 const UI_EXTENSION_KEY = 'neuroflow/ui'
+const HOST_AVAILABLE = isTauriRuntime()
 
 export function App(): JSX.Element {
   const [workspaceItems, setWorkspaceItems] = useState<WorkflowLibraryItem[]>(loadWorkspaceItems)
   const [activeWorkflowId, setActiveWorkflowId] = useState(library[0].id)
-  const [selectedStep, setSelectedStep] = useState<string | null>('convert')
+  const [selectedStep, setSelectedStep] = useState<string | null>(
+    () => Object.keys(library[0].workflow.steps)[0] ?? null
+  )
   const [report, setReport] = useState<ValidationReport>({ ok: true, issues: [] })
   const [plan, setPlan] = useState<WorkflowPlan | null>(null)
   const [run, setRun] = useState<WorkflowRunResult | null>(null)
   const [isRunningPreview, setIsRunningPreview] = useState(false)
   const [isExecuting, setIsExecuting] = useState(false)
+
+  // Host (Tauri) state: settings, the up-front environment check, and the live run.
+  const [settings, setSettings] = useState<HostSettings | null>(null)
+  const [environment, setEnvironment] = useState<EnvironmentReport | null>(null)
+  const [environmentError, setEnvironmentError] = useState<string | null>(null)
+  const [isChecking, setIsChecking] = useState(false)
+  const [hostRun, setHostRun] = useState<HostRunState | null>(null)
 
   const activeLibraryItem = useMemo(
     () => workspaceItems.find((item) => item.id === activeWorkflowId) ?? workspaceItems[0],
@@ -67,6 +94,147 @@ export function App(): JSX.Element {
 
   const toolMap = useMemo(() => buildToolMap(tools), [])
   const registry = useMemo(() => buildToolRegistry(tools), [])
+  const toolStatuses = useMemo(() => toolStatusMap(environment), [environment])
+
+  // Runnability of the active workflow on this host, from the environment check.
+  const runnable = useMemo<string | null | undefined>(() => {
+    if (!environment) return undefined
+    const builtin = environment.workflows.find((item) => item.id === activeWorkflow.id)
+    if (builtin) return builtin.runnable ?? null
+    // Custom or edited workflow: every step's tool must be ready here.
+    for (const [stepId, step] of Object.entries(activeWorkflow.steps)) {
+      const tool = toolMap.get(step.tool)
+      const status = tool ? toolStatuses.get(tool.id) : undefined
+      if (!status) return `step ${stepId}: ${step.tool} is not in the host registry`
+      if (status.status === 'needsSetup') return `step ${stepId}: ${status.detail}${status.fix ? ` Fix: ${status.fix}` : ''}`
+      if (status.status === 'interactive') return `step ${stepId}: ${status.detail}`
+      if (status.status === 'unsupported') return `step ${stepId}: ${status.detail}`
+    }
+    return null
+  }, [activeWorkflow, environment, toolMap, toolStatuses])
+
+  const runEnvironmentCheck = useCallback(async (next: HostSettings) => {
+    setIsChecking(true)
+    setEnvironmentError(null)
+    try {
+      setEnvironment(await checkEnvironment(next))
+    } catch (error) {
+      setEnvironment(null)
+      setEnvironmentError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setIsChecking(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!HOST_AVAILABLE) return
+    let cancelled = false
+    const stored = loadStoredSettings()
+    const resolve = stored ? Promise.resolve(stored) : defaultSettings()
+    resolve
+      .then((next) => {
+        if (cancelled) return
+        setSettings(next)
+        return runEnvironmentCheck(next)
+      })
+      .catch((error) => {
+        if (!cancelled) setEnvironmentError(error instanceof Error ? error.message : String(error))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [runEnvironmentCheck])
+
+  useEffect(() => {
+    if (!HOST_AVAILABLE) return
+    const unlisteners: Array<() => void> = []
+    let disposed = false
+    void onRunProgress((event) => {
+      setHostRun((current) => {
+        if (!current || current.ticket !== event.ticket) return current
+        const parsed = parseProgressMessage(event.message)
+        return {
+          ...current,
+          status: 'running',
+          progress: event.progress,
+          total: event.total,
+          message: event.message,
+          currentStep: parsed ? parsed.stepId : event.message === 'done' ? null : current.currentStep
+        }
+      })
+    }).then((unlisten) => (disposed ? unlisten() : unlisteners.push(unlisten)))
+    void onRunFinished((event) => {
+      setHostRun((current) => {
+        if (!current || current.ticket !== event.ticket) return current
+        if (event.ok === false && !('record' in event)) {
+          return { ...current, status: 'rejected', finished: event, error: event.error }
+        }
+        const done = event as Extract<typeof event, { record: unknown }>
+        const failed = done.status !== 'completed'
+        return {
+          ...current,
+          status: failed ? 'failed' : 'completed',
+          progress: current.total,
+          finished: done,
+          currentStep: done.record.failedStep ?? current.currentStep,
+          error: failed ? done.structured.error ?? done.summary : null
+        }
+      })
+    }).then((unlisten) => (disposed ? unlisten() : unlisteners.push(unlisten)))
+    return () => {
+      disposed = true
+      unlisteners.forEach((unlisten) => unlisten())
+    }
+  }, [])
+
+  // After a failure, pull the failed step's stderr tail so the reason is on screen.
+  useEffect(() => {
+    if (!settings || !hostRun || hostRun.status !== 'failed' || hostRun.stderrTail !== null) return
+    const finished = hostRun.finished
+    if (!finished || !('record' in finished)) return
+    const step = finished.record.failedStep
+    if (!step) return
+    const ticket = hostRun.ticket
+    readSessionTail(settings, `${finished.sessionDir}/logs/${step}/stderr`)
+      .then((tail) => setHostRun((current) => (current && current.ticket === ticket ? { ...current, stderrTail: tail || '(empty)' } : current)))
+      .catch((error) => setHostRun((current) => (current && current.ticket === ticket ? { ...current, stderrTail: String(error) } : current)))
+  }, [hostRun, settings])
+
+  function changeSettings(next: HostSettings): void {
+    setSettings(next)
+    storeSettings(next)
+    void runEnvironmentCheck(next)
+  }
+
+  async function startHostRun(inputs: Record<string, unknown>): Promise<void> {
+    if (!settings) return
+    const pending: HostRunState = {
+      ticket: null,
+      workflowId: activeWorkflow.id,
+      status: 'starting',
+      progress: 0,
+      total: Object.keys(activeWorkflow.steps).length,
+      message: 'starting',
+      currentStep: null,
+      finished: null,
+      stderrTail: null,
+      error: null
+    }
+    setHostRun(pending)
+    try {
+      const ticket = await startRun(settings, activeWorkflow, inputs)
+      setHostRun((current) => (current && current.ticket === null ? { ...current, ticket } : current))
+    } catch (error) {
+      setHostRun({ ...pending, status: 'rejected', error: error instanceof Error ? error.message : String(error) })
+    }
+  }
+
+  function revealPath(path: string): void {
+    if (!settings) return
+    openPath(settings, path).catch((error) => {
+      setHostRun((current) => (current ? { ...current, error: error instanceof Error ? error.message : String(error) } : current))
+    })
+  }
 
   const nodePositions = useMemo(() => getNodePositions(activeWorkflow), [activeWorkflow])
 
@@ -375,10 +543,12 @@ export function App(): JSX.Element {
             <CirclePlay size={15} />
             {isRunningPreview ? 'Planning' : 'Run Preview'}
           </button>
-          <button className="nf-action nf-action-primary" onClick={() => void runWorkflow()} disabled={!canExecute}>
-            <CirclePlay size={15} />
-            {isExecuting ? 'Running' : 'Run Workflow'}
-          </button>
+          {!HOST_AVAILABLE && (
+            <button className="nf-action nf-action-primary" onClick={() => void runWorkflow()} disabled={!canExecute}>
+              <CirclePlay size={15} />
+              {isExecuting ? 'Running' : 'Simulate Run'}
+            </button>
+          )}
         </div>
       </header>
 
@@ -399,7 +569,19 @@ export function App(): JSX.Element {
             registry={registry}
             workflow={activeWorkflow}
             toolMap={toolMap}
+            selectedStep={selectedStep}
+            toolStatuses={toolStatuses}
+            environmentChecked={environment !== null}
             onAddTool={addToolStep}
+          />
+          <EnvironmentPanel
+            available={HOST_AVAILABLE}
+            settings={settings}
+            report={environment}
+            checking={isChecking}
+            error={environmentError}
+            onCheck={() => settings && void runEnvironmentCheck(settings)}
+            onChangeSettings={changeSettings}
           />
         </aside>
 
@@ -438,6 +620,7 @@ export function App(): JSX.Element {
                 : undefined
             }
             nodePositions={nodePositions}
+            toolStatuses={toolStatuses}
             onSelectStep={setSelectedStep}
             onBindInput={bindInputRef}
             onMoveNode={moveNode}
@@ -446,7 +629,6 @@ export function App(): JSX.Element {
         </section>
 
         <aside className="nf-sidebar nf-right-rail">
-          <WorkflowAppsPanel workflow={activeWorkflow} tools={tools} selectedStep={selectedStep} />
           <Inspector
             workflow={activeWorkflow}
             tools={tools}
@@ -460,7 +642,20 @@ export function App(): JSX.Element {
             onChangeCondition={changeCondition}
             onDeleteStep={deleteStep}
           />
-          <RunTimeline plan={plan} run={run} planning={isRunningPreview} executing={isExecuting} />
+          {HOST_AVAILABLE ? (
+            <RunPanel
+              workflow={activeWorkflow}
+              available={HOST_AVAILABLE}
+              report={report}
+              runnable={runnable}
+              environmentChecked={environment !== null}
+              run={hostRun && hostRun.workflowId === activeWorkflow.id ? hostRun : null}
+              onStart={(inputs) => void startHostRun(inputs)}
+              onOpen={revealPath}
+            />
+          ) : (
+            <RunTimeline plan={plan} run={run} planning={isRunningPreview} executing={isExecuting} />
+          )}
         </aside>
       </section>
 
@@ -471,9 +666,18 @@ export function App(): JSX.Element {
         <span>{stepCount} steps</span>
         <span>{Object.keys(activeWorkflow.outputs).length} outputs</span>
         <span>{report.ok ? 'validation clean' : `${issueCount} validation issue(s)`}</span>
-        <span>{registry.length} registry entries</span>
+        <span>{registry.length} gallery tools</span>
         <span>{plan?.steps.length ?? 0} planned</span>
-        <span>{run ? `run ${run.status}` : 'not run'}</span>
+        <span>
+          {HOST_AVAILABLE
+            ? environment
+              ? `${environment.tools.filter((t) => t.status === 'ready').length}/${environment.tools.length} tools ready`
+              : isChecking
+                ? 'checking environment'
+                : 'environment unchecked'
+            : 'browser preview'}
+        </span>
+        <span>{HOST_AVAILABLE ? (hostRun ? `run ${hostRun.status}` : 'not run') : run ? `simulated ${run.status}` : 'not run'}</span>
       </footer>
     </main>
   )
@@ -496,7 +700,11 @@ function upsertRunStep(run: WorkflowRunResult, step: RunStepResult): WorkflowRun
 function loadWorkspaceItems(): WorkflowLibraryItem[] {
   try {
     const stored = window.localStorage.getItem(WORKSPACE_STORAGE_KEY)
-    return stored ? JSON.parse(stored) : cloneWorkflow(library)
+    if (!stored) return cloneWorkflow(library)
+    const items = JSON.parse(stored) as WorkflowLibraryItem[]
+    // Gallery workflows added since the workspace was saved show up too.
+    const known = new Set(items.map((item) => item.id))
+    return [...items, ...library.filter((item) => !known.has(item.id)).map((item) => cloneWorkflow(item))]
   } catch {
     return cloneWorkflow(library)
   }

@@ -61,13 +61,44 @@ Run Rust checks:
 cargo check --workspace
 ```
 
+## Pipeline builder
+
+`npm run tauri:dev` opens the desktop builder. It is the NiiVue Desktop
+workflow canvas (block palette, React Flow diagram, step inspector) pointed at
+this repository's gallery and runtime:
+
+- **Library** lists `gallery/workflows/*.neuroflow.json`; **Tools** lists every
+  `gallery/tools/*.tool.json`, grouped by its `niivue/ui` block category
+  (Import, Ingest, Processing, Quality, Inspect, Output) with the design's
+  category colors. A **fit** badge marks tools whose required inputs can be fed
+  from the selected (or last) step's outputs; drag or click to add a step.
+- **Environment** runs an up-front check on launch and on demand: it resolves
+  every interpreter the tools declare, probes each tool through
+  `gallery/scripts/check_tool.mjs` (the same executable, version and package
+  rules the adapters apply at launch) and lists anything that needs the user
+  to act, with the fix, before any run. Those tools carry a **setup** badge in
+  the palette and on the canvas; interactive apps (BIDSvue, NeuroVue) carry
+  **interactive** and cannot be run from the builder yet. Registry and data
+  roots, the sessions root and interpreter overrides are editable there.
+- **Run** takes the workflow's declared inputs (persisted per workflow),
+  explains why a run is blocked (validation issue, missing input, tool needing
+  setup), then executes the document in-process on the `neuroflow-mcp`
+  runtime. Progress, per-step status, outputs with **Open** (reveals the file),
+  the run folder, the provenance record and, on failure, the step's stderr
+  tail are shown as they arrive. Cancel is not supported yet.
+
+In a plain browser (`npm run dev`) the same UI works as an editor with a
+simulated run; nothing is probed or executed.
+
+Runs land under `~/.neuroflow/runs/<run-id>/` (`run.json`, `run.provenance.json`,
+`outputs/<step>/`, `logs/<step>/`), the same layout the MCP server writes.
+
 ## Current Status
 
-This is a scaffold for the next repo. The UI is intentionally already usable:
-it loads a DICOM-to-BIDS workflow fixture, renders a graph, shows context and
-output mappings, and calls the validation bridge. Actual tool execution is
-stubbed behind the Rust/Tauri command boundary so native process execution can
-be added deliberately.
+The desktop builder edits and runs the gallery workflows end to end on this
+machine through the Rust/Tauri boundary (`src-tauri/src/host.rs`, backed by the
+`neuroflow-mcp` library crate). Interactive uiApp steps, run cancellation and
+remote hosts are not wired yet.
 
 ## License
 
