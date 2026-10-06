@@ -1,0 +1,34 @@
+{
+  "$schema": "../../../neuroflow-spec/schemas/0.1/tool.schema.json",
+  "neuroflow": "0.1.0",
+  "kind": "tool",
+  "id": "neuroflow.gallery.tools/heudiconv-reproin",
+  "version": "0.1.0",
+  "description": "Convert a ReproIn-named DICOM acquisition into a BIDS dataset with HeuDiConv's shipped reproin heuristic. The scanner sequence names must satisfy the ReproIn convention; this tool does not infer or repair non-conforming names.",
+  "inputs": {
+    "dicom_dir": { "type": "neuro:dicom-folder", "description": "Directory containing the ReproIn-named DICOM acquisition." },
+    "subject": { "type": "core:string", "description": "Optional BIDS subject label override passed to HeuDiConv.", "optional": true },
+    "session": { "type": "core:string", "description": "Optional BIDS session label override passed to HeuDiConv.", "optional": true }
+  },
+  "outputs": {
+    "bids_dir": { "type": "neuro:bids-dataset", "description": "BIDS dataset produced by HeuDiConv with the reproin heuristic.", "delivery": { "mode": "core:result-dir", "path": "bids" } }
+  },
+  "outputDelivery": { "default": "core:result-dir" },
+  "extensions": {
+    "niivue/ui": { "block": { "id": "heudiconv-reproin", "label": "DICOM to BIDS (ReproIn)", "description": "Convert scanner sequences named to the ReproIn convention.", "category": "Ingest", "stage": "ingest", "exposedFields": ["subject", "session"] } },
+    "neuroflow/launch": {
+      "kind": "script", "interpreter": "node", "script": "../scripts/cli_tool.mjs", "completion": "exit", "interactive": false,
+      "contract": "../../docs/neuroflow-session-contract.md",
+      "requirements": ["HeuDiConv with its reproin heuristic and dcm2niix; set HEUDICONV to the executable if it is not on PATH"],
+      "description": "Runs heudiconv -f reproin --bids against the supplied DICOM directory, writing a BIDS root under the step output directory."
+    },
+    "neuroflow/cli": {
+      "command": "heudiconv", "env": "HEUDICONV",
+      "probe": { "args": ["--version"], "match": "[Hh]eu[Dd]i[Cc]onv", "advice": "Install HeuDiConv (including dcm2niix) or set HEUDICONV to its executable." },
+      "args": ["-f", "reproin", "--bids", "-o", "{{outputDir}}/bids", { "args": ["--subject", "{{subject}}"], "whenSet": "subject" }, { "args": ["--session", "{{session}}"], "whenSet": "session" }, "--files", "{{dicom_dir}}"],
+      "outputs": { "bids_dir": "bids" },
+      "source": "https://github.com/nipy/heudiconv"
+    },
+    "neuroflow/mcp": { "title": "DICOM to BIDS (HeuDiConv ReproIn)", "annotations": { "idempotentHint": true, "readOnlyHint": false }, "maxWaitMs": 1800000 }
+  }
+}
