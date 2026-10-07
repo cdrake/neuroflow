@@ -38,7 +38,10 @@ Prerequisites for the interactive steps are the ones the desktop
 **Environment** panel checks: `bun` on PATH, `../bidsui` and `../neurovue`
 checkouts beside this repo (or `NEUROFLOW_UI_APP_BIDSVUE` /
 `NEUROFLOW_UI_APP_NEUROVUE`), `dcm2niix` ≥ v1.0.20260520 for Siemens XA
-enhanced multi-frame JPEG Lossless DICOM (Homebrew's is fine), and BIDSvue's
-dev sidecars staged under `bidsui/src-tauri/binaries/`.
+enhanced multi-frame JPEG Lossless DICOM (Homebrew's is fine), BIDSvue's
+dev sidecars staged under `bidsui/src-tauri/binaries/`, and the mindgrab
+weights at `bidsui/resources/common/mindgrab/net_mindgrab.safetensors`
+(Tauri CLI 2.11 refuses to build BIDSvue without them; see that folder's
+README for the download).
 
 To export without the live parts: `npx marp demos/crlab-ingest/slides.md --html --pdf --allow-local-files`.
