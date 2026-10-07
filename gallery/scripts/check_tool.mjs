@@ -223,7 +223,11 @@ function checkNodeScript(launch, scriptPath) {
   const missing = [];
   for (const r of launch.requirements ?? []) {
     if (typeof r !== 'string' || !/^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/.test(r)) continue;
-    try { req.resolve(r); } catch { missing.push(r); }
+    try { req.resolve(r); } catch (e) {
+      // An ESM-only package (exports without a "require" condition) is installed; it just
+      // has no CommonJS entry. The script is an ES module and imports it fine.
+      if (e?.code !== 'ERR_PACKAGE_PATH_NOT_EXPORTED') missing.push(r);
+    }
   }
   if (missing.length) throw new Setup(`${missing.join(', ')} not installed`, 'run npm install in the repository root');
   return { executable: scriptPath, version: process.version, detail: `node ${process.version}` };
