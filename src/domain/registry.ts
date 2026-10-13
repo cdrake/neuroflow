@@ -12,6 +12,7 @@ import type {
 } from './neuroflow'
 import { isConstantBinding, isRefBinding, parseToolRef, qualifiedToolRef, shortType, stableToolName } from './neuroflow'
 import { isTypeCompatible } from './typeCompatibility'
+import { mcpTitle } from '../data/documents'
 
 export const REGISTRY_EXTENSION_KEY = 'neuroflow/registry'
 export const UI_BLOCK_EXTENSION_KEY = 'niivue/ui'
@@ -135,7 +136,9 @@ export function buildToolRegistry(tools: ToolDefinition[]): ToolRegistryEntry[] 
     if (blocks.length === 0) {
       entries.push({
         id: `${tool.id}:default`,
-        label: humanize(tool.name),
+        // Registries without a `niivue/ui` block (Neurodesk bundles) still carry
+        // the MCP title, which reads better than the id tail ("extract").
+        label: mcpTitle(tool) || humanize(tool.name),
         description: tool.description,
         category: 'Processing',
         tool,

@@ -20,6 +20,10 @@ NeuroFlow uses that mode as the glue between the apps. Each app becomes a typed
 NeuroFlow tool, so the apps can be chained in workflows, validated, and run by
 agents through `neuroflow-mcp`.
 
+The web apps' own generator (`scripts/generate-neuroflow.mjs` in that
+repository) emits a NeuroFlow bundle that the builder loads by URL or folder.
+See [registry-bundles.md](registry-bundles.md).
+
 ## How it works
 
 `gallery/scripts/neurodesk_job.mjs` is one adapter shared by every Neurodesk

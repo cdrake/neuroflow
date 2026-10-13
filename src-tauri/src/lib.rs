@@ -140,6 +140,7 @@ pub fn run() {
             host::default_settings,
             host::check_environment,
             host::workflow_runnable,
+            host::registry_documents,
             host::start_run,
             host::cancel_run,
             host::open_path,

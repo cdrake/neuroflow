@@ -12,7 +12,8 @@ import {
   PencilLine,
   RefreshCw,
   RotateCcw,
-  ShieldCheck
+  ShieldCheck,
+  Upload
 } from 'lucide-react'
 import { WorkflowDiagram } from './components/WorkflowDiagram'
 import { WorkflowLibrary } from './components/WorkflowLibrary'
@@ -20,9 +21,21 @@ import { ToolPalette } from './components/ToolPalette'
 import { Inspector } from './components/Inspector'
 import { RunTimeline } from './components/RunTimeline'
 import { EnvironmentPanel } from './components/EnvironmentPanel'
+import { RegistrySources } from './components/RegistrySources'
+import type { RegistryLoadError } from './components/RegistrySources'
 import { RunPanel } from './components/RunPanel'
 import type { HostRunState } from './components/RunPanel'
-import { library, tools } from './data/gallery'
+import { library as galleryLibrary, libraryItemFromWorkflow, tools as galleryTools, workflowTitle } from './data/gallery'
+import {
+  loadRegistryFromFiles,
+  loadRegistryFromUrl,
+  mergeSources,
+  parseWorkflowFile,
+  registryIndexUrl,
+  sourceFromDocuments,
+  startupRegistryUrls
+} from './data/registrySources'
+import type { RegistrySource } from './data/registrySources'
 import {
   checkEnvironment,
   cancelRun,
@@ -34,6 +47,7 @@ import {
   openPath,
   parseProgressMessage,
   readSessionTail,
+  registryDocuments,
   startRun,
   storeSettings,
   toolStatusMap
@@ -63,12 +77,23 @@ import { isRefBinding, stableToolName } from './domain/neuroflow'
 const WORKSPACE_STORAGE_KEY = 'neuroflow.workspace.v2'
 const UI_EXTENSION_KEY = 'neuroflow/ui'
 const HOST_AVAILABLE = isTauriRuntime()
+const REGISTRY_URLS_STORAGE_KEY = 'neuroflow.registries.v1'
+
+const GALLERY_SOURCE: RegistrySource = {
+  key: 'gallery:bundled',
+  origin: 'gallery',
+  label: 'NeuroFlow gallery',
+  location: 'bundled with this build',
+  tools: galleryTools,
+  workflows: galleryLibrary,
+  warnings: []
+}
 
 export function App(): JSX.Element {
   const [workspaceItems, setWorkspaceItems] = useState<WorkflowLibraryItem[]>(loadWorkspaceItems)
-  const [activeWorkflowId, setActiveWorkflowId] = useState(library[0].id)
+  const [activeWorkflowId, setActiveWorkflowId] = useState(galleryLibrary[0].id)
   const [selectedStep, setSelectedStep] = useState<string | null>(
-    () => Object.keys(library[0].workflow.steps)[0] ?? null
+    () => Object.keys(galleryLibrary[0].workflow.steps)[0] ?? null
   )
   const [report, setReport] = useState<ValidationReport>({ ok: true, issues: [] })
   const [plan, setPlan] = useState<WorkflowPlan | null>(null)
@@ -82,6 +107,11 @@ export function App(): JSX.Element {
   const [environmentError, setEnvironmentError] = useState<string | null>(null)
   const [isChecking, setIsChecking] = useState(false)
   const [hostRun, setHostRun] = useState<HostRunState | null>(null)
+  // Registries beside the bundled gallery: the desktop's folders, then URLs and picked folders.
+  const [hostSource, setHostSource] = useState<RegistrySource | null>(null)
+  const [extraSources, setExtraSources] = useState<RegistrySource[]>([])
+  const [registryErrors, setRegistryErrors] = useState<RegistryLoadError[]>([])
+  const [registryLoading, setRegistryLoading] = useState<string[]>([])
 
   const activeLibraryItem = useMemo(
     () => workspaceItems.find((item) => item.id === activeWorkflowId) ?? workspaceItems[0],
@@ -93,8 +123,15 @@ export function App(): JSX.Element {
     [activeLibraryItem, workspaceItems]
   )
 
-  const toolMap = useMemo(() => buildToolMap(tools), [])
-  const registry = useMemo(() => buildToolRegistry(tools), [])
+  const registrySources = useMemo(
+    () => [GALLERY_SOURCE, ...(hostSource ? [hostSource] : []), ...extraSources],
+    [extraSources, hostSource]
+  )
+  const merged = useMemo(() => mergeSources(registrySources), [registrySources])
+  const tools = merged.tools
+  const library = merged.library
+  const toolMap = useMemo(() => buildToolMap(tools), [tools])
+  const registry = useMemo(() => buildToolRegistry(tools), [tools])
   const toolStatuses = useMemo(() => toolStatusMap(environment), [environment])
 
   // Runnability of the active workflow on this host, from the environment check.
@@ -284,7 +321,99 @@ export function App(): JSX.Element {
     return () => {
       cancelled = true
     }
-  }, [activeWorkflow])
+  }, [activeWorkflow, tools])
+
+  // Workflows from registries loaded after start join the workspace once.
+  useEffect(() => {
+    setWorkspaceItems((items) => {
+      const known = new Set(items.map((item) => item.id))
+      const added = library.filter((item) => !known.has(item.id))
+      return added.length === 0 ? items : [...items, ...added.map((item) => cloneWorkflow(item))]
+    })
+  }, [library])
+
+  const addRegistryUrl = useCallback(async (input: string, remember: boolean) => {
+    const location = registryIndexUrl(input, window.location.href)
+    setRegistryLoading((current) => [...current, location])
+    try {
+      const source = await loadRegistryFromUrl(location)
+      setExtraSources((current) => [...current.filter((item) => item.key !== source.key), source])
+      setRegistryErrors((current) => current.filter((error) => error.location !== location))
+      if (remember) storeRegistryUrls([...loadRegistryUrls().filter((url) => url !== location), location])
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (remember) throw new Error(message)
+      setRegistryErrors((current) => [...current.filter((item) => item.location !== location), { location, message }])
+    } finally {
+      setRegistryLoading((current) => current.filter((item) => item !== location))
+    }
+  }, [])
+
+  // Registries named at start: build-time VITE_NEUROFLOW_REGISTRIES, ?registry=, and ones added before.
+  useEffect(() => {
+    const urls = startupRegistryUrls(window.location.search, import.meta.env.VITE_NEUROFLOW_REGISTRIES)
+    for (const url of [...new Set([...urls, ...loadRegistryUrls()])]) {
+      void addRegistryUrl(url, false).catch(() => undefined)
+    }
+  }, [addRegistryUrl])
+
+  // The desktop's registry folders: what it can run is what the palette shows.
+  useEffect(() => {
+    if (!HOST_AVAILABLE || !settings) return
+    let cancelled = false
+    registryDocuments(settings)
+      .then(({ documents, warnings }) => {
+        if (cancelled) return
+        setHostSource(
+          sourceFromDocuments(
+            { origin: 'host', label: 'Desktop registry folders', location: settings.registryDirs.join(', ') },
+            documents.map((value, index) => ({ path: documentLabel(value, index), value })),
+            warnings
+          )
+        )
+      })
+      .catch(() => {
+        // The environment check reports registry folder problems.
+        if (!cancelled) setHostSource(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [settings])
+
+  async function addRegistryFolder(files: FileList): Promise<void> {
+    const source = await loadRegistryFromFiles(files)
+    setExtraSources((current) => [...current.filter((item) => item.key !== source.key), source])
+  }
+
+  function removeRegistry(key: string): void {
+    const source = extraSources.find((item) => item.key === key)
+    setExtraSources((current) => current.filter((item) => item.key !== key))
+    if (source?.origin === 'url') storeRegistryUrls(loadRegistryUrls().filter((url) => url !== source.location))
+  }
+
+  async function importWorkflowFile(file: File | undefined): Promise<void> {
+    if (!file) return
+    try {
+      const workflow = parseWorkflowFile(await file.text(), file.name)
+      const taken = new Set(workspaceItems.map((item) => item.id))
+      let itemId = workflow.id
+      for (let n = 2; taken.has(itemId); n += 1) itemId = `${workflow.id}#${n}`
+      const item: WorkflowLibraryItem = {
+        ...libraryItemFromWorkflow(workflow),
+        id: itemId,
+        label: itemId === workflow.id ? workflowTitle(workflow) : `${workflowTitle(workflow)} (imported)`
+      }
+      setWorkspaceItems((items) => [...items, item])
+      setActiveWorkflowId(item.id)
+      setSelectedStep(Object.keys(workflow.steps)[0] ?? null)
+      setPlan(null)
+      setRun(null)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      setRegistryErrors((current) => [...current.filter((item) => item.location !== file.name), { location: file.name, message }])
+    }
+  }
 
   useEffect(() => {
     window.localStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify(workspaceItems))
@@ -551,6 +680,19 @@ export function App(): JSX.Element {
             <RotateCcw size={15} />
             Reset
           </button>
+          <label className="nf-action" title="Open a NeuroFlow workflow (.json) into the workspace">
+            <Upload size={15} />
+            Import JSON
+            <input
+              accept=".json,application/json"
+              hidden
+              onChange={(event) => {
+                void importWorkflowFile(event.target.files?.[0])
+                event.target.value = ''
+              }}
+              type="file"
+            />
+          </label>
           <button className="nf-action" onClick={exportActiveWorkflow}>
             <Download size={15} />
             Export JSON
@@ -593,6 +735,17 @@ export function App(): JSX.Element {
             toolStatuses={toolStatuses}
             environmentChecked={environment !== null}
             onAddTool={addToolStep}
+          />
+          <RegistrySources
+            sources={registrySources}
+            errors={registryErrors}
+            conflicts={merged.warnings}
+            loading={registryLoading}
+            hostAvailable={HOST_AVAILABLE}
+            onAddUrl={(url) => addRegistryUrl(url, true)}
+            onAddFolder={addRegistryFolder}
+            onRemove={removeRegistry}
+            onDismissError={(location) => setRegistryErrors((current) => current.filter((error) => error.location !== location))}
           />
           <EnvironmentPanel
             available={HOST_AVAILABLE}
@@ -687,7 +840,7 @@ export function App(): JSX.Element {
         <span>{stepCount} steps</span>
         <span>{Object.keys(activeWorkflow.outputs).length} outputs</span>
         <span>{report.ok ? 'validation clean' : `${issueCount} validation issue(s)`}</span>
-        <span>{registry.length} gallery tools</span>
+        <span>{registry.length} registry tools</span>
         <span>{plan?.steps.length ?? 0} planned</span>
         <span>
           {HOST_AVAILABLE
@@ -721,14 +874,35 @@ function upsertRunStep(run: WorkflowRunResult, step: RunStepResult): WorkflowRun
 function loadWorkspaceItems(): WorkflowLibraryItem[] {
   try {
     const stored = window.localStorage.getItem(WORKSPACE_STORAGE_KEY)
-    if (!stored) return cloneWorkflow(library)
+    if (!stored) return cloneWorkflow(galleryLibrary)
     const items = JSON.parse(stored) as WorkflowLibraryItem[]
     // Gallery workflows added since the workspace was saved show up too.
     const known = new Set(items.map((item) => item.id))
-    return [...items, ...library.filter((item) => !known.has(item.id)).map((item) => cloneWorkflow(item))]
+    return [...items, ...galleryLibrary.filter((item) => !known.has(item.id)).map((item) => cloneWorkflow(item))]
   } catch {
-    return cloneWorkflow(library)
+    return cloneWorkflow(galleryLibrary)
   }
+}
+
+function loadRegistryUrls(): string[] {
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(REGISTRY_URLS_STORAGE_KEY) ?? '[]') as unknown
+    return Array.isArray(stored) ? stored.filter((url): url is string => typeof url === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+function storeRegistryUrls(urls: string[]): void {
+  try {
+    window.localStorage.setItem(REGISTRY_URLS_STORAGE_KEY, JSON.stringify(urls))
+  } catch {
+    // Not remembered across reloads; the registry stays loaded for this session.
+  }
+}
+
+function documentLabel(value: unknown, index: number): string {
+  return isObject(value) && typeof value.id === 'string' ? value.id : `document ${index + 1}`
 }
 
 function cloneWorkflow<T>(value: T): T {
