@@ -1,0 +1,557 @@
+{
+  "neuroflow": "0.1.0",
+  "kind": "provenance",
+  "id": "neuroflow.runs/run-20261007T132051Z-0321",
+  "version": "1.0.0",
+  "description": "Provenance for run run-20261007T132051Z-0321 executed by neuroflow-mcp.",
+  "run": {
+    "runId": "run-20261007T132051Z-0321",
+    "startedAt": "2026-10-07T13:20:51Z",
+    "endedAt": "2026-10-07T13:21:21Z",
+    "status": "completed",
+    "host": {
+      "platform": "macos",
+      "arch": "aarch64"
+    }
+  },
+  "workflow": {
+    "id": "neuroflow.gallery/dicom-t1-mni-volumes",
+    "version": "0.1.0"
+  },
+  "agents": [
+    {
+      "id": "agent-runtime",
+      "type": "software",
+      "name": "neuroflow-mcp",
+      "version": "0.1.0",
+      "role": "runtime"
+    },
+    {
+      "id": "agent-mcp-client",
+      "type": "software",
+      "name": "claude-code",
+      "role": "mcp-client",
+      "version": "2.1.291"
+    },
+    {
+      "id": "agent-tool-1",
+      "type": "software",
+      "name": "neuroflow.gallery.tools/dcm2niix",
+      "version": "0.1.0",
+      "role": "tool"
+    },
+    {
+      "id": "agent-tool-2",
+      "type": "software",
+      "name": "neuroflow.gallery.tools/mindgrab",
+      "version": "0.1.0",
+      "role": "tool"
+    },
+    {
+      "id": "agent-tool-3",
+      "type": "software",
+      "name": "neuroflow.gallery.tools/niimath-allineate",
+      "version": "0.1.0",
+      "role": "tool"
+    },
+    {
+      "id": "agent-tool-4",
+      "type": "software",
+      "name": "neurodesk.webapps/synthseg",
+      "version": "0.1.0",
+      "role": "tool"
+    },
+    {
+      "id": "agent-tool-5",
+      "type": "software",
+      "name": "neuroflow.gallery.tools/label-volumes",
+      "version": "0.1.0",
+      "role": "tool"
+    }
+  ],
+  "activities": [
+    {
+      "id": "act-1",
+      "stepId": "convert",
+      "toolId": "neuroflow.gallery.tools/dcm2niix",
+      "agent": "agent-tool-1",
+      "startedAt": "2026-10-07T13:20:51Z",
+      "endedAt": "2026-10-07T13:20:57Z",
+      "status": "completed",
+      "toolVersion": "0.1.0",
+      "used": [
+        "ent-1"
+      ],
+      "generated": [
+        "ent-4",
+        "ent-5"
+      ],
+      "exitCode": 0
+    },
+    {
+      "id": "act-2",
+      "stepId": "strip",
+      "toolId": "neuroflow.gallery.tools/mindgrab",
+      "agent": "agent-tool-2",
+      "startedAt": "2026-10-07T13:20:57Z",
+      "endedAt": "2026-10-07T13:21:07Z",
+      "status": "completed",
+      "toolVersion": "0.1.0",
+      "used": [
+        "ent-4"
+      ],
+      "generated": [
+        "ent-6",
+        "ent-7"
+      ],
+      "exitCode": 0
+    },
+    {
+      "id": "act-3",
+      "stepId": "register",
+      "toolId": "neuroflow.gallery.tools/niimath-allineate",
+      "agent": "agent-tool-3",
+      "startedAt": "2026-10-07T13:21:07Z",
+      "endedAt": "2026-10-07T13:21:12Z",
+      "status": "completed",
+      "toolVersion": "0.1.0",
+      "used": [
+        "ent-6",
+        "ent-2"
+      ],
+      "generated": [
+        "ent-8",
+        "ent-9"
+      ],
+      "exitCode": 0
+    },
+    {
+      "id": "act-4",
+      "stepId": "segment",
+      "toolId": "neurodesk.webapps/synthseg",
+      "agent": "agent-tool-4",
+      "startedAt": "2026-10-07T13:21:12Z",
+      "endedAt": "2026-10-07T13:21:21Z",
+      "status": "completed",
+      "toolVersion": "0.1.0",
+      "used": [
+        "ent-4"
+      ],
+      "generated": [
+        "ent-10",
+        "ent-11"
+      ],
+      "exitCode": 0
+    },
+    {
+      "id": "act-5",
+      "stepId": "volumes",
+      "toolId": "neuroflow.gallery.tools/label-volumes",
+      "agent": "agent-tool-5",
+      "startedAt": "2026-10-07T13:21:21Z",
+      "endedAt": "2026-10-07T13:21:21Z",
+      "status": "completed",
+      "toolVersion": "0.1.0",
+      "used": [
+        "ent-10",
+        "ent-7"
+      ],
+      "generated": [
+        "ent-12",
+        "ent-13"
+      ],
+      "exitCode": 0
+    }
+  ],
+  "entities": [
+    {
+      "id": "ent-1",
+      "type": "neuro:dicom-folder",
+      "role": "workflow-input",
+      "path": "<dicom>/crlab-session/05_anat-T1w_acq-dzneEp3dPt35Pf781TeTraLarge"
+    },
+    {
+      "id": "ent-2",
+      "type": "neuro:volume",
+      "role": "workflow-input",
+      "path": "<home>/Data/templates/MNI152_T1_1mm_brain.nii.gz",
+      "size": 4147830
+    },
+    {
+      "id": "ent-3",
+      "type": "core:string",
+      "role": "workflow-input",
+      "value": "fast"
+    },
+    {
+      "id": "ent-4",
+      "type": "neuro:volume",
+      "role": "step-output",
+      "path": "<home>/.neuroflow/runs/run-20261007T132051Z-0321/outputs/convert/volume.nii.gz",
+      "size": 183207715
+    },
+    {
+      "id": "ent-5",
+      "type": "core:json",
+      "role": "step-output",
+      "value": {
+        "Modality": "MR",
+        "MagneticFieldStrength": 3,
+        "ImagingFrequency": 123.252288,
+        "Manufacturer": "Siemens",
+        "ManufacturersModelName": "MAGNETOM Vida",
+        "BodyPart": "BRAIN",
+        "PatientPosition": "HFS",
+        "SoftwareVersions": "syngo MR XA60",
+        "MRAcquisitionType": "3D",
+        "SeriesDescription": "anat-T1w_acq-dzneEp3dPt35Pf781TeTraLarge",
+        "ProtocolName": "anat-T1w_acq-dzneEp3dPt35Pf781TeTraLarge",
+        "ScanningSequence": "RM",
+        "SequenceVariant": "SK\\SP",
+        "ScanOptions": "PFP\\FS",
+        "SequenceName": "58bdf13",
+        "ImageType": [
+          "ORIGINAL",
+          "PRIMARY",
+          "M",
+          "NONE",
+          "MAGNITUDE"
+        ],
+        "ImageTypeText": [
+          "ORIGINAL",
+          "PRIMARY",
+          "M",
+          "ND"
+        ],
+        "NonlinearGradientCorrection": false,
+        "SeriesNumber": 5,
+        "AcquisitionNumber": 1,
+        "ImageComments": "Not for diagnostic use",
+        "SliceThickness": 0.35,
+        "TablePosition": [
+          0,
+          0,
+          -0.0
+        ],
+        "EchoTime": 0.056,
+        "RepetitionTime": 0.1387,
+        "MTState": false,
+        "SpoilingState": true,
+        "FlipAngle": 16,
+        "PartialFourier": 0.875,
+        "BaseResolution": 500,
+        "PhaseResolution": 1,
+        "ReceiveCoilName": "HeadNeck_20_TCS",
+        "ReceiveCoilActiveElements": "HE1-4;NE2",
+        "CoilString": "1",
+        "PulseSequenceDetails": "%CustomerSeq%\\dzne_ep3d",
+        "WipMemBlock": "vx_ep3d 58bdf13 v3.1",
+        "RefLinesPE": 36,
+        "CoilCombinationMethod": "Adaptive Combine",
+        "ConsistencyInfo": "66010002",
+        "MatrixCoilMode": "None",
+        "PercentPhaseFOV": 120,
+        "PercentSampling": 100,
+        "PartialFourierDirection": "PHASE",
+        "PhaseEncodingSteps": 600,
+        "FrequencyEncodingSteps": 500,
+        "PhaseEncodingStepsOutOfPlane": 416,
+        "AcquisitionMatrixPE": 600,
+        "ReconMatrixPE": 600,
+        "BandwidthPerPixelPhaseEncode": 7.431,
+        "ParallelReductionFactorInPlane": 2,
+        "ParallelAcquisitionTechnique": "CAIPIRINHA",
+        "ParallelReductionFactorOutOfPlane": 1,
+        "EffectiveEchoSpacing": 0.000224286,
+        "DerivedVendorReportedEchoSpacing": 0.000448571,
+        "AcquisitionDuration": 419.407,
+        "NumberOfKSpaceTrajectories": 1,
+        "TotalReadoutTime": 0.134347,
+        "PixelBandwidth": 345,
+        "DwellTime": 2.9e-06,
+        "PhaseEncodingDirection": "j-",
+        "ImageOrientationPatientDICOM": [
+          0.996607,
+          0.0101624,
+          0.0816835,
+          0.0212239,
+          0.92707,
+          -0.374288
+        ],
+        "InPlanePhaseEncodingDirectionDICOM": "COL",
+        "ConversionSoftware": "dcm2niix",
+        "ConversionSoftwareVersion": "v1.0.20260724"
+      }
+    },
+    {
+      "id": "ent-6",
+      "type": "neuro:volume",
+      "role": "step-output",
+      "path": "<home>/.neuroflow/runs/run-20261007T132051Z-0321/outputs/strip/brain.nii.gz",
+      "size": 59621610
+    },
+    {
+      "id": "ent-7",
+      "type": "neuro:mask",
+      "role": "step-output",
+      "path": "<home>/.neuroflow/runs/run-20261007T132051Z-0321/outputs/strip/brain_mask.nii.gz",
+      "size": 988363
+    },
+    {
+      "id": "ent-8",
+      "type": "neuro:volume",
+      "role": "step-output",
+      "path": "<home>/.neuroflow/runs/run-20261007T132051Z-0321/outputs/register/registered.nii.gz",
+      "size": 6387168
+    },
+    {
+      "id": "ent-9",
+      "type": "neuro:transform",
+      "role": "step-output",
+      "path": "<home>/.neuroflow/runs/run-20261007T132051Z-0321/outputs/register/transform.json",
+      "size": 1114
+    },
+    {
+      "id": "ent-10",
+      "type": "neuro:label-map",
+      "role": "step-output",
+      "path": "<home>/.neuroflow/runs/run-20261007T132051Z-0321/outputs/segment/synthseg.nii.gz",
+      "size": 241322
+    },
+    {
+      "id": "ent-11",
+      "type": "core:json",
+      "role": "step-output",
+      "value": {
+        "citation": "Billot et al. (2023) SynthSeg: Segmentation of brain MRI scans of any contrast and resolution without retraining. Med Image Anal. PMID: 36857946",
+        "ct": false,
+        "executionProvider": "metal",
+        "fast": true,
+        "flip": false,
+        "input": "<home>/.neuroflow/runs/run-20261007T132051Z-0321/outputs/convert/volume.nii.gz",
+        "inputShape": [
+          500,
+          600,
+          416
+        ],
+        "model": "synthseg_2.0 (FreeSurfer 8.1.0 synthseg_2.0.h5)",
+        "modelSha256": "94412cd4ece229cee1ec21ac05d9aa6f084ea7b600303d2e598707d86a9a9b13",
+        "onnxRuntime": "1.27",
+        "output": "<home>/.neuroflow/runs/run-20261007T132051Z-0321/outputs/segment/synthseg.nii.gz",
+        "outputAffine": [
+          [
+            0.9966065111291302,
+            0.021223893533396217,
+            0.07952992236054851,
+            -92.3078705297676
+          ],
+          [
+            0.010162394933057754,
+            0.9270696424605042,
+            -0.37475133848115955,
+            -81.59118821210461
+          ],
+          [
+            -0.08168346040813657,
+            0.3742878896937971,
+            0.9237079764492157,
+            -122.75743894787152
+          ]
+        ],
+        "outputShape": [
+          176,
+          210,
+          146
+        ],
+        "package": "synthseg",
+        "paddedShape": [
+          192,
+          224,
+          160
+        ],
+        "seconds": 7.840061833,
+        "target": "aarch64-macos",
+        "threads": 18,
+        "timings": {
+          "inference": 2.25731275,
+          "initialize": 0.579636,
+          "postprocess": 0.52002325,
+          "preprocess": 3.533802625,
+          "read": 0.949089125,
+          "release": 0.000183208
+        },
+        "version": "0.3.20260924"
+      }
+    },
+    {
+      "id": "ent-12",
+      "type": "core:tabular",
+      "role": "step-output",
+      "path": "<home>/.neuroflow/runs/run-20261007T132051Z-0321/outputs/volumes/volumes.tsv",
+      "size": 746
+    },
+    {
+      "id": "ent-13",
+      "type": "core:json",
+      "role": "step-output",
+      "value": {
+        "voxel_volume_ml": 0.001,
+        "totals": {
+          "labeled_ml": 939.493,
+          "brain_tissue_ml": 725.249,
+          "brain_mask_ml": 1616.879
+        },
+        "rows": [
+          {
+            "label": 2,
+            "name": "Left-Cerebral-White-Matter",
+            "voxels": 161464,
+            "volume_ml": 161.464
+          },
+          {
+            "label": 3,
+            "name": "Left-Cerebral-Cortex",
+            "voxels": 199071,
+            "volume_ml": 199.071
+          },
+          {
+            "label": 4,
+            "name": "Left-Lateral-Ventricle",
+            "voxels": 7931,
+            "volume_ml": 7.931
+          },
+          {
+            "label": 5,
+            "name": "Left-Inf-Lat-Vent",
+            "voxels": 13,
+            "volume_ml": 0.013
+          },
+          {
+            "label": 7,
+            "name": "Left-Cerebellum-White-Matter",
+            "voxels": 16,
+            "volume_ml": 0.016
+          },
+          {
+            "label": 8,
+            "name": "Left-Cerebellum-Cortex",
+            "voxels": 6070,
+            "volume_ml": 6.07
+          },
+          {
+            "label": 10,
+            "name": "Left-Thalamus",
+            "voxels": 362,
+            "volume_ml": 0.362
+          },
+          {
+            "label": 11,
+            "name": "Left-Caudate",
+            "voxels": 787,
+            "volume_ml": 0.787
+          },
+          {
+            "label": 12,
+            "name": "Left-Putamen",
+            "voxels": 86,
+            "volume_ml": 0.086
+          },
+          {
+            "label": 16,
+            "name": "Brain-Stem",
+            "voxels": 3,
+            "volume_ml": 0.003
+          },
+          {
+            "label": 24,
+            "name": "CSF",
+            "voxels": 199822,
+            "volume_ml": 199.822
+          },
+          {
+            "label": 28,
+            "name": "Left-VentralDC",
+            "voxels": 12,
+            "volume_ml": 0.012
+          },
+          {
+            "label": 41,
+            "name": "Right-Cerebral-White-Matter",
+            "voxels": 152758,
+            "volume_ml": 152.758
+          },
+          {
+            "label": 42,
+            "name": "Right-Cerebral-Cortex",
+            "voxels": 199857,
+            "volume_ml": 199.857
+          },
+          {
+            "label": 43,
+            "name": "Right-Lateral-Ventricle",
+            "voxels": 6390,
+            "volume_ml": 6.39
+          },
+          {
+            "label": 44,
+            "name": "Right-Inf-Lat-Vent",
+            "voxels": 88,
+            "volume_ml": 0.088
+          },
+          {
+            "label": 46,
+            "name": "Right-Cerebellum-White-Matter",
+            "voxels": 5,
+            "volume_ml": 0.005
+          },
+          {
+            "label": 47,
+            "name": "Right-Cerebellum-Cortex",
+            "voxels": 1853,
+            "volume_ml": 1.853
+          },
+          {
+            "label": 49,
+            "name": "Right-Thalamus",
+            "voxels": 1216,
+            "volume_ml": 1.216
+          },
+          {
+            "label": 50,
+            "name": "Right-Caudate",
+            "voxels": 1366,
+            "volume_ml": 1.366
+          },
+          {
+            "label": 53,
+            "name": "Right-Hippocampus",
+            "voxels": 314,
+            "volume_ml": 0.314
+          },
+          {
+            "label": 54,
+            "name": "Right-Amygdala",
+            "voxels": 9,
+            "volume_ml": 0.009
+          }
+        ]
+      }
+    }
+  ],
+  "inputs": {
+    "dicom_dir": "ent-1",
+    "template": "ent-2",
+    "mode": "ent-3"
+  },
+  "outputs": {
+    "t1": "ent-4",
+    "sidecar": "ent-5",
+    "brain": "ent-6",
+    "brain_mask": "ent-7",
+    "brain_mni": "ent-8",
+    "to_mni": "ent-9",
+    "labels": "ent-10",
+    "volumes": "ent-12",
+    "table": "ent-13"
+  }
+}

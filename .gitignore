@@ -18,3 +18,7 @@ __pycache__/
 
 # Claude app scratch output
 Claude outputs/
+
+# crlab-ingest demo deck output and launch log
+demos/crlab-ingest/slides.html
+demos/crlab-ingest/launch.log
