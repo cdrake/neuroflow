@@ -150,6 +150,16 @@ export async function checkEnvironment(settings: HostSettings): Promise<Environm
   return invoke<EnvironmentReport>('check_environment', { settings })
 }
 
+export interface RegistryDocuments {
+  documents: unknown[]
+  warnings: string[]
+}
+
+/** The raw documents in the host's registry folders (the ones it can run). */
+export async function registryDocuments(settings: HostSettings): Promise<RegistryDocuments> {
+  return invoke<RegistryDocuments>('registry_documents', { settings })
+}
+
 export async function workflowRunnable(
   settings: HostSettings,
   workflow: WorkflowDocument

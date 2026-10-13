@@ -92,6 +92,14 @@ this repository's gallery and runtime:
 In a plain browser (`npm run dev`) the same UI works as an editor with a
 simulated run; nothing is probed or executed.
 
+**Registries** adds tools and workflows at run time without rebuilding the
+builder. It can load a published bundle with a `neuroflow-registry.json` index
+(`?registry=<url>`, or **URL**), a folder picked from disk, or, on the
+desktop, the registry folders it runs from. **Import JSON** and **Export JSON**
+carry workflows between the hosted builder and the desktop app. See
+[docs/registry-bundles.md](docs/registry-bundles.md), which walks through
+publishing the Neurodesk web apps' generated tools.
+
 Runs land under `~/.neuroflow/runs/<run-id>/` (`run.json`, `run.provenance.json`,
 `outputs/<step>/`, `logs/<step>/`), the same layout the MCP server writes.
 

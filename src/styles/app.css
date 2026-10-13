@@ -1224,6 +1224,58 @@
   border-color: var(--selection-bg-hover);
 }
 
+/* Registries */
+
+.nf-registry-item {
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+}
+
+.nf-registry-add {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.nf-registry-add input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--nf-border);
+  border-radius: 6px;
+  background: var(--bg-base);
+  color: var(--fg-base);
+  font: inherit;
+  font-size: 11px;
+}
+
+.nf-registry-warnings summary {
+  cursor: pointer;
+  color: var(--nf-amber);
+  font-size: 11px;
+}
+
+.nf-registry-warnings small {
+  display: block;
+}
+
+.nf-icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--nf-muted);
+  cursor: pointer;
+}
+
+.nf-icon-button:hover {
+  background: var(--bg-base);
+  color: var(--fg-base);
+}
+
 /* Run panel */
 
 .nf-run-inputs {

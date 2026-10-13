@@ -13,6 +13,7 @@
     "wasm:build": "wasm-pack build crates/neuroflow-wasm --target web --out-dir ../../src/wasm",
     "validate:gallery": "node gallery/validate.mjs",
     "test:gallery": "node --test \"gallery/scripts/*.test.mjs\"",
+    "test:ui": "esbuild \"tests/ui/*.test.ts\" --bundle --platform=node --format=esm --outdir=target/ui-tests --log-level=warning && node --test \"target/ui-tests/*.test.js\"",
     "slides": "marp --server docs",
     "slides:watch": "marp --watch --preview docs/stages.slides.md",
     "slides:html": "marp docs/stages.slides.md --html -o docs/stages.slides.html",

@@ -74,6 +74,12 @@ pub struct WorkflowStatus {
     pub runnable: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct RegistryDocuments {
+    pub documents: Vec<Value>,
+    pub warnings: Vec<String>,
+}
+
 const SUMMARY_MAX_BYTES: u64 = 512 * 1024 * 1024;
 static TICKETS: AtomicU64 = AtomicU64::new(1);
 static CANCELLATIONS: OnceLock<Mutex<HashMap<String, Arc<AtomicBool>>>> = OnceLock::new();
@@ -308,6 +314,19 @@ fn ui_app_fix(doc: &neuroflow_mcp::registry::Doc) -> Option<String> {
     Some(format!(
         "install {command} so it is on PATH, and clone {repo}{branch} next to the NeuroFlow checkout or set {key} to the checkout directory"
     ))
+}
+
+/// The tool and workflow documents in the registry folders, for the builder's
+/// palette and library. Needs only the folders, so it works before the rest of
+/// the settings are valid.
+#[tauri::command]
+pub fn registry_documents(settings: HostSettings) -> Result<RegistryDocuments, String> {
+    let dirs: Vec<PathBuf> = settings.registry_dirs.iter().map(|d| expand(d)).collect();
+    let registry = Registry::load(&dirs, &HashMap::new(), true)?;
+    Ok(RegistryDocuments {
+        documents: registry.docs.iter().map(|doc| doc.value.clone()).collect(),
+        warnings: registry.warnings,
+    })
 }
 
 /// Why this workflow cannot run here, or None when it can. Cheap: no probes.
