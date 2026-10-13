@@ -34,6 +34,7 @@ export type ToolProviderKind =
   | 'cli'
   | 'python'
   | 'matlab'
+  | 'appCli'
   | 'neurodesk'
 
 export const CATEGORY_COLORS: Record<BlockCategory, string> = {
@@ -227,6 +228,7 @@ function providerFromLaunch(tool: ToolDefinition): ToolProviderDescriptor | null
   }
   if (launch.kind !== 'script') return null
   const ext = tool.extensions ?? {}
+  if ('neuroflow/app-cli' in ext) return { kind: 'appCli', label: 'App CLI', source, runtime: 'sidecar' }
   if ('neuroflow/cli' in ext) return { kind: 'cli', label: 'Native CLI', source, runtime: 'sidecar' }
   if ('neuroflow/python' in ext) return { kind: 'python', label: 'Python', source, runtime: 'sidecar' }
   if ('neuroflow/matlab' in ext) return { kind: 'matlab', label: 'MATLAB / Octave', source, runtime: 'sidecar' }
@@ -497,6 +499,7 @@ function isProviderKind(value: unknown): value is ToolProviderKind {
     || value === 'cli'
     || value === 'python'
     || value === 'matlab'
+    || value === 'appCli'
     || value === 'neurodesk'
 }
 
@@ -520,6 +523,8 @@ function providerLabel(kind: ToolProviderKind): string {
       return 'Python'
     case 'matlab':
       return 'MATLAB / Octave'
+    case 'appCli':
+      return 'App CLI'
     case 'neurodesk':
       return 'Neurodesk job'
   }
