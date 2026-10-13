@@ -94,7 +94,12 @@ Reference implementations the script-tools point at:
   status), runs it headlessly, maps outputs, appends provenance with engine and
   SPM versions. `matlab/nf_nifti_header.m` is the reference entry;
   `matlab_tool.test.mjs` covers the adapter (fake engine, Octave, MATLAB opt-in).
-- `adapter_lib.mjs` — helpers shared by the three adapters (session context,
+- `app_cli.mjs` — adapter for an app's headless entry point: finds the app
+  checkout the way the runtime finds a uiApp's, checks the entry file is there,
+  runs the command in it with the session, and fails the step if a declared
+  output is missing. The app writes its own handoff and provenance.
+  `app_cli.test.mjs` covers it.
+- `adapter_lib.mjs` — helpers shared by the adapters (session context,
   tool-document lookup, executable search with `~` and `*`, input checks,
   output mapping, provenance).
 - `check_tool.mjs` — the up-front environment check the desktop builder (and

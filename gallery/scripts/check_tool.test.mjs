@@ -143,6 +143,31 @@ test('plain node scripts: an ESM-only requirement counts as installed', () => {
   assert.equal(r.status, 'ready', r.detail);
 });
 
+test('app-cli tools: the checkout, its entry point, and the runner must all be found', () => {
+  const app = join(root, 'someapp');
+  mkdirSync(join(app, 'scripts'), { recursive: true });
+  writeFileSync(join(app, 'scripts', 'run.ts'), '');
+  const cli = (extra = {}) => ({ app: 'some-app', repo: 'someapp', entry: 'scripts/run.ts', command: 'fakecli', paths: [fake], ...extra });
+  const tool = (id, extra) => doc({ id, extensions: { 'neuroflow/launch': launch('app_cli.mjs'), 'neuroflow/app-cli': cli(extra) } });
+  const [ok, noEntry, noRunner] = check([
+    tool('t/app'),
+    tool('t/app-old', { entry: 'scripts/gone.ts', branch: 'feature' }),
+    tool('t/app-norunner', { command: 'no-such-runner-xyz', paths: [], env: 'NO_SUCH_RUNNER' }),
+  ], { NEUROFLOW_UI_APP_SOME_APP: app });
+  assert.equal(ok.adapter, 'app-cli');
+  assert.equal(ok.status, 'ready', ok.detail);
+  assert.equal(ok.executable, fake);
+  assert.equal(noEntry.status, 'needsSetup');
+  assert.match(noEntry.detail, /has no scripts\/gone\.ts/);
+  assert.equal(noEntry.fix, 'check out feature there');
+  assert.equal(noRunner.status, 'needsSetup');
+  assert.equal(noRunner.fix, 'install no-such-runner-xyz or set NO_SUCH_RUNNER to its path');
+
+  const [missing] = check([tool('t/app-missing')], { NEUROFLOW_UI_APP_SOME_APP: join(root, 'nowhere') });
+  assert.equal(missing.status, 'needsSetup');
+  assert.match(missing.fix, /set NEUROFLOW_UI_APP_SOME_APP/);
+});
+
 test('--tools-dir walks a directory and the real gallery checks cleanly', () => {
   const r = spawnSync(process.execPath, [checker, '--tools-dir', join(here, '..', 'tools')], { encoding: 'utf8' });
   assert.equal(r.status, 0, r.stderr);
