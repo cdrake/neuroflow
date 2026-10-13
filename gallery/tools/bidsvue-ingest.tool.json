@@ -1,0 +1,106 @@
+{
+  "$schema": "../../../neuroflow-spec/schemas/0.1/tool.schema.json",
+  "neuroflow": "0.1.0",
+  "kind": "tool",
+  "id": "neuroflow.gallery.tools/bidsvue-ingest",
+  "version": "0.1.0",
+  "description": "Import a DICOM folder into a BIDS dataset with BIDSvue's import pipeline, without a window: dcm2niix (or another importer), BIDSvue's post-pass cleanup, then the dataset under the step's output directory. Same output and handoff as the interactive bidsvue tool, with settings taken from the inputs instead of the user.",
+  "inputs": {
+    "dicom_dir": {
+      "type": "neuro:dicom-folder",
+      "description": "DICOM source directory to import."
+    },
+    "importer": {
+      "type": "core:string",
+      "description": "BIDSvue importer to run.",
+      "optional": true,
+      "default": "dcm2niix-reproin",
+      "enum": ["dcm2niix-reproin", "pet2bids", "heudiconv", "dcm2bids"]
+    },
+    "subject": {
+      "type": "core:string",
+      "description": "BIDS subject label (default: from the DICOM PatientID).",
+      "optional": true
+    },
+    "session": {
+      "type": "core:string",
+      "description": "BIDS session label.",
+      "optional": true
+    },
+    "anonymize": {
+      "type": "core:boolean",
+      "description": "Also strip dates from the sidecars (dcm2niix -ba y).",
+      "optional": true,
+      "default": false
+    },
+    "shift_dates": {
+      "type": "core:boolean",
+      "description": "Shift acquisition dates to 1925-01-01.",
+      "optional": true,
+      "default": false
+    },
+    "save_derivatives": {
+      "type": "core:boolean",
+      "description": "Keep dcm2niix's derivatives/ subtree.",
+      "optional": true,
+      "default": false
+    }
+  },
+  "outputs": {
+    "bids_dir": {
+      "type": "neuro:bids-dataset",
+      "description": "The imported BIDS dataset.",
+      "delivery": {
+        "mode": "core:result-dir",
+        "path": "bids"
+      }
+    }
+  },
+  "outputDelivery": {
+    "default": "core:result-dir"
+  },
+  "extensions": {
+    "niivue/ui": {
+      "block": {
+        "id": "ingest-bidsvue-headless",
+        "label": "Ingest with BIDSvue (no window)",
+        "description": "Import DICOMs into BIDS with BIDSvue's pipeline and fixed settings.",
+        "category": "Import",
+        "stage": "ingest",
+        "exposedFields": ["dicom_dir", "importer", "subject", "session", "anonymize"]
+      }
+    },
+    "neuroflow/launch": {
+      "kind": "script",
+      "interpreter": "node",
+      "script": "../scripts/app_cli.mjs",
+      "completion": "exit",
+      "interactive": false,
+      "contract": "../../docs/neuroflow-session-contract.md",
+      "requirements": [
+        "BIDSvue checkout (bidsui, branch main) beside NeuroFlow or via NEUROFLOW_UI_APP_BIDSVUE",
+        "bun (on PATH or via BUN)"
+      ],
+      "description": "Runs `bun run neuroflow-ingest -- --neuroflow-session $NEUROFLOW_SESSION` in the BIDSvue checkout, which imports inputs.dicom_dir into $NEUROFLOW_OUTPUT_DIR/bids and writes neuroflow.handoff.json and its provenance line."
+    },
+    "neuroflow/mcp": {
+      "title": "DICOM to BIDS (BIDSvue, headless)",
+      "annotations": {
+        "idempotentHint": false,
+        "readOnlyHint": false
+      },
+      "maxWaitMs": 900000
+    },
+    "neuroflow/app-cli": {
+      "app": "bidsvue",
+      "repo": "bidsui",
+      "branch": "main",
+      "entry": "scripts/neuroflow-ingest.ts",
+      "command": "bun",
+      "paths": ["~/.bun/bin/bun", "/opt/homebrew/bin/bun", "/usr/local/bin/bun"],
+      "env": "BUN",
+      "args": ["run", "scripts/neuroflow-ingest.ts", "--neuroflow-session", "{{session}}"],
+      "source": "https://github.com/niivue/BIDSvue"
+    }
+  }
+}

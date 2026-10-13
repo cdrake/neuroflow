@@ -13,6 +13,7 @@ node gallery/validate.mjs        # or: npm run validate:gallery
 | File | Tool id | Stage | Kind | Outputs |
 | --- | --- | --- | --- | --- |
 | `bidsvue.tool.json` | `…tools/bidsvue` | ingest | uiApp | `bids_dir` (result-dir) |
+| `bidsvue-ingest.tool.json` | `…tools/bidsvue-ingest` | ingest | script → app CLI (BIDSvue) | `bids_dir` (result-dir) |
 | `neurovue.tool.json` | `…tools/neurovue` | explore | uiApp | `correction_patch`, `review_state` (result-file) |
 | `python-volume-filter.tool.json` | `…tools/python-volume-filter` | explore | script → Python | `filtered_volumes` (result-dir) |
 | `niivue-qa-page.tool.json` | `…tools/niivue-qa-page` | publish | script | `qa_html` (result-file `index.html`) |
@@ -37,7 +38,11 @@ reader) runs through `scripts/matlab_tool.mjs` from
 `../docs/matlab-tools.md`. The three **Python** tools (volume filter, label
 volumes, DTI fit) run through `scripts/python_tool.mjs` from
 `extensions["neuroflow/python"]`, which checks the declared packages before
-launch; see `../docs/python-tools.md`. Launch details (command, completion, env) live
+launch; see `../docs/python-tools.md`. **bidsvue-ingest** is BIDSvue's import pipeline without the
+window: `scripts/app_cli.mjs` runs `bun run scripts/neuroflow-ingest.ts` in the
+BIDSvue checkout (found like a uiApp's: `NEUROFLOW_UI_APP_BIDSVUE`, else `bidsui`
+beside this checkout) from `extensions["neuroflow/app-cli"]`, so the same ingest
+runs over MCP with its settings taken from the step inputs. Launch details (command, completion, env) live
 in each tool's `extensions["neuroflow/launch"]`, and the runtime handoff format
 is defined in `../docs/neuroflow-session-contract.md`.
 
@@ -116,9 +121,10 @@ Reference implementations the script-tools point at:
 
 ## Reference apps
 
-The uiApp tools are served by NeuroFlow-aware branches of the reference apps:
+The uiApp tools are served by NeuroFlow-aware builds of the reference apps:
 
-- BIDSvue — a `bidsui` checkout on branch `neuroflow-aware`
+- BIDSvue — a `bidsui` checkout of [niivue/BIDSvue](https://github.com/niivue/BIDSvue) on `main`
+  (the window for `bidsvue`, `scripts/neuroflow-ingest.ts` for `bidsvue-ingest`)
 - NeuroVue — a `neurovue` checkout on branch `neuroflow-aware`
 
 Both honor the session contract: read `$NEUROFLOW_SESSION/context.json`, write

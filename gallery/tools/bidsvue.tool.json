@@ -49,7 +49,7 @@
       "kind": "uiApp",
       "app": "bidsvue",
       "repo": "bidsui",
-      "branch": "neuroflow-aware",
+      "branch": "main",
       "command": "bun",
       "args": ["tauri", "dev"],
       "completion": "appClosed",
