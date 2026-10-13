@@ -131,6 +131,18 @@ test('plain node scripts: npm requirements must resolve', () => {
   assert.equal(missing.fix, 'run npm install in the repository root');
 });
 
+test('plain node scripts: an ESM-only requirement counts as installed', () => {
+  // exports without a "require" condition makes require.resolve throw ERR_PACKAGE_PATH_NOT_EXPORTED.
+  const pkg = join(root, 'esm', 'node_modules', '@esm-only', 'pkg');
+  mkdirSync(pkg, { recursive: true });
+  writeFileSync(join(pkg, 'package.json'), JSON.stringify({ name: '@esm-only/pkg', version: '1.0.0', type: 'module', exports: { '.': { import: './index.js' } } }));
+  writeFileSync(join(pkg, 'index.js'), 'export const ok = true;\n');
+  const script = join(root, 'esm', 'uses_esm.mjs');
+  writeFileSync(script, "import { ok } from '@esm-only/pkg'; console.log(ok);\n");
+  const [r] = check([doc({ id: 't/node-esm', extensions: { 'neuroflow/launch': { ...launch('x'), script, requirements: ['@esm-only/pkg'] } } })]);
+  assert.equal(r.status, 'ready', r.detail);
+});
+
 test('--tools-dir walks a directory and the real gallery checks cleanly', () => {
   const r = spawnSync(process.execPath, [checker, '--tools-dir', join(here, '..', 'tools')], { encoding: 'utf8' });
   assert.equal(r.status, 0, r.stderr);
