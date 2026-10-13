@@ -123,8 +123,10 @@ Reference implementations the script-tools point at:
 
 The uiApp tools are served by NeuroFlow-aware builds of the reference apps:
 
-- BIDSvue — a `bidsui` checkout of [niivue/BIDSvue](https://github.com/niivue/BIDSvue) on `main`
-  (the window for `bidsvue`, `scripts/neuroflow-ingest.ts` for `bidsvue-ingest`)
+- BIDSvue — a `bidsui` checkout of [niivue/BIDSvue](https://github.com/niivue/BIDSvue).
+  `bidsvue-ingest` runs `scripts/neuroflow-ingest.ts`, which is headed for `main`
+  ([BIDSvue#18](https://github.com/niivue/BIDSvue/pull/18)); the `bidsvue` window
+  needs branch `neuroflow/window-ingest`, which has both
 - NeuroVue — a `neurovue` checkout on branch `neuroflow-aware`
 
 Both honor the session contract: read `$NEUROFLOW_SESSION/context.json`, write

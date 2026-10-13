@@ -40,8 +40,8 @@ checkouts beside this repo (or `NEUROFLOW_UI_APP_BIDSVUE` /
 `NEUROFLOW_UI_APP_NEUROVUE`), `dcm2niix` ≥ v1.0.20260520 for Siemens XA
 enhanced multi-frame JPEG Lossless DICOM (Homebrew's is fine), and BIDSvue's
 dev sidecars staged under `bidsui/src-tauri/binaries/`. The BIDSvue checkout
-is [niivue/BIDSvue](https://github.com/niivue/BIDSvue) on `main`,
-cloned as `bidsui`; upstream commits the mindgrab
+is [niivue/BIDSvue](https://github.com/niivue/BIDSvue) on branch
+`neuroflow/window-ingest` (the window's NeuroFlow mode), cloned as `bidsui`; upstream commits the mindgrab
 weights, so no separate download is needed.
 
 To export without the live parts: `npx marp demos/crlab-ingest/slides.md --html --pdf --allow-local-files`.
