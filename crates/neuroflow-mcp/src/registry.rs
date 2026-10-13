@@ -440,7 +440,9 @@ mod tests {
         assert!(!neuroflow.join("neurovue").exists());
         assert_eq!(default_checkout(&gallery, "neurovue"), Some(dir.join("neurovue")), "gallery registry");
         assert_eq!(default_checkout(&neuroflow, "neurovue"), Some(dir.join("neurovue")), "repo root registry");
-        assert_eq!(default_checkout(&gallery, "bidsui"), None, "missing sibling");
+        // Not "bidsui": the BIDSvue app keeps a WebKit cache at $TMPDIR/bidsui, which the walk reaches.
+        let absent = format!("no-such-app-{}", std::process::id());
+        assert_eq!(default_checkout(&gallery, &absent), None, "missing sibling");
         let _ = fs::remove_dir_all(&dir);
     }
 
