@@ -21,6 +21,11 @@ writeFileSync(join(checkout, 'scripts', 'ingest.ts'), '// entry\n');
 const runner = join(root, 'fakebun');
 writeFileSync(runner, `#!${process.execPath}
 const fs = require('node:fs'), path = require('node:path');
+if (process.argv.includes('--check')) {
+  const ready = !process.env.FAKE_NOT_READY;
+  console.log(JSON.stringify({ ready, version: 'v1.2.3', problems: ready ? [] : ['dcm2niix not found'] }));
+  process.exit(ready ? 0 : 1);
+}
 const out = process.env.NEUROFLOW_OUTPUT_DIR;
 fs.writeFileSync(path.join(out, 'call.json'), JSON.stringify({ cwd: process.cwd(), argv: process.argv.slice(2) }));
 if (!process.env.FAKE_SKIP_OUTPUT) {
@@ -41,17 +46,21 @@ const tool = {
 };
 
 let n = 0;
-function run({ env = {}, cli = {} } = {}) {
+// docDir: where the tool document lives (the session by default); the sibling
+// lookup starts from there.
+function run({ env = {}, cli = {}, docDir } = {}) {
   const session = join(root, `s${++n}`);
   const outputDir = join(session, 'outputs', 'step');
   mkdirSync(outputDir, { recursive: true });
-  writeFileSync(join(session, 'tool.json'), JSON.stringify({ ...tool, extensions: { 'neuroflow/app-cli': { ...template, ...cli } } }));
+  const docPath = join(docDir ?? session, `tool${n}.json`);
+  mkdirSync(dirname(docPath), { recursive: true });
+  writeFileSync(docPath, JSON.stringify({ ...tool, extensions: { 'neuroflow/app-cli': { ...template, ...cli } } }));
   writeFileSync(join(session, 'context.json'), JSON.stringify({ tool: 'test/app', step: 'step', inputs: {}, outputDir, workDir: session }));
   const r = spawnSync(process.execPath, [adapter], {
     encoding: 'utf8',
     env: {
       ...process.env, NEUROFLOW_SESSION: session, NEUROFLOW_OUTPUT_DIR: outputDir, NEUROFLOW_STEP: 'step',
-      NEUROFLOW_TOOL_DOC: join(session, 'tool.json'), NEUROFLOW_UI_APP_FAKE_APP: checkout, ...env,
+      NEUROFLOW_TOOL_DOC: docPath, NEUROFLOW_UI_APP_FAKE_APP: checkout, ...env,
     },
   });
   const callPath = join(outputDir, 'call.json');
@@ -86,6 +95,40 @@ test('a missing checkout or entry point is reported before anything runs', () =>
 
   const old = run({ cli: { entry: 'scripts/missing.ts', branch: 'feature' } });
   assert.equal(old.status, 1);
-  assert.match(old.stderr, /has no scripts\/missing\.ts \(check out feature\)/);
+  assert.match(old.stderr, /has no scripts\/missing\.ts; check out feature there/);
   assert.equal(old.call, null);
+});
+
+test('without an override the checkout is the sibling that holds the entry point', () => {
+  // <root>/nf/gallery/tools/x.json: the walk looks at <root>/nf/fakeapp first,
+  // which has no entry point (like BIDSvue's $TMPDIR/bidsui cache), then <root>/fakeapp.
+  mkdirSync(join(root, 'nf', 'fakeapp'), { recursive: true });
+  const docDir = join(root, 'nf', 'gallery', 'tools');
+  const r = run({ docDir, env: { NEUROFLOW_UI_APP_FAKE_APP: '' } });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(realpathSync(r.call.cwd), checkout);
+
+  // An override that is not a directory falls through to the sibling, as in the runtime.
+  const bad = run({ docDir, env: { NEUROFLOW_UI_APP_FAKE_APP: join(root, 'nowhere') } });
+  assert.equal(bad.status, 0, bad.stderr);
+  assert.equal(realpathSync(bad.call.cwd), checkout);
+});
+
+test('a missing runner is reported before anything runs', () => {
+  const r = run({ cli: { paths: [join(root, 'no-such-bun')], command: 'no-such-bun-on-path' } });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /no-such-bun-on-path was not found/);
+  assert.equal(r.call, null);
+});
+
+test("the app's probe gates the run and its problems are reported", () => {
+  const probe = { args: ['--check'], match: '"ready":\\s*true', version: 'v\\d+\\.\\d+\\.\\d+', advice: 'install the deps' };
+  const ok = run({ cli: { probe } });
+  assert.equal(ok.status, 0, ok.stderr);
+  assert.match(ok.stdout, /fake-app ready \(v1\.2\.3\)/);
+
+  const not = run({ cli: { probe }, env: { FAKE_NOT_READY: '1' } });
+  assert.equal(not.status, 1);
+  assert.match(not.stderr, /fake-app at .* is not ready: dcm2niix not found; install the deps/);
+  assert.equal(not.call, null);
 });

@@ -33,12 +33,12 @@
  * Env: NEUROFLOW_SESSION / _OUTPUT_DIR / _WORK_DIR / _STEP (session contract),
  * plus the template's own override variable.
  */
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  appendProvenance, checkInputsExist, failer, findExecutable, findToolDoc, hasValue, mapOutputs, readSession,
+  appendProvenance, checkInputsExist, failer, findExecutable, findToolDoc, hasValue, mapOutputs, readSession, runProbe,
 } from './adapter_lib.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -70,20 +70,12 @@ for (const name of template.clearEnv ?? []) delete childEnv[name];
 let version = null;
 if (template.probe) {
   const p = template.probe;
-  const r = spawnSync(exe, p.args ?? [], { encoding: 'utf8', env: childEnv });
-  const text = `${r.stdout ?? ''}\n${r.stderr ?? ''}`;
-  // A matching banner is proof enough: some tools exit non-zero after printing
-  // their version (dcm2niix -v returns 3), so a bad status only counts when the
-  // output does not match either.
-  const matched = p.match ? new RegExp(p.match).test(text) : r.status === 0;
-  if (r.error || (!matched && r.status !== 0)) {
-    const status = r.error ? 'could not start' : r.status;
-    fail(`${exe} probe exited with status ${status}. ${p.advice ?? ''}`.trim());
-  }
-  if (!matched) {
+  const r = runProbe(exe, p, { env: childEnv });
+  if (r.reason === 'mismatch') {
     fail(`${exe} does not look like a usable ${template.command}: output lacks /${p.match}/. ${p.advice ?? ''}`.trim());
   }
-  if (p.version) version = new RegExp(p.version).exec(text)?.[0] ?? null;
+  if (!r.ok) fail(`${exe} probe ${r.reason}. ${p.advice ?? ''}`.trim());
+  version = r.version;
 }
 
 // File and folder inputs must exist before the command runs, so a broken

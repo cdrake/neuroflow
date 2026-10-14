@@ -168,6 +168,23 @@ test('app-cli tools: the checkout, its entry point, and the runner must all be f
   assert.match(missing.fix, /set NEUROFLOW_UI_APP_SOME_APP/);
 });
 
+test("app-cli tools: the app's probe runs in the checkout and decides readiness", () => {
+  const app = join(root, 'probedapp');
+  mkdirSync(join(app, 'scripts'), { recursive: true });
+  writeFileSync(join(app, 'scripts', 'run.ts'), '');
+  const cli = (probe) => ({ app: 'probed-app', repo: 'probedapp', entry: 'scripts/run.ts', command: 'fakecli', paths: [fake], probe });
+  const tool = (id, probe) => doc({ id, extensions: { 'neuroflow/launch': launch('app_cli.mjs'), 'neuroflow/app-cli': cli(probe) } });
+  const [ready, notReady] = check([
+    tool('t/probed', { args: ['--check'], match: 'ready', version: 'v[0-9.]+' }),
+    tool('t/probed-not', { args: ['--check'], match: '"ready":true', advice: 'run the setup' }),
+  ], { NEUROFLOW_UI_APP_PROBED_APP: app });
+  assert.equal(ready.status, 'ready', ready.detail);
+  assert.equal(ready.version, 'v1.2.3');
+  assert.equal(notReady.status, 'needsSetup');
+  assert.match(notReady.detail, /probed-app at .* is not ready/);
+  assert.equal(notReady.fix, 'run the setup');
+});
+
 test('--tools-dir walks a directory and the real gallery checks cleanly', () => {
   const r = spawnSync(process.execPath, [checker, '--tools-dir', join(here, '..', 'tools')], { encoding: 'utf8' });
   assert.equal(r.status, 0, r.stderr);

@@ -78,10 +78,11 @@
       "interactive": false,
       "contract": "../../docs/neuroflow-session-contract.md",
       "requirements": [
-        "BIDSvue checkout (bidsui, branch main) beside NeuroFlow or via NEUROFLOW_UI_APP_BIDSVUE",
-        "bun (on PATH or via BUN)"
+        "BIDSvue checkout (bidsui, branch neuroflow/window-ingest until niivue/BIDSvue#18 merges, then main) beside NeuroFlow or via NEUROFLOW_UI_APP_BIDSVUE, with `bun install` run in it",
+        "bun (on PATH or via BUN)",
+        "dcm2niix for BIDSvue: its staged sidecar, DCM2NIIX, or PATH"
       ],
-      "description": "Runs `bun run neuroflow-ingest -- --neuroflow-session $NEUROFLOW_SESSION` in the BIDSvue checkout, which imports inputs.dicom_dir into $NEUROFLOW_OUTPUT_DIR/bids and writes neuroflow.handoff.json and its provenance line."
+      "description": "Runs `bun run scripts/neuroflow-ingest.ts --neuroflow-session $NEUROFLOW_SESSION` in the BIDSvue checkout, after `--check` confirms it is ready, which imports inputs.dicom_dir into $NEUROFLOW_OUTPUT_DIR/bids and writes neuroflow.handoff.json and its provenance line."
     },
     "neuroflow/mcp": {
       "title": "DICOM to BIDS (BIDSvue, headless)",
@@ -94,12 +95,18 @@
     "neuroflow/app-cli": {
       "app": "bidsvue",
       "repo": "bidsui",
-      "branch": "main",
+      "branch": "neuroflow/window-ingest",
       "entry": "scripts/neuroflow-ingest.ts",
       "command": "bun",
       "paths": ["~/.bun/bin/bun", "/opt/homebrew/bin/bun", "/usr/local/bin/bun"],
       "env": "BUN",
       "args": ["run", "scripts/neuroflow-ingest.ts", "--neuroflow-session", "{{session}}"],
+      "probe": {
+        "args": ["run", "scripts/neuroflow-ingest.ts", "--check"],
+        "match": "\"ready\":\\s*true",
+        "version": "v\\d+\\.\\d+\\.\\d+",
+        "advice": "run `bun install` in the BIDSvue checkout and stage its dcm2niix sidecar, or set DCM2NIIX"
+      },
       "source": "https://github.com/niivue/BIDSvue"
     }
   }
