@@ -27,11 +27,13 @@ its importer lookup.
   checkout: the tool is ready with `v1.0.20260724`. With
   `DCM2NIIX=/nonexistent` it reports needsSetup, gives BIDSvue's message, and
   advises "run `bun install` ... stage its dcm2niix sidecar, or set DCM2NIIX".
-  `--check` does not test npm packages, and it doesn't need to: the CLI loads
-  the whole import pipeline statically, and with `node_modules` moved aside
-  `--check` still passed. The only npm import on that path is a dynamic
-  `@tauri-apps/plugin-fs` in `backup.ts`, which only the window uses. So
-  `bun install` is listed as setup advice, not something the probe proves.
+  Since BIDSvue#18's review (2026-10-14), the tool runs BIDSvue's package
+  script, `bun run neuroflow-ingest`, for both the job and the probe. That
+  script runs `svelte-kit sync` before `scripts/neuroflow-ingest.ts`, so `$lib`
+  resolves in a fresh clone. It also means the probe now proves `bun install`:
+  with `node_modules` moved aside the probe exits 127 and the tool reports
+  needsSetup with the `bun install` advice. (Earlier, with the script run
+  directly, `--check` passed without `node_modules`.)
 
 ### P1: the declared branch is not runnable (fixed)
 
@@ -64,9 +66,8 @@ Fixed in this round:
 - `app_cli.mjs` now checks that the inputs exist (`checkInputsExist`), as the
   other adapters do. It no longer passes the redundant `env: process.env`, and
   it logs the probe version.
-- **Descriptions.** `launch.description`, the `app_cli.mjs` header and the docs
-  now say `bun run scripts/neuroflow-ingest.ts`, which matches the args. The
-  old wording was `bun run neuroflow-ingest -- ...`.
+- **Descriptions.** `launch.description` and the docs say `bun run
+  neuroflow-ingest`, which matches the args (the package script; see above).
 - **New tests.**
   - The sibling lookup without an override, including skipping a same-named
     directory that has no entry file.

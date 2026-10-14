@@ -39,7 +39,8 @@ reader) runs through `scripts/matlab_tool.mjs` from
 volumes, DTI fit) run through `scripts/python_tool.mjs` from
 `extensions["neuroflow/python"]`, which checks the declared packages before
 launch; see `../docs/python-tools.md`. **bidsvue-ingest** is BIDSvue's import pipeline without the
-window: `scripts/app_cli.mjs` runs `bun run scripts/neuroflow-ingest.ts` in the
+window: `scripts/app_cli.mjs` runs `bun run neuroflow-ingest` (BIDSvue's package
+script, which runs `svelte-kit sync` and then `scripts/neuroflow-ingest.ts`) in the
 BIDSvue checkout (found like a uiApp's: `NEUROFLOW_UI_APP_BIDSVUE`, else `bidsui`
 beside this checkout) from `extensions["neuroflow/app-cli"]`, after BIDSvue's
 `--check` probe confirms dcm2niix, so the same ingest runs over MCP
