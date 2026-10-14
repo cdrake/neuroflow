@@ -258,7 +258,12 @@ test('withholds clearEnv variables from the engine', () => {
 const fn = { entry: { kind: 'function', name: 'f', args: [] }, outputs: {} };
 const online = (extra = {}) => ({ ...fn, matlab: { paths: [onlineMatlab], ...extra } });
 
-test('refuses to launch an online-licensed MATLAB with no signed-in session, before running anything', () => {
+// The session check reads the process list; a sandbox that forbids `ps`
+// leaves it unable to see sessions, so these three tests cannot run there.
+const psWorks = process.platform !== 'win32' && spawnSync('ps', ['-A', '-o', 'command='], { encoding: 'utf8' }).status === 0;
+const sessionSkip = psWorks ? {} : { skip: 'ps -A is not available here' };
+
+test('refuses to launch an online-licensed MATLAB with no signed-in session, before running anything', sessionSkip, () => {
   const r = run(online(), {});
   assert.equal(r.status, 1);
   assert.match(r.stderr, /online \(sign-in\) licensing and no MATLAB session from that install is running/);
@@ -270,7 +275,7 @@ test('refuses to launch an online-licensed MATLAB with no signed-in session, bef
   assert.equal(r.prov, null);
 });
 
-test('runs an online-licensed MATLAB when a session from the same install is up, and points at another install\'s session otherwise', () => {
+test('runs an online-licensed MATLAB when a session from the same install is up, and points at another install\'s session otherwise', sessionSkip, () => {
   const session = fakeSession(onlineRoot);
   try {
     const ok = run(online(), {});
@@ -291,7 +296,7 @@ test('runs an online-licensed MATLAB when a session from the same install is up,
   }
 });
 
-test('requireSession can be forced on or off by the document and the environment', () => {
+test('requireSession can be forced on or off by the document and the environment', sessionSkip, () => {
   const off = run(online({ requireSession: false }), {});
   assert.equal(off.status, 0, off.stderr);
   const envOff = run(online(), {}, { env: { NEUROFLOW_MATLAB_REQUIRE_SESSION: '0' } });
