@@ -30,8 +30,9 @@ running pipelines.
 - `src-tauri/`: Tauri native host and commands.
 - `fixtures/`: source-derived NeuroFlow examples.
 - `gallery/`: schema-valid tool and workflow documents plus the launcher scripts
-  they run (Neurodesk web apps, native CLIs such as dcm2niix and niimath); see
-  its README.
+  they run (Neurodesk web apps, native CLIs such as dcm2niix and niimath, Python
+  and MATLAB/Octave tools, and an app's headless entry point such as BIDSvue's
+  import); see its README.
 - `demos/prompt-to-workflow/`: a headless agent composes, validates and runs a
   workflow from a user prompt through the MCP server, with the recorded run.
 - `docs/`: architecture and source-lineage notes.
@@ -61,6 +62,15 @@ Run Rust checks:
 cargo check --workspace
 ```
 
+Run the tests:
+
+```bash
+npm run validate:gallery   # gallery documents against the spec schemas
+npm run test:gallery       # gallery adapters and check_tool.mjs
+npm run test:ui            # builder domain tests (tests/ui)
+cargo test --workspace
+```
+
 ## Pipeline builder
 
 `npm run tauri:dev` opens the desktop builder. It is the NiiVue Desktop
@@ -79,7 +89,11 @@ this repository's gallery and runtime:
   to act, with the fix, before any run. Those tools carry a **setup** badge in
   the palette and on the canvas. Interactive apps (BIDSvue, NeuroVue) are
   ready when their command is on PATH and their checkout is found; otherwise
-  they show as **setup** with what to install or clone. Registry and data
+  they show as **setup** with what to install or clone. An app's headless
+  entry point (**App CLI** in the palette, e.g. `bidsvue-ingest`) is a
+  headless tool like any other: ready when the app checkout, its entry file
+  and the runner (`bun`) are found and the app's own check (BIDSvue's
+  `--check`, which covers dcm2niix) passes. Registry and data
   roots, the sessions root and interpreter overrides are editable there.
 - **Run** takes the workflow's declared inputs (persisted per workflow),
   explains why a run is blocked (validation issue, missing input, tool needing
