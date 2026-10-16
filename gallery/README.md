@@ -14,6 +14,7 @@ node gallery/validate.mjs        # or: npm run validate:gallery
 | --- | --- | --- | --- | --- |
 | `bidsvue.tool.json` | `…tools/bidsvue` | ingest | uiApp | `bids_dir` (result-dir) |
 | `bidsvue-ingest.tool.json` | `…tools/bidsvue-ingest` | ingest | script → app CLI (BIDSvue) | `bids_dir` (result-dir) |
+| `heudiconv-reproin.tool.json` | `…tools/heudiconv-reproin` | ingest | script → native CLI | `bids_dir` (result-dir) |
 | `neurovue.tool.json` | `…tools/neurovue` | explore | uiApp | `correction_patch`, `review_state` (result-file) |
 | `python-volume-filter.tool.json` | `…tools/python-volume-filter` | explore | script → Python | `filtered_volumes` (result-dir) |
 | `niivue-qa-page.tool.json` | `…tools/niivue-qa-page` | publish | script | `qa_html` (result-file `index.html`) |
@@ -29,10 +30,11 @@ node gallery/validate.mjs        # or: npm run validate:gallery
 
 The two **uiApp** tools (BIDSvue, NeuroVue) are interactive: a NeuroFlow runtime
 launches them with a session context and they block until the user finishes. The
-**script** tools are headless. The three **native CLI** tools (dcm2niix, mindgrab
-via the brainchop CLI, niimath `-allineate`) are the lightNIIng tool set; they share
-one adapter, `scripts/cli_tool.mjs`, and describe their command line under
-`extensions["neuroflow/cli"]`. The **MATLAB/Octave** tool (a NIfTI header
+**script** tools are headless. The **native CLI** tools share one adapter,
+`scripts/cli_tool.mjs`, and describe their command line under
+`extensions["neuroflow/cli"]`: dcm2niix, mindgrab via the brainchop CLI, and
+niimath `-allineate` (the lightNIIng tool set), plus HeuDiConv with its reproin
+heuristic. The **MATLAB/Octave** tool (a NIfTI header
 reader) runs through `scripts/matlab_tool.mjs` from
 `extensions["neuroflow/matlab"]`, which also covers SPM batches; see
 `../docs/matlab-tools.md`. The three **Python** tools (volume filter, label
@@ -97,9 +99,9 @@ Reference implementations the script-tools point at:
   the gallery's tools on it. `python_tool.test.mjs` covers the adapter and the
   first two; `dti_fit.test.mjs` covers the DIPY tool when dipy is importable
   (`npm run test:gallery`). See `../docs/python-tools.md`.
-- `generate_qa.mjs` — builds a standalone QA page via `@niivue/nv-ext-save-html`
-  (`generateHTML`/`saveHTML`) when installed, else a self-contained NiiVue CDN
-  page. Copies volumes next to `index.html` so the page is portable.
+- `generate_qa.mjs` — builds a QA page via `@niivue/nv-ext-save-html`
+  (`generateHTML`) when it imports, else a page that loads NiiVue from esm.sh,
+  so viewing it needs network access. Copies volumes next to `index.html`.
 - `cli_tool.mjs` — shared adapter for native command-line tools: finds the
   executable (override variable, install paths, PATH), probes the release,
   fills an argument template from the session inputs, maps the files written

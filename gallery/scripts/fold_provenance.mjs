@@ -15,11 +15,15 @@
  * provenance carries richer derivedFrom links. See
  * docs/neuroflow-session-contract.md.
  *
+ * Inputs (context.json):
+ *   provenance_log                the trail to fold (default: $NEUROFLOW_SESSION/provenance.jsonl)
+ *   status                        terminal run status (default: NEUROFLOW_RUN_STATUS, else completed)
+ *
  * Env:
  *   NEUROFLOW_SESSION             session dir holding provenance.jsonl + context.json
  *   NEUROFLOW_OUTPUT_DIR          where to write run.provenance.json (default: session root)
  *   NEUROFLOW_RUN_ID              run identifier (default: session dir name)
- *   NEUROFLOW_RUN_STATUS          run status (default: completed)
+ *   NEUROFLOW_RUN_STATUS          run status when the status input is not given
  *   NEUROFLOW_WORKFLOW_ID         executed workflow id (default: from context.json or a placeholder)
  *   NEUROFLOW_WORKFLOW_VERSION    executed workflow version (default: 0.1.0)
  */
@@ -70,13 +74,19 @@ function toIdSegment(x) {
 const toArray = (v) => (Array.isArray(v) ? v : v == null ? [] : [v])
 
 function main() {
-  const lines = readJsonl(join(session, 'provenance.jsonl'))
   const ctx = readContext()
+  const inputs = ctx.inputs ?? {}
+  const logPath = inputs.provenance_log || join(session, 'provenance.jsonl')
+  if (inputs.provenance_log && !existsSync(logPath)) {
+    console.error(`fold_provenance: provenance_log does not exist: ${logPath}`)
+    process.exit(1)
+  }
+  const lines = readJsonl(logPath)
 
   const runId = toIdSegment(process.env.NEUROFLOW_RUN_ID || basename(session) || 'run')
   const wfId = process.env.NEUROFLOW_WORKFLOW_ID || ctx.workflow?.id || 'neuroflow.gallery/unknown-workflow'
   const wfVersion = process.env.NEUROFLOW_WORKFLOW_VERSION || ctx.workflow?.version || '0.1.0'
-  const status = process.env.NEUROFLOW_RUN_STATUS || 'completed'
+  const status = inputs.status || process.env.NEUROFLOW_RUN_STATUS || 'completed'
 
   const agents = new Map()      // agentName -> agent id
   const entities = new Map()    // path -> entity id
@@ -137,7 +147,7 @@ function main() {
     kind: 'provenance',
     id: `neuroflow.runs/${runId}`,
     version: '1.0.0',
-    description: `Provenance for run ${runId}, folded from provenance.jsonl.`,
+    description: `Provenance for run ${runId}, folded from ${basename(logPath)}.`,
     run: {
       runId,
       startedAt: times[0] ?? new Date().toISOString(),

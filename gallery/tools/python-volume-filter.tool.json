@@ -4,7 +4,7 @@
   "kind": "tool",
   "id": "neuroflow.gallery.tools/python-volume-filter",
   "version": "0.1.0",
-  "description": "Headless Python script that modifies or filters the NIfTI volumes of a BIDS dataset (e.g. intensity threshold or Gaussian smoothing), optionally guided by a NeuroVue correction patch, and writes the filtered volumes to the session output directory.",
+  "description": "Headless Python script that modifies or filters the NIfTI volumes of a BIDS dataset (e.g. intensity threshold or Gaussian smoothing), and writes the filtered volumes to the session output directory. An optional NeuroVue correction patch is recorded with the run for traceability; it does not change the filter.",
   "inputs": {
     "bids_dir": {
       "type": "neuro:bids-dataset",
@@ -12,7 +12,7 @@
     },
     "correction_patch": {
       "type": "core:json",
-      "description": "Optional NeuroVue correction patch that parameterizes the filter.",
+      "description": "Optional NeuroVue correction patch (a path or inline JSON). Its asset, clip-plane count and save time are recorded in provenance and the result; the filter itself is unchanged.",
       "optional": true
     },
     "operation": {
@@ -71,7 +71,7 @@
       "requirements": [
         "Python 3.10+ with nibabel and numpy (scipy optional, for faster smoothing); set NEUROFLOW_PYTHON to the environment"
       ],
-      "description": "python_tool.mjs checks the Python environment, then calls nf_filter_volumes.run(bids_dir, operation, amount), which writes the filtered volumes to $NEUROFLOW_OUTPUT_DIR/filtered and appends a provenance line."
+      "description": "python_tool.mjs checks the Python environment, then calls nf_filter_volumes.run(bids_dir, operation, amount, correction_patch), which writes the filtered volumes to $NEUROFLOW_OUTPUT_DIR/filtered and appends a provenance line."
     },
     "neuroflow/python": {
       "interpreter": {
@@ -99,7 +99,8 @@
         "args": [
           "{{bids_dir}}",
           "{{operation}}",
-          "{{amount}}"
+          "{{amount}}",
+          "{{correction_patch}}"
         ]
       },
       "outputs": {
@@ -121,7 +122,8 @@
       ],
       "effects": [
         "Writes the filtered volumes to <output dir>/filtered and appends a provenance line; the dataset is not changed.",
-        "amount is the FWHM in mm for smooth and an intensity for threshold."
+        "amount is the FWHM in mm for smooth and an intensity for threshold.",
+      "A correction_patch is recorded in provenance and the result, tying the output to the review; it does not change the filter."
       ],
       "duration": {
         "typicalSeconds": 1,

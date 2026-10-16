@@ -8,9 +8,15 @@ a missing package is reported with its fix instead of being papered over.
 
 A volume that cannot be read as NIfTI is copied through unchanged and logged:
 that is a data problem a user can see in the output, not an environment one.
+
+An optional NeuroVue correction patch is recorded with the run (provenance and
+the returned summary) so the filtered volumes trace back to the review that
+preceded them. It does not change the filter: NeuroVue's patch holds clip
+planes for one reviewed asset, not filter settings.
 """
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 
@@ -79,8 +85,37 @@ def apply_filter(src: Path, dst: Path, operation: str, amount: float) -> str:
     return operation
 
 
-def run(bids_dir: Path, operation: str = "smooth", amount: float = 3.0) -> dict:
+def summarize_patch(patch) -> dict | None:
+    """What the run records about a NeuroVue correction patch: a path or inline JSON."""
+    if patch is None or patch == "":
+        return None
+    source = None
+    if isinstance(patch, (str, Path)):
+        source = str(patch)
+        patch = json.loads(Path(patch).read_text(encoding="utf-8"))
+    if not isinstance(patch, dict):
+        raise ValueError("correction_patch must be a JSON object or a path to one")
+    asset = patch.get("asset") if isinstance(patch.get("asset"), dict) else {}
+    summary = {
+        "asset": asset.get("id"),
+        "clipPlanes": len(patch.get("clipPlanes") or []),
+        "savedAt": patch.get("savedAt"),
+    }
+    if source:
+        summary["path"] = source
+    return summary
+
+
+def run(
+    bids_dir: Path, operation: str = "smooth", amount: float = 3.0, correction_patch=None
+) -> dict:
     s = session()
+    patch = summarize_patch(correction_patch)
+    if patch:
+        s.log(
+            f"correction patch for {patch['asset']} ({patch['clipPlanes']} clip plane(s)) "
+            "recorded with the run; it does not change the filter"
+        )
     out = s.output_path("filtered_volumes")  # core:result-dir at "filtered"
     out.mkdir(parents=True, exist_ok=True)
     operation = str(operation or "smooth")
@@ -96,9 +131,12 @@ def run(bids_dir: Path, operation: str = "smooth", amount: float = 3.0) -> dict:
         modes[src.name] = mode
         s.log(f"{src.name} -> {dst} [{mode}]")
 
+    extra = {"correctionPatch": patch} if patch else {}
     s.provenance(
         action="filter", operation=operation, amount=amount, inputCount=len(volumes),
-        modes=modes, outputs={"filtered_volumes": [f"{out.name}/{n}" for n in written]},
+        modes=modes, outputs={"filtered_volumes": [f"{out.name}/{n}" for n in written]}, **extra,
     )
     s.log(f"wrote {len(written)} volume(s) to {out}")
-    return {"operation": operation, "amount": amount, "count": len(written), "modes": modes}
+    return {
+        "operation": operation, "amount": amount, "count": len(written), "modes": modes, **extra,
+    }
