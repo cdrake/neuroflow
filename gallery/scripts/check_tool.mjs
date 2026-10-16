@@ -11,7 +11,8 @@
  *
  * Each adapter's probe is the same the adapter itself runs before launching
  * (cli_tool.mjs probe/match/version, python_tool.mjs requirement imports and
- * minVersion, matlab_tool.mjs engine search, neurodesk_job.mjs app search), so
+ * minVersion, matlab_tool.mjs engine search, neurodesk_job.mjs app search,
+ * app_cli.mjs checkout, entry, runner and the app's own probe), so
  * what this reports as ready is what a run will find. Nothing here needs a
  * session: it never starts the real program.
  */
@@ -20,7 +21,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
 import { delimiter, dirname, isAbsolute, join, resolve } from 'node:path';
-import { expand, findAppCheckout, findExecutable } from './adapter_lib.mjs';
+import { expand, findExecutable, resolveAppCli, runProbe } from './adapter_lib.mjs';
 
 class Setup extends Error {
   constructor(detail, fix) { super(detail); this.fix = fix ?? null; }
@@ -87,14 +88,10 @@ function checkCli(tool) {
   if (p) {
     const env = { ...process.env };
     for (const name of template.clearEnv ?? []) delete env[name];
-    const r = spawnSync(exe, p.args ?? [], { encoding: 'utf8', env, timeout: 60000 });
-    const text = `${r.stdout ?? ''}\n${r.stderr ?? ''}`;
-    const matched = p.match ? new RegExp(p.match).test(text) : r.status === 0;
-    if (r.error || (!matched && r.status !== 0)) {
-      throw new Setup(`${exe} probe ${r.error ? 'could not start' : `exited with status ${r.status}`}`, p.advice ?? null);
-    }
-    if (!matched) throw new Setup(`${exe} does not look like a usable ${template.command}: output lacks /${p.match}/`, p.advice ?? null);
-    if (p.version) version = new RegExp(p.version).exec(text)?.[0] ?? null;
+    const r = runProbe(exe, p, { env });
+    if (r.reason === 'mismatch') throw new Setup(`${exe} does not look like a usable ${template.command}: output lacks /${p.match}/`, p.advice ?? null);
+    if (!r.ok) throw new Setup(`${exe} probe ${r.reason}`, p.advice ?? null);
+    version = r.version;
   }
   return { executable: exe, version, detail: version ? `${template.command} ${version}` : template.command };
 }
@@ -235,17 +232,9 @@ function checkNodeScript(launch, scriptPath) {
 
 function checkAppCli(tool, toolPath) {
   const t = tool.extensions['neuroflow/app-cli'];
-  const checkout = findAppCheckout(t, dirname(resolve(toolPath)));
-  if (!checkout.path) {
-    throw new Setup(`${t.app} checkout not found (looked at ${checkout.tried.join(', ')})`,
-      `clone ${t.repo ?? t.app}${t.branch ? ` (branch ${t.branch})` : ''} beside the NeuroFlow checkout, or set ${checkout.key}`);
-  }
-  if (t.entry && !existsSync(join(checkout.path, t.entry))) {
-    throw new Setup(`${checkout.path} has no ${t.entry}`, t.branch ? `check out ${t.branch} there` : null);
-  }
-  const exe = findExecutable(t, fail);
-  if (!exe) throw new Setup(`${t.command} was not found`, t.env ? `install ${t.command} or set ${t.env} to its path` : `install ${t.command}`);
-  return { executable: exe, detail: `${t.app} at ${checkout.path}` };
+  const r = resolveAppCli(t, dirname(resolve(toolPath)));
+  if (r.problem) throw new Setup(r.problem, r.fix);
+  return { executable: r.exe, version: r.version, detail: `${t.app} at ${r.checkout}` };
 }
 
 // ---- one tool -------------------------------------------------------------------------

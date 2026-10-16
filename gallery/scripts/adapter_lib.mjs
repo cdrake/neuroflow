@@ -1,11 +1,12 @@
 /**
- * Helpers shared by the gallery's launch adapters (cli_tool.mjs, matlab_tool.mjs).
+ * Helpers shared by the gallery's launch adapters and check_tool.mjs.
  *
  * Each adapter is a `neuroflow/launch` script: the runtime starts it with the
  * session contract (NEUROFLOW_SESSION and <session>/context.json), the adapter
  * reads its own template from the tool document, runs the real program, and
  * maps what the program wrote to the tool's declared outputs.
  */
+import { spawnSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, delimiter, dirname, join } from 'node:path';
@@ -178,28 +179,114 @@ export function appendProvenance(session, record) {
 
 /**
  * Locate an app's source checkout, the way the runtime finds a `uiApp`'s:
- * NEUROFLOW_UI_APP_<APP> wins, otherwise a directory named `repo` beside the
- * NeuroFlow checkout that `fromDir` (a tool document's directory) lives in.
- * Returns { path, tried } where path is null when nothing was found.
+ * NEUROFLOW_UI_APP_<APP> when it names a directory, otherwise a directory named
+ * `repo` beside the NeuroFlow checkout that `fromDir` (a tool document's
+ * directory) lives in. An override that is not a directory falls through to the
+ * sibling, as in the runtime (`registry.rs` `launch_of`). With `entry`, a
+ * sibling only counts when it holds that file, so an unrelated directory of the
+ * same name (BIDSvue's WebKit cache `$TMPDIR/bidsui`) is skipped.
+ * Returns { path, key, tried } where path is null when nothing was found.
  */
-export function findAppCheckout({ app, repo }, fromDir) {
+export function findAppCheckout({ app, repo, entry }, fromDir) {
   const key = `NEUROFLOW_UI_APP_${String(app).toUpperCase().replace(/-/g, '_')}`;
+  const isDir = (p) => existsSync(p) && statSync(p).isDirectory();
   const tried = [];
   if (process.env[key]) {
     const p = expand(process.env[key]);
     tried.push(`${key}=${p}`);
-    return { path: existsSync(p) && statSync(p).isDirectory() ? p : null, key, tried };
+    if (isDir(p)) return { path: p, key, tried };
   }
   if (repo) {
-    let dir = fromDir;
-    for (let i = 0; i < 4; i++) {
+    // fromDir is the tools directory; like the Rust runtime (registry.rs
+    // default_checkout), treat its registry root and the next two ancestors as
+    // "the NeuroFlow checkout" and look beside each.
+    let dir = dirname(fromDir);
+    for (let i = 0; i < 3; i++) {
       const parent = dirname(dir);
       if (parent === dir) break;
       const candidate = join(parent, repo);
-      tried.push(candidate);
-      if (existsSync(candidate) && statSync(candidate).isDirectory()) return { path: candidate, key, tried };
+      if (isDir(candidate) && entry && !existsSync(join(candidate, entry))) {
+        tried.push(`${candidate} (no ${entry})`);
+      } else {
+        tried.push(candidate);
+        if (isDir(candidate)) return { path: candidate, key, tried };
+      }
       dir = parent;
     }
   }
   return { path: null, key, tried };
+}
+
+/**
+ * Run a template's `probe` ({ args, match, version }) with `exe` and judge it. A
+ * matching output is proof enough: some tools exit non-zero after printing their
+ * version (dcm2niix -v returns 3), so a bad status only counts when the output
+ * does not match either. Returns { ok, reason, version, stdout }: reason is
+ * 'could not start', 'exited with status N' or 'mismatch'.
+ */
+export function runProbe(exe, probe, { env = process.env, cwd } = {}) {
+  const r = spawnSync(exe, probe.args ?? [], { encoding: 'utf8', env, cwd, timeout: 60000 });
+  const text = `${r.stdout ?? ''}\n${r.stderr ?? ''}`;
+  const matched = probe.match ? new RegExp(probe.match).test(text) : r.status === 0;
+  if (r.error || (!matched && r.status !== 0)) {
+    return { ok: false, reason: r.error ? 'could not start' : `exited with status ${r.status}`, stdout: r.stdout ?? '' };
+  }
+  if (!matched) return { ok: false, reason: 'mismatch', stdout: r.stdout ?? '' };
+  const version = probe.version ? new RegExp(probe.version).exec(text)?.[0] ?? null : null;
+  return { ok: true, version, stdout: r.stdout ?? '' };
+}
+
+/**
+ * Everything an `neuroflow/app-cli` run needs before it starts, checked the same
+ * way by app_cli.mjs and check_tool.mjs: the app checkout, its `entry` file, the
+ * runner (`command`), and the app's own readiness `probe` run in the checkout.
+ * The probe is the app's to define (BIDSvue: `neuroflow-ingest --check`, which
+ * prints one JSON line `{ ready, problems[] }`), so NeuroFlow does not copy the
+ * app's dependency lookup. Returns { checkout, exe, version } or { problem, fix }.
+ */
+export function resolveAppCli(t, fromDir) {
+  const checkout = findAppCheckout(t, fromDir);
+  if (!checkout.path) {
+    return {
+      problem: `${t.app} checkout not found (looked at ${checkout.tried.join(', ')})`,
+      fix: `clone ${t.repo ?? t.app}${t.branch ? ` (branch ${t.branch})` : ''} beside the NeuroFlow checkout, or set ${checkout.key} to its directory`,
+    };
+  }
+  if (t.entry && !existsSync(join(checkout.path, t.entry))) {
+    return { problem: `${checkout.path} has no ${t.entry}`, fix: t.branch ? `check out ${t.branch} there` : null };
+  }
+  let exe;
+  try {
+    exe = findExecutable(t, (message) => { throw new Error(message); });
+  } catch (e) {
+    return { problem: e.message, fix: `point ${t.env} at ${t.command}, or unset it` };
+  }
+  if (!exe) {
+    return {
+      problem: `${t.command} was not found (looked in ${(t.paths ?? []).join(', ') || 'no fixed locations'} and on PATH)`,
+      fix: `install ${t.command}${t.env ? ` or set ${t.env} to its path` : ''}`,
+    };
+  }
+  let version = null;
+  if (t.probe) {
+    const r = runProbe(exe, t.probe, { cwd: checkout.path });
+    if (!r.ok) {
+      const said = appProblems(r.stdout);
+      const why = said ?? (r.reason === 'mismatch' ? `its output lacks /${t.probe.match}/` : `the probe ${r.reason}`);
+      return { problem: `${t.app} at ${checkout.path} is not ready: ${why}`, fix: t.probe.advice ?? null };
+    }
+    version = r.version;
+  }
+  return { checkout: checkout.path, exe, version };
+}
+
+/** The `problems` an app's probe printed as its last JSON line, joined; null if none. */
+function appProblems(stdout) {
+  const last = String(stdout).trim().split('\n').pop();
+  try {
+    const parsed = JSON.parse(last);
+    return Array.isArray(parsed?.problems) && parsed.problems.length ? parsed.problems.join('; ') : null;
+  } catch {
+    return null;
+  }
 }
