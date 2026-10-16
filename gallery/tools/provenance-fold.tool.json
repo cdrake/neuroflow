@@ -50,7 +50,7 @@
       "completion": "exit",
       "interactive": false,
       "contract": "../../docs/neuroflow-session-contract.md",
-      "description": "Reads $NEUROFLOW_SESSION/provenance.jsonl and writes $NEUROFLOW_OUTPUT_DIR/run.provenance.json. Optional env: NEUROFLOW_RUN_ID, NEUROFLOW_RUN_STATUS, NEUROFLOW_WORKFLOW_ID, NEUROFLOW_WORKFLOW_VERSION."
+      "description": "Reads inputs.provenance_log (default $NEUROFLOW_SESSION/provenance.jsonl) and writes $NEUROFLOW_OUTPUT_DIR/run.provenance.json with inputs.status. Optional env: NEUROFLOW_RUN_ID, NEUROFLOW_WORKFLOW_ID, NEUROFLOW_WORKFLOW_VERSION, and NEUROFLOW_RUN_STATUS when no status input is given."
     },
     "neuroflow/usage": {
       "useWhen": [
@@ -63,7 +63,7 @@
         }
       ],
       "preconditions": [
-        "Runs inside a NeuroFlow session: it reads the trail from $NEUROFLOW_SESSION/provenance.jsonl."
+        "Runs inside a NeuroFlow session (NEUROFLOW_SESSION set). It folds provenance_log when given, else $NEUROFLOW_SESSION/provenance.jsonl."
       ],
       "effects": [
         "Writes run.provenance.json to the output directory; the trail itself is not changed."
@@ -90,6 +90,14 @@
           "meaning": "The script ran outside a NeuroFlow session.",
           "remedy": "Run it as a workflow step through NeuroFlow.",
           "retry": "never"
+        },
+        {
+          "match": {
+            "contains": "provenance_log does not exist"
+          },
+          "meaning": "The provenance_log input names a file that is not there.",
+          "remedy": "Point provenance_log at the run's provenance.jsonl, or omit it to fold the session's own trail.",
+          "retry": "after-fix"
         }
       ]
     }
