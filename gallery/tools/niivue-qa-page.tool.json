@@ -4,7 +4,7 @@
   "kind": "tool",
   "id": "neuroflow.gallery.tools/niivue-qa-page",
   "version": "0.1.0",
-  "description": "Publish-stage script that builds a QA web page for a set of NIfTI volumes, writing index.html and copies of the volumes to the session output directory. The page loads NiiVue from esm.sh, so viewing it needs network access; NiiVue's save-html extension is tried first when it imports.",
+  "description": "Publish-stage script that builds an offline QA web page for a set of NIfTI volumes with NiiVue's save-html extension. Each volume becomes a self-contained HTML scene holding the volume and NiiVue, so the page opens from disk with no server or network. One volume makes index.html that scene; several make one scene per volume plus an index.html that lists them beside a viewer showing one at a time.",
   "inputs": {
     "volumes": {
       "type": "core:array<neuro:volume>",
@@ -20,7 +20,7 @@
   "outputs": {
     "qa_html": {
       "type": "core:file",
-      "description": "NiiVue QA web page (index.html), with the volumes copied beside it.",
+      "description": "Offline NiiVue QA web page (index.html); with several volumes, it lists the per-volume scene files written beside it and shows one at a time.",
       "delivery": {
         "mode": "core:result-file",
         "path": "index.html"
@@ -48,9 +48,9 @@
       "completion": "exit",
       "interactive": false,
       "contract": "../../docs/neuroflow-session-contract.md",
-      "requirements": ["@niivue/niivue", "@niivue/nv-ext-save-html"],
+      "requirements": ["@niivue/niivue", "@niivue/nv-ext-save-html", "esbuild"],
       "saveApi": "generateHTML / saveHTML (@niivue/nv-ext-save-html)",
-      "description": "Reads $NEUROFLOW_SESSION/context.json, copies inputs.volumes into $NEUROFLOW_OUTPUT_DIR, and writes index.html there: from the NiiVue save-html extension when it imports, else a page that loads NiiVue from esm.sh."
+      "description": "Reads $NEUROFLOW_SESSION/context.json, loads each of inputs.volumes into a headless NiiVue, and writes its scene with generateHTML into $NEUROFLOW_OUTPUT_DIR. The standalone NiiVue bundle the scenes embed is built with esbuild on first use and cached in node_modules/.cache/neuroflow. If the extension can't be used, it writes a page that loads NiiVue from esm.sh beside copies of the volumes, and says so on stderr."
     },
     "neuroflow/usage": {
       "useWhen": [
@@ -67,8 +67,9 @@
         "Runs inside a NeuroFlow session."
       ],
       "effects": [
-        "Writes index.html and copies of the volumes to the output directory.",
-        "The page loads NiiVue from esm.sh, so viewing it needs network access."
+        "Writes index.html, plus one scene file per volume when there are several, to the output directory.",
+        "Each scene embeds its volume and NiiVue (about 4.5 MB of script), so the page works offline but is large.",
+        "If the save-html extension, NiiVue or esbuild is missing (run npm install), it warns on stderr and writes a page that loads NiiVue from esm.sh, which needs network access."
       ],
       "examples": [
         {

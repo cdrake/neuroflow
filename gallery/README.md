@@ -99,9 +99,16 @@ Reference implementations the script-tools point at:
   the gallery's tools on it. `python_tool.test.mjs` covers the adapter and the
   first two; `dti_fit.test.mjs` covers the DIPY tool when dipy is importable
   (`npm run test:gallery`). See `../docs/python-tools.md`.
-- `generate_qa.mjs` — builds a QA page via `@niivue/nv-ext-save-html`
-  (`generateHTML`) when it imports, else a page that loads NiiVue from esm.sh,
-  so viewing it needs network access. Copies volumes next to `index.html`.
+- `generate_qa.mjs` — builds an offline QA page with `@niivue/nv-ext-save-html`:
+  each volume is loaded into a headless NiiVue and written by `generateHTML` as
+  a self-contained scene (volume plus a standalone NiiVue bundle, about 4.5 MB),
+  so it opens from disk with no network. One volume makes `index.html` that
+  scene; several make `<stem>.html` per volume and an `index.html` that lists
+  them beside one viewer, so the page holds one WebGL context at a time.
+  The bundle is built with esbuild on first use and cached in
+  `node_modules/.cache/neuroflow`. If the extension can't be used, it warns and
+  writes a page that loads NiiVue from esm.sh beside copies of the volumes.
+  Tested by `generate_qa.test.mjs`.
 - `cli_tool.mjs` — shared adapter for native command-line tools: finds the
   executable (override variable, install paths, PATH), probes the release,
   fills an argument template from the session inputs, maps the files written
