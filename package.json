@@ -28,10 +28,13 @@
   },
   "devDependencies": {
     "@marp-team/marp-cli": "^4.1.2",
+    "@niivue/niivue": "1.0.0-rc.22",
+    "@niivue/nv-ext-save-html": "1.0.0-rc.22",
     "@tauri-apps/cli": "^2.2.0",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
+    "esbuild": "^0.21.5",
     "typescript": "^5.5.2",
     "vite": "^5.4.11",
     "wasm-pack": "^0.13.1"
