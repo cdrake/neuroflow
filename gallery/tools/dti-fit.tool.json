@@ -119,6 +119,61 @@
         "readOnlyHint": false,
         "idempotentHint": true
       }
+    },
+    "neuroflow/usage": {
+      "useWhen": [
+        "Compute fractional anisotropy and mean diffusivity maps from a 4-D diffusion-weighted series and its gradient table.",
+        "Answer summary DTI questions, such as mean or median FA and MD within a brain mask."
+      ],
+      "avoidWhen": [
+        {
+          "when": "The image is structural (a single 3-D volume): a tensor fit needs a 4-D DWI series with b-values and vectors."
+        }
+      ],
+      "preconditions": [
+        "Python 3.10+ with dipy 1.9+, nibabel and numpy; NEUROFLOW_PYTHON set to that environment.",
+        "gradients matches dwi volume for volume: FSL .bval/.bvec with its same-stem sibling beside it, or one x y z b table."
+      ],
+      "effects": [
+        "Writes fa.nii.gz and md.nii.gz (float32) to the output directory and returns the fit summary inline.",
+        "Without mask, voxels with a non-zero mean b0 are fitted."
+      ],
+      "examples": [
+        {
+          "title": "FA and MD with the defaults",
+          "inputs": {
+            "dwi": "<dwi>",
+            "gradients": "<bval>"
+          }
+        },
+        {
+          "title": "Robust fit inside a brain mask",
+          "inputs": {
+            "dwi": "<dwi>",
+            "gradients": "<bvec>",
+            "mask": "<brain_mask>",
+            "fit_method": "RESTORE"
+          }
+        }
+      ],
+      "failures": [
+        {
+          "match": {
+            "contains": "no Python interpreter found"
+          },
+          "meaning": "No Python environment was found for the tool.",
+          "remedy": "Set NEUROFLOW_PYTHON to a Python 3.10+ environment that has the packages this tool lists.",
+          "retry": "after-fix"
+        },
+        {
+          "match": {
+            "contains": ", required by "
+          },
+          "meaning": "The Python environment lacks a required package.",
+          "remedy": "The message names the package and the fix: pip install it into that environment, or point NEUROFLOW_PYTHON at one that has it.",
+          "retry": "after-fix"
+        }
+      ]
     }
   }
 }

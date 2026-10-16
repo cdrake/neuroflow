@@ -62,6 +62,41 @@
       "interactive": true,
       "contract": "../../docs/neuroflow-session-contract.md",
       "description": "NeuroVue reads $NEUROFLOW_SESSION/context.json (inputs.bids_dir / inputs.volumes), and on user save POSTs the patch which the server persists to $NEUROFLOW_OUTPUT_DIR/correction.patch.json plus a provenance line."
+    },
+    "neuroflow/usage": {
+      "useWhen": [
+        "A person should review volumes or a BIDS dataset, set clip planes and record corrections."
+      ],
+      "avoidWhen": [
+        {
+          "when": "Nobody will review interactively and you only need to share a view of the results.",
+          "instead": "neuroflow.gallery.tools/niivue-qa-page"
+        }
+      ],
+      "preconditions": [
+        "NeuroVue available for NeuroFlow to launch, and a person at the machine.",
+        "At least one of bids_dir or volumes is given."
+      ],
+      "effects": [
+        "When the user saves, writes correction.patch.json and the review state to the output directory, plus a provenance line."
+      ],
+      "examples": [
+        {
+          "title": "Review a dataset",
+          "inputs": {
+            "bids_dir": "<bids_dir>"
+          }
+        },
+        {
+          "title": "Review two volumes",
+          "inputs": {
+            "volumes": [
+              "<volume_1>",
+              "<volume_2>"
+            ]
+          }
+        }
+      ]
     }
   }
 }

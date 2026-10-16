@@ -177,6 +177,86 @@
         },
         "source": "neurodesk/webapps exes/synthseg (native SynthSeg 2.0, Metal on Apple silicon); same model as the web app"
       }
+    },
+    "neuroflow/usage": {
+      "useWhen": [
+        "Segment a brain MRI of any contrast or resolution into the SynthSeg 2.0 FreeSurfer labels.",
+        "A next step needs a label map, e.g. per-structure volumes with label-volumes."
+      ],
+      "avoidWhen": [
+        {
+          "when": "You only need a brain mask or a skull-stripped image.",
+          "instead": "neuroflow.gallery.tools/mindgrab"
+        },
+        {
+          "when": "Only the web app is available and the image is large: it refuses grids above about 7.4 million voxels at 1 mm."
+        }
+      ],
+      "preconditions": [
+        "Neurodesk's native synthseg CLI (/usr/local/bin/synthseg or NEURODESK_SYNTHSEG), or else the Neurodesk Webapps suite.",
+        "t1 is a full-head image."
+      ],
+      "effects": [
+        "Writes the label map (FreeSurfer label ids, 1 mm grid) and a JSON run report to the output directory.",
+        "mode fast skips flip averaging and topological correction."
+      ],
+      "duration": {
+        "typicalSeconds": 8,
+        "basis": "Measured from the run report over 14 gallery runs with the native CLI on an Apple-silicon Mac: 4-9 s for a 1 mm T1. The web app is not measured."
+      },
+      "examples": [
+        {
+          "title": "Reference segmentation",
+          "inputs": {
+            "t1": "<t1>"
+          },
+          "outputs": {
+            "labels": "<output dir>/synthseg.nii.gz",
+            "report": "<output dir>/synthseg.json"
+          }
+        },
+        {
+          "title": "Faster single pass",
+          "inputs": {
+            "t1": "<t1>",
+            "mode": "fast"
+          }
+        }
+      ],
+      "failures": [
+        {
+          "match": {
+            "contains": "GPU buffer"
+          },
+          "meaning": "The image is too large for the SynthSeg web app, so it was not started.",
+          "remedy": "Install Neurodesk's native synthseg CLI, or crop the image; the message gives the voxel limit.",
+          "retry": "after-fix"
+        },
+        {
+          "match": {
+            "contains": "neurodesk-webapps was not found"
+          },
+          "meaning": "The Neurodesk Webapps desktop suite is not installed.",
+          "remedy": "Install it from the webapps-v* releases of github.com/neurodesk/webapps, or set NEURODESK_WEBAPPS. NeurodeskApp.app is a different product and does not work here.",
+          "retry": "after-fix"
+        },
+        {
+          "match": {
+            "contains": " reported: "
+          },
+          "meaning": "The Neurodesk web app reported a failure for this input.",
+          "remedy": "Read the reported message and the job file it names; fix the input or settings it points to.",
+          "retry": "after-fix"
+        },
+        {
+          "match": {
+            "contains": "synthseg exited with status"
+          },
+          "meaning": "The native synthseg CLI failed on this image.",
+          "remedy": "Read the step log, and check that t1 is a readable NIfTI with neuroflow_inspect.",
+          "retry": "after-fix"
+        }
+      ]
     }
   }
 }

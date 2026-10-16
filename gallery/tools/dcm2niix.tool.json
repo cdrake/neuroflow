@@ -126,6 +126,78 @@
         }
       },
       "source": "https://github.com/rordenlab/dcm2niix"
+    },
+    "neuroflow/usage": {
+      "useWhen": [
+        "Convert one DICOM series folder to a single NIfTI volume plus its BIDS JSON sidecar.",
+        "A next step needs one volume (e.g. a T1 for skull stripping or segmentation) rather than a BIDS dataset."
+      ],
+      "avoidWhen": [
+        {
+          "when": "The folder holds a whole session or several series and you want a BIDS dataset.",
+          "instead": "neuroflow.gallery.tools/bidsvue-ingest"
+        },
+        {
+          "when": "The sequence names follow ReproIn and you want HeuDiConv's BIDS layout.",
+          "instead": "neuroflow.gallery.tools/heudiconv-reproin"
+        },
+        {
+          "when": "You need every echo of a multi-echo series as an output: only the first echo is returned (the others stay in the output directory)."
+        }
+      ],
+      "preconditions": [
+        "dcm2niix on PATH, in /usr/local/bin, /opt/homebrew/bin or ~/fsl/bin, or set via DCM2NIIX. JPEG Lossless DICOM needs a 2026-05-20 or newer build.",
+        "dicom_dir holds the files of exactly one series."
+      ],
+      "effects": [
+        "Writes volume*.nii.gz and volume*.json to the output directory and returns the first of each; dicom_dir is not changed.",
+        "The sidecar is anonymized (-ba y) unless anonymize is false."
+      ],
+      "duration": {
+        "typicalSeconds": 0.5,
+        "basis": "Measured over 10 gallery runs on an Apple-silicon Mac: median 0.3 s for one T1 series; the slowest took 61 s."
+      },
+      "examples": [
+        {
+          "title": "Convert a T1 series",
+          "inputs": {
+            "dicom_dir": "<dicom_dir>"
+          }
+        },
+        {
+          "title": "Keep acquisition dates in the sidecar",
+          "inputs": {
+            "dicom_dir": "<dicom_dir>",
+            "anonymize": false
+          }
+        }
+      ],
+      "failures": [
+        {
+          "match": {
+            "contains": "dcm2niix was not found"
+          },
+          "meaning": "No dcm2niix executable was found.",
+          "remedy": "Install dcm2niix (e.g. brew install dcm2niix), or set DCM2NIIX to its path.",
+          "retry": "after-fix"
+        },
+        {
+          "match": {
+            "contains": "dcm2niix exited with status"
+          },
+          "meaning": "dcm2niix could not convert this folder, e.g. no readable DICOM or an unsupported transfer syntax.",
+          "remedy": "Read the step log. Check dicom_dir with neuroflow_inspect; for JPEG Lossless data update dcm2niix.",
+          "retry": "after-fix"
+        },
+        {
+          "match": {
+            "contains": "did not write output volume"
+          },
+          "meaning": "dcm2niix ran but wrote no NIfTI, so the folder held no image series.",
+          "remedy": "Point dicom_dir at a folder that contains one image series.",
+          "retry": "never"
+        }
+      ]
     }
   }
 }

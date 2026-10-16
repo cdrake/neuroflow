@@ -108,6 +108,94 @@
         "advice": "run `bun install` in the BIDSvue checkout and stage its dcm2niix sidecar, or set DCM2NIIX"
       },
       "source": "https://github.com/niivue/BIDSvue"
+    },
+    "neuroflow/usage": {
+      "useWhen": [
+        "Convert a DICOM folder (a whole session, any number of series) into a BIDS dataset with nobody at the machine.",
+        "An agent or unattended workflow needs BIDSvue's import, including its post-pass cleanup, with every setting given as an input."
+      ],
+      "avoidWhen": [
+        {
+          "when": "A person should choose series, check metadata or correct BIDS names during the import.",
+          "instead": "neuroflow.gallery.tools/bidsvue"
+        },
+        {
+          "when": "You need one NIfTI volume from one series, not a BIDS dataset.",
+          "instead": "neuroflow.gallery.tools/dcm2niix"
+        },
+        {
+          "when": "The sequence names follow ReproIn and the study wants HeuDiConv's reproin layout exactly.",
+          "instead": "neuroflow.gallery.tools/heudiconv-reproin"
+        }
+      ],
+      "preconditions": [
+        "A BIDSvue checkout with `bun install` run in it, beside NeuroFlow or via NEUROFLOW_UI_APP_BIDSVUE, and bun on PATH or via BUN.",
+        "dcm2niix available to BIDSvue (its staged sidecar, DCM2NIIX, or PATH). The step runs `bun run neuroflow-ingest --check` first and stops if it is not ready."
+      ],
+      "effects": [
+        "Writes the BIDS dataset to <output dir>/bids and returns it as bids_dir, plus neuroflow.handoff.json and a provenance line.",
+        "Never overwrites an existing dataset: the step fails if <output dir>/bids already exists.",
+        "subject defaults to the DICOM PatientID. anonymize strips dates from the sidecars; shift_dates moves acquisition dates to 1925-01-01."
+      ],
+      "duration": {
+        "typicalSeconds": 60,
+        "basis": "Measured: 53-60 s for one Siemens session of 35 series on an Apple-silicon Mac; grows with the number of series."
+      },
+      "examples": [
+        {
+          "title": "Import a session with the defaults",
+          "inputs": {
+            "dicom_dir": "<dicom_dir>"
+          },
+          "outputs": {
+            "bids_dir": "<output dir>/bids"
+          }
+        },
+        {
+          "title": "Anonymized import with explicit labels",
+          "inputs": {
+            "dicom_dir": "<dicom_dir>",
+            "subject": "01",
+            "session": "baseline",
+            "anonymize": true,
+            "shift_dates": true
+          }
+        }
+      ],
+      "failures": [
+        {
+          "match": {
+            "contains": "is not ready"
+          },
+          "meaning": "BIDSvue's readiness check failed: usually dcm2niix or the checkout's node_modules is missing.",
+          "remedy": "The message lists the problems. Install or point to the missing piece (DCM2NIIX, BUN, NEUROFLOW_UI_APP_BIDSVUE) and run `bun install` in the checkout.",
+          "retry": "after-fix"
+        },
+        {
+          "match": {
+            "contains": "checkout not found"
+          },
+          "meaning": "No BIDSvue checkout was found.",
+          "remedy": "Clone niivue/BIDSvue beside NeuroFlow, or set NEUROFLOW_UI_APP_BIDSVUE to the checkout.",
+          "retry": "after-fix"
+        },
+        {
+          "match": {
+            "contains": "already exists"
+          },
+          "meaning": "The output directory already holds a dataset from an earlier run.",
+          "remedy": "Run the step in a fresh session, or remove the earlier output first.",
+          "retry": "after-fix"
+        },
+        {
+          "match": {
+            "contains": "finished without writing"
+          },
+          "meaning": "BIDSvue exited cleanly but did not write the declared outputs.",
+          "remedy": "Read the step log for the importer's messages; check that dicom_dir holds image series.",
+          "retry": "never"
+        }
+      ]
     }
   }
 }

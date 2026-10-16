@@ -104,6 +104,74 @@
         "brain_mask": "brain_mask.nii.gz"
       },
       "source": "https://github.com/neuroneural/brainchop-cli (mindgrab model, lightNIIng brain_extraction)"
+    },
+    "neuroflow/usage": {
+      "useWhen": [
+        "Skull-strip a full-head MRI locally in seconds, getting the brain image and a binary mask on the input grid.",
+        "A next step needs a brain-only image, e.g. affine registration to a brain-only template."
+      ],
+      "avoidWhen": [
+        {
+          "when": "You want SynthStrip or BET, or the brainchop CLI is not installed but the Neurodesk Webapps suite is.",
+          "instead": "neurodesk.webapps/brain-extraction"
+        },
+        {
+          "when": "The image is already skull-stripped."
+        }
+      ],
+      "preconditions": [
+        "brainchop CLI 0.2 or newer with --skull-strip (pip install brainchop), on PATH or via BRAINCHOP.",
+        "t1 is a full-head NIfTI volume."
+      ],
+      "effects": [
+        "Writes brain.nii.gz and brain_mask.nii.gz to the output directory, both on the input grid.",
+        "border above 0 grows the mask by that many mm."
+      ],
+      "duration": {
+        "typicalSeconds": 4,
+        "basis": "Measured over 9 gallery runs on an Apple-silicon Mac: median 3.8 s for a 1 mm T1; the slowest took 10.4 s."
+      },
+      "examples": [
+        {
+          "title": "Skull-strip a T1",
+          "inputs": {
+            "t1": "<t1>"
+          }
+        },
+        {
+          "title": "Keep a 2 mm margin around the brain",
+          "inputs": {
+            "t1": "<t1>",
+            "border": 2
+          }
+        }
+      ],
+      "failures": [
+        {
+          "match": {
+            "contains": "brainchop was not found"
+          },
+          "meaning": "No brainchop executable was found.",
+          "remedy": "pip install brainchop, or set BRAINCHOP to its path.",
+          "retry": "after-fix"
+        },
+        {
+          "match": {
+            "contains": "does not look like a usable brainchop"
+          },
+          "meaning": "The brainchop found is too old: it has no --skull-strip mode.",
+          "remedy": "pip install -U brainchop, or point BRAINCHOP at a newer install.",
+          "retry": "after-fix"
+        },
+        {
+          "match": {
+            "contains": "brainchop exited with status"
+          },
+          "meaning": "brainchop failed on this image.",
+          "remedy": "Read the step log, and check that t1 is a readable NIfTI with neuroflow_inspect.",
+          "retry": "after-fix"
+        }
+      ]
     }
   }
 }

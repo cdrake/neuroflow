@@ -148,6 +148,71 @@
         }
       },
       "source": "neurodesk/webapps apps/brain-extraction; steps follow its e2e/app.spec.js flow"
+    },
+    "neuroflow/usage": {
+      "useWhen": [
+        "Skull-strip a T1- or T2-weighted full-head image with SynthStrip (the default), MindGrab or BET.",
+        "You want SynthStrip specifically, or BET with a tunable fractional intensity threshold."
+      ],
+      "avoidWhen": [
+        {
+          "when": "The Neurodesk Webapps suite is not installed but the brainchop CLI is.",
+          "instead": "neuroflow.gallery.tools/mindgrab"
+        },
+        {
+          "when": "The image is already skull-stripped."
+        }
+      ],
+      "preconditions": [
+        "The Neurodesk Webapps desktop suite (neurodesk-webapps), in /Applications or via NEURODESK_WEBAPPS.",
+        "t1 is a full-head T1- or T2-weighted NIfTI image."
+      ],
+      "effects": [
+        "Writes the skull-stripped image and its binary mask to the output directory, keeping the input geometry.",
+        "threshold applies only to method bet; lower values give larger masks."
+      ],
+      "examples": [
+        {
+          "title": "SynthStrip with the defaults",
+          "inputs": {
+            "t1": "<t1>"
+          }
+        },
+        {
+          "title": "BET with a larger mask",
+          "inputs": {
+            "t1": "<t1>",
+            "method": "bet",
+            "threshold": 0.3
+          }
+        }
+      ],
+      "failures": [
+        {
+          "match": {
+            "contains": "neurodesk-webapps was not found"
+          },
+          "meaning": "The Neurodesk Webapps desktop suite is not installed.",
+          "remedy": "Install it from the webapps-v* releases of github.com/neurodesk/webapps, or set NEURODESK_WEBAPPS. NeurodeskApp.app is a different product and does not work here.",
+          "retry": "after-fix"
+        },
+        {
+          "match": {
+            "contains": " reported: "
+          },
+          "meaning": "The Neurodesk web app reported a failure for this input.",
+          "remedy": "Read the reported message and the job file it names; fix the input or settings it points to.",
+          "retry": "after-fix"
+        },
+        {
+          "match": {
+            "contains": "job exited with status"
+          },
+          "meaning": "The Neurodesk web app job stopped with an error.",
+          "remedy": "Read the step log and the job file; check the input with neuroflow_inspect.",
+          "retry": "after-fix"
+        }
+      ]
     }
   }
 }

@@ -51,6 +51,47 @@
       "requirements": ["@niivue/niivue", "@niivue/nv-ext-save-html"],
       "saveApi": "generateHTML / saveHTML (@niivue/nv-ext-save-html)",
       "description": "Reads $NEUROFLOW_SESSION/context.json, builds an NVDocument from inputs.volumes, and writes $NEUROFLOW_OUTPUT_DIR/index.html via the NiiVue save-html extension."
+    },
+    "neuroflow/usage": {
+      "useWhen": [
+        "Publish a web page that shows a set of volumes in NiiVue for quality review.",
+        "Share results with someone who only has a browser."
+      ],
+      "avoidWhen": [
+        {
+          "when": "A person should review and record corrections interactively.",
+          "instead": "neuroflow.gallery.tools/neurovue"
+        }
+      ],
+      "preconditions": [
+        "Runs inside a NeuroFlow session. @niivue/nv-ext-save-html installed for the gallery scripts gives an offline page."
+      ],
+      "effects": [
+        "Writes index.html and copies of the volumes to the output directory.",
+        "Without the save-html extension the page loads NiiVue from esm.sh, so viewing it needs network access."
+      ],
+      "examples": [
+        {
+          "title": "QA page for two volumes",
+          "inputs": {
+            "volumes": [
+              "<volume_1>",
+              "<volume_2>"
+            ],
+            "title": "Subject 01 QA"
+          }
+        }
+      ],
+      "failures": [
+        {
+          "match": {
+            "contains": "generate_qa failed"
+          },
+          "meaning": "The QA page could not be built.",
+          "remedy": "Read the error that follows in the step log; usually an input volume is missing.",
+          "retry": "after-fix"
+        }
+      ]
     }
   }
 }
