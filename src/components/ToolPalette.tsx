@@ -31,6 +31,7 @@ const PROVIDER_ICONS: Record<ToolProviderKind, typeof Wrench> = {
   cli: Cpu,
   python: FlaskConical,
   matlab: Sigma,
+  appCli: AppWindow,
   neurodesk: Server
 }
 

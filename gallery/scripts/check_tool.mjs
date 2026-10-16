@@ -20,7 +20,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
 import { delimiter, dirname, isAbsolute, join, resolve } from 'node:path';
-import { expand, findExecutable } from './adapter_lib.mjs';
+import { expand, findAppCheckout, findExecutable } from './adapter_lib.mjs';
 
 class Setup extends Error {
   constructor(detail, fix) { super(detail); this.fix = fix ?? null; }
@@ -233,6 +233,21 @@ function checkNodeScript(launch, scriptPath) {
   return { executable: scriptPath, version: process.version, detail: `node ${process.version}` };
 }
 
+function checkAppCli(tool, toolPath) {
+  const t = tool.extensions['neuroflow/app-cli'];
+  const checkout = findAppCheckout(t, dirname(resolve(toolPath)));
+  if (!checkout.path) {
+    throw new Setup(`${t.app} checkout not found (looked at ${checkout.tried.join(', ')})`,
+      `clone ${t.repo ?? t.app}${t.branch ? ` (branch ${t.branch})` : ''} beside the NeuroFlow checkout, or set ${checkout.key}`);
+  }
+  if (t.entry && !existsSync(join(checkout.path, t.entry))) {
+    throw new Setup(`${checkout.path} has no ${t.entry}`, t.branch ? `check out ${t.branch} there` : null);
+  }
+  const exe = findExecutable(t, fail);
+  if (!exe) throw new Setup(`${t.command} was not found`, t.env ? `install ${t.command} or set ${t.env} to its path` : `install ${t.command}`);
+  return { executable: exe, detail: `${t.app} at ${checkout.path}` };
+}
+
 // ---- one tool -------------------------------------------------------------------------
 export function checkTool(toolPath) {
   let tool;
@@ -252,13 +267,14 @@ export function checkTool(toolPath) {
     return { ...base, adapter: 'script', status: 'needsSetup', detail: `launch script ${launch.script ?? '(none)'} not found`, fix: 'restore the gallery scripts directory' };
   }
   const ext = tool.extensions ?? {};
-  const adapter = ext['neuroflow/cli'] ? 'cli' : ext['neuroflow/python'] ? 'python' : ext['neuroflow/matlab'] ? 'matlab' : ext['neurodesk/job'] ? 'neurodesk' : 'script';
+  const adapter = ext['neuroflow/app-cli'] ? 'app-cli' : ext['neuroflow/cli'] ? 'cli' : ext['neuroflow/python'] ? 'python' : ext['neuroflow/matlab'] ? 'matlab' : ext['neurodesk/job'] ? 'neurodesk' : 'script';
   try {
     const found = adapter === 'cli' ? checkCli(tool)
       : adapter === 'python' ? checkPython(tool, toolPath)
         : adapter === 'matlab' ? checkMatlab(tool)
           : adapter === 'neurodesk' ? checkNeurodesk()
-            : checkNodeScript(launch, scriptPath);
+            : adapter === 'app-cli' ? checkAppCli(tool, toolPath)
+              : checkNodeScript(launch, scriptPath);
     return { ...base, adapter, ...found };
   } catch (e) {
     if (e instanceof Setup) return { ...base, adapter, ...(e.extra ?? {}), status: 'needsSetup', detail: e.message, fix: e.fix };

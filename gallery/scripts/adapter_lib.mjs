@@ -175,3 +175,31 @@ export function appendProvenance(session, record) {
     ...record,
   }) + '\n');
 }
+
+/**
+ * Locate an app's source checkout, the way the runtime finds a `uiApp`'s:
+ * NEUROFLOW_UI_APP_<APP> wins, otherwise a directory named `repo` beside the
+ * NeuroFlow checkout that `fromDir` (a tool document's directory) lives in.
+ * Returns { path, tried } where path is null when nothing was found.
+ */
+export function findAppCheckout({ app, repo }, fromDir) {
+  const key = `NEUROFLOW_UI_APP_${String(app).toUpperCase().replace(/-/g, '_')}`;
+  const tried = [];
+  if (process.env[key]) {
+    const p = expand(process.env[key]);
+    tried.push(`${key}=${p}`);
+    return { path: existsSync(p) && statSync(p).isDirectory() ? p : null, key, tried };
+  }
+  if (repo) {
+    let dir = fromDir;
+    for (let i = 0; i < 4; i++) {
+      const parent = dirname(dir);
+      if (parent === dir) break;
+      const candidate = join(parent, repo);
+      tried.push(candidate);
+      if (existsSync(candidate) && statSync(candidate).isDirectory()) return { path: candidate, key, tried };
+      dir = parent;
+    }
+  }
+  return { path: null, key, tried };
+}
