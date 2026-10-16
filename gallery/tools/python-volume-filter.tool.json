@@ -105,6 +105,63 @@
       "outputs": {
         "filtered_volumes": "filtered"
       }
+    },
+    "neuroflow/usage": {
+      "useWhen": [
+        "Smooth, threshold or z-score every anatomical volume of a BIDS dataset in one step."
+      ],
+      "avoidWhen": [
+        {
+          "when": "You have loose volumes rather than a BIDS dataset: this tool reads the anatomical volumes from bids_dir."
+        }
+      ],
+      "preconditions": [
+        "Python 3.10+ with nibabel and numpy (scipy optional, for faster smoothing); NEUROFLOW_PYTHON set to that environment.",
+        "bids_dir is a BIDS dataset with anatomical NIfTI volumes."
+      ],
+      "effects": [
+        "Writes the filtered volumes to <output dir>/filtered and appends a provenance line; the dataset is not changed.",
+        "amount is the FWHM in mm for smooth and an intensity for threshold."
+      ],
+      "duration": {
+        "typicalSeconds": 1,
+        "basis": "Measured once: 0.1 s on a one-subject gallery dataset; grows with the number and size of volumes."
+      },
+      "examples": [
+        {
+          "title": "Smooth with a 6 mm FWHM",
+          "inputs": {
+            "bids_dir": "<bids_dir>",
+            "operation": "smooth",
+            "amount": 6
+          }
+        },
+        {
+          "title": "Z-score each volume",
+          "inputs": {
+            "bids_dir": "<bids_dir>",
+            "operation": "zscore"
+          }
+        }
+      ],
+      "failures": [
+        {
+          "match": {
+            "contains": "no Python interpreter found"
+          },
+          "meaning": "No Python environment was found for the tool.",
+          "remedy": "Set NEUROFLOW_PYTHON to a Python 3.10+ environment that has the packages this tool lists.",
+          "retry": "after-fix"
+        },
+        {
+          "match": {
+            "contains": ", required by "
+          },
+          "meaning": "The Python environment lacks a required package.",
+          "remedy": "The message names the package and the fix: pip install it into that environment, or point NEUROFLOW_PYTHON at one that has it.",
+          "retry": "after-fix"
+        }
+      ]
     }
   }
 }

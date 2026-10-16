@@ -140,6 +140,76 @@
         "transform": "transform.json"
       },
       "source": "https://github.com/rordenlab/niimath (-allineate: lightNIIng spatial_processing port of AFNI 3dAllineate)"
+    },
+    "neuroflow/usage": {
+      "useWhen": [
+        "Affinely register (12 degrees of freedom) an image to a template such as MNI152, getting the resampled image and a replayable transform.",
+        "Bring a skull-stripped T1 into MNI space for comparison or reporting."
+      ],
+      "avoidWhen": [
+        {
+          "when": "The moving image is full-head but the template is brain-only: skull-strip it first.",
+          "instead": "neuroflow.gallery.tools/mindgrab"
+        },
+        {
+          "when": "You need nonlinear (deformable) registration: this is affine only."
+        }
+      ],
+      "preconditions": [
+        "niimath v1.0.20260924 or newer with -allineate, on PATH, in ~/bin or /usr/local/bin, or via NIIMATH.",
+        "moving and template are both skull-stripped or both full-head."
+      ],
+      "effects": [
+        "Writes registered.nii.gz on the template grid and transform.json (4x4 world-mm affine and its inverse) to the output directory.",
+        "Use interpolation NN when the moving image is a label map."
+      ],
+      "duration": {
+        "typicalSeconds": 1.5,
+        "basis": "Measured over 9 gallery runs on an Apple-silicon Mac: median 1.3 s for a 1 mm T1 brain to MNI152 1 mm; the slowest took 4.7 s."
+      },
+      "examples": [
+        {
+          "title": "Brain to the MNI152 brain template",
+          "inputs": {
+            "moving": "<brain>",
+            "template": "<MNI152_T1_1mm_brain>"
+          }
+        },
+        {
+          "title": "Label map with nearest neighbour",
+          "inputs": {
+            "moving": "<labels>",
+            "template": "<template>",
+            "interpolation": "NN"
+          }
+        }
+      ],
+      "failures": [
+        {
+          "match": {
+            "contains": "niimath was not found"
+          },
+          "meaning": "No niimath executable was found.",
+          "remedy": "Install niimath v1.0.20260924 or newer from github.com/rordenlab/niimath/releases, or set NIIMATH to its path.",
+          "retry": "after-fix"
+        },
+        {
+          "match": {
+            "contains": "does not look like a usable niimath"
+          },
+          "meaning": "The niimath found is too old: it has no -allineate.",
+          "remedy": "Install niimath v1.0.20260924 or newer and point NIIMATH at it.",
+          "retry": "after-fix"
+        },
+        {
+          "match": {
+            "contains": "niimath exited with status"
+          },
+          "meaning": "niimath failed on these images.",
+          "remedy": "Read the step log, and check both images with neuroflow_inspect.",
+          "retry": "after-fix"
+        }
+      ]
     }
   }
 }

@@ -79,6 +79,49 @@
         "readOnlyHint": true,
         "idempotentHint": true
       }
+    },
+    "neuroflow/usage": {
+      "useWhen": [
+        "Read a NIfTI header (dimensions, voxel size, datatype, affines, orientation) with MATLAB or GNU Octave.",
+        "Check whether the qform and sform agree, or which way the voxel axes point."
+      ],
+      "avoidWhen": [
+        {
+          "when": "Neither MATLAB nor Octave is installed: NeuroFlow's neuroflow_inspect reports dimensions and orientation without them."
+        }
+      ],
+      "preconditions": [
+        "MATLAB R2019a+ (set MATLAB) or GNU Octave 7+ (set OCTAVE)."
+      ],
+      "effects": [
+        "Reads only the header; writes header.json to the output directory and returns the same record inline."
+      ],
+      "examples": [
+        {
+          "title": "Read a header",
+          "inputs": {
+            "image": "<image>"
+          }
+        }
+      ],
+      "failures": [
+        {
+          "match": {
+            "contains": "no MATLAB engine found"
+          },
+          "meaning": "Neither MATLAB nor Octave was found.",
+          "remedy": "Install one, or set MATLAB or OCTAVE to its executable.",
+          "retry": "after-fix"
+        },
+        {
+          "match": {
+            "contains": "ran no code within"
+          },
+          "meaning": "MATLAB started but sat waiting, most likely for a MathWorks sign-in or a license server.",
+          "remedy": "Start MATLAB by hand and sign in, then rerun; or use Octave via OCTAVE.",
+          "retry": "after-fix"
+        }
+      ]
     }
   }
 }

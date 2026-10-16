@@ -48,6 +48,16 @@ with its settings taken from the step inputs. Launch details (command, completio
 in each tool's `extensions["neuroflow/launch"]`, and the runtime handoff format
 is defined in `../docs/neuroflow-session-contract.md`.
 
+Every tool also carries `extensions["neuroflow/usage"]` (RFC 0011 in
+neuroflow-spec): when to pick it, when to pick a named sibling `instead`, its
+preconditions and effects, example inputs, and its known failure messages with a
+remedy and whether a retry helps. Durations are given only where gallery runs
+measured them, and `basis` says what on. `validate.mjs` checks these blocks
+against the spec's `neuroflow-usage` schema. It also checks that example inputs
+are declared and fit their types and enums, and that every `instead` names a
+gallery document. When the spec checkout has no such schema yet, it says it
+skipped them.
+
 ## Workflows (`workflows/`)
 
 `brain-volumes.neuroflow.json` runs Neurodesk brain extraction and SynthSeg on

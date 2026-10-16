@@ -56,6 +56,37 @@
       "interactive": true,
       "contract": "../../docs/neuroflow-session-contract.md",
       "description": "BIDSvue reads $NEUROFLOW_SESSION/context.json, imports inputs.dicom_dir into $NEUROFLOW_OUTPUT_DIR/bids, then writes neuroflow.handoff.json and appends provenance.jsonl when the user finishes."
+    },
+    "neuroflow/usage": {
+      "useWhen": [
+        "A person should drive a DICOM-to-BIDS import in the BIDSvue window: filter series, check metadata and BIDS names."
+      ],
+      "avoidWhen": [
+        {
+          "when": "Nobody is at the machine, or an agent should run the import end to end.",
+          "instead": "neuroflow.gallery.tools/bidsvue-ingest"
+        },
+        {
+          "when": "You need one NIfTI volume from one series, not a BIDS dataset.",
+          "instead": "neuroflow.gallery.tools/dcm2niix"
+        }
+      ],
+      "preconditions": [
+        "A BIDSvue build NeuroFlow can launch, and a person at the machine to finish the import."
+      ],
+      "effects": [
+        "Opens BIDSvue and waits: the step ends when the user closes the app.",
+        "Writes the BIDS dataset to <output dir>/bids, neuroflow.handoff.json and a provenance line. subject and session only seed the UI."
+      ],
+      "examples": [
+        {
+          "title": "Interactive import with a subject label",
+          "inputs": {
+            "dicom_dir": "<dicom_dir>",
+            "subject": "01"
+          }
+        }
+      ]
     }
   }
 }

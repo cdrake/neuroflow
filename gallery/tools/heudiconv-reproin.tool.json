@@ -29,6 +29,67 @@
       "outputs": { "bids_dir": "bids" },
       "source": "https://github.com/nipy/heudiconv"
     },
-    "neuroflow/mcp": { "title": "DICOM to BIDS (HeuDiConv ReproIn)", "annotations": { "idempotentHint": true, "readOnlyHint": false }, "maxWaitMs": 1800000 }
+    "neuroflow/mcp": { "title": "DICOM to BIDS (HeuDiConv ReproIn)", "annotations": { "idempotentHint": true, "readOnlyHint": false }, "maxWaitMs": 1800000 },
+    "neuroflow/usage": {
+      "useWhen": [
+        "The scanner sequence names follow the ReproIn convention and you want HeuDiConv's reproin BIDS layout.",
+        "The study already standardizes on HeuDiConv and ReproIn."
+      ],
+      "avoidWhen": [
+        {
+          "when": "The sequence names do not follow ReproIn: this tool does not infer or repair names.",
+          "instead": "neuroflow.gallery.tools/bidsvue-ingest"
+        },
+        {
+          "when": "A person should review series and BIDS names during the import.",
+          "instead": "neuroflow.gallery.tools/bidsvue"
+        },
+        {
+          "when": "You need one NIfTI volume from one series.",
+          "instead": "neuroflow.gallery.tools/dcm2niix"
+        }
+      ],
+      "preconditions": [
+        "HeuDiConv with its reproin heuristic and dcm2niix installed; heudiconv on PATH or set via HEUDICONV.",
+        "Scanner sequence names satisfy ReproIn."
+      ],
+      "effects": [
+        "Writes a BIDS dataset to <output dir>/bids and returns it as bids_dir; dicom_dir is not changed."
+      ],
+      "examples": [
+        {
+          "title": "Convert a ReproIn session",
+          "inputs": {
+            "dicom_dir": "<dicom_dir>"
+          }
+        },
+        {
+          "title": "Override the subject and session labels",
+          "inputs": {
+            "dicom_dir": "<dicom_dir>",
+            "subject": "01",
+            "session": "baseline"
+          }
+        }
+      ],
+      "failures": [
+        {
+          "match": {
+            "contains": "heudiconv was not found"
+          },
+          "meaning": "No heudiconv executable was found.",
+          "remedy": "Install HeuDiConv with dcm2niix, or set HEUDICONV to its path.",
+          "retry": "after-fix"
+        },
+        {
+          "match": {
+            "contains": "heudiconv exited with status"
+          },
+          "meaning": "HeuDiConv failed. Sequence names that do not follow ReproIn are one cause.",
+          "remedy": "Read HeuDiConv's error in the step log. If the names are not ReproIn, use bidsvue-ingest instead.",
+          "retry": "after-fix"
+        }
+      ]
+    }
   }
 }

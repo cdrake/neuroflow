@@ -93,6 +93,63 @@
         "readOnlyHint": false,
         "idempotentHint": true
       }
+    },
+    "neuroflow/usage": {
+      "useWhen": [
+        "Answer how large each brain structure is, in mL, from a segmentation such as SynthSeg output.",
+        "Report the brain-mask volume alongside the per-label volumes."
+      ],
+      "avoidWhen": [
+        {
+          "when": "There is no label map yet: segment the image first.",
+          "instead": "neurodesk.webapps/synthseg"
+        }
+      ],
+      "preconditions": [
+        "Python 3.10+ with nibabel and numpy; NEUROFLOW_PYTHON set to that environment.",
+        "labels is an integer label map."
+      ],
+      "effects": [
+        "Writes volumes.tsv (label, name, voxels, volume_ml) to the output directory and returns the same rows plus totals inline.",
+        "Names labels with FreeSurfer names for SynthSeg/FreeSurfer label ids."
+      ],
+      "duration": {
+        "typicalSeconds": 0.5,
+        "basis": "Measured once: 0.26 s for a SynthSeg label map of a 1 mm T1."
+      },
+      "examples": [
+        {
+          "title": "Volumes from a SynthSeg label map",
+          "inputs": {
+            "labels": "<labels>"
+          }
+        },
+        {
+          "title": "Include the brain-mask volume",
+          "inputs": {
+            "labels": "<labels>",
+            "mask": "<brain_mask>"
+          }
+        }
+      ],
+      "failures": [
+        {
+          "match": {
+            "contains": "no Python interpreter found"
+          },
+          "meaning": "No Python environment was found for the tool.",
+          "remedy": "Set NEUROFLOW_PYTHON to a Python 3.10+ environment that has the packages this tool lists.",
+          "retry": "after-fix"
+        },
+        {
+          "match": {
+            "contains": ", required by "
+          },
+          "meaning": "The Python environment lacks a required package.",
+          "remedy": "The message names the package and the fix: pip install it into that environment, or point NEUROFLOW_PYTHON at one that has it.",
+          "retry": "after-fix"
+        }
+      ]
     }
   }
 }

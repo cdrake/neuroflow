@@ -51,6 +51,47 @@
       "interactive": false,
       "contract": "../../docs/neuroflow-session-contract.md",
       "description": "Reads $NEUROFLOW_SESSION/provenance.jsonl and writes $NEUROFLOW_OUTPUT_DIR/run.provenance.json. Optional env: NEUROFLOW_RUN_ID, NEUROFLOW_RUN_STATUS, NEUROFLOW_WORKFLOW_ID, NEUROFLOW_WORKFLOW_VERSION."
+    },
+    "neuroflow/usage": {
+      "useWhen": [
+        "Fold a run's provenance.jsonl trail into one conformant provenance document after its last step.",
+        "Record the run's terminal status: completed, partial, failed, cancelled or halted."
+      ],
+      "avoidWhen": [
+        {
+          "when": "Steps are still to run: the record only covers steps already logged."
+        }
+      ],
+      "preconditions": [
+        "Runs inside a NeuroFlow session: it reads the trail from $NEUROFLOW_SESSION/provenance.jsonl."
+      ],
+      "effects": [
+        "Writes run.provenance.json to the output directory; the trail itself is not changed."
+      ],
+      "examples": [
+        {
+          "title": "Fold a completed run",
+          "inputs": {
+            "status": "completed"
+          }
+        },
+        {
+          "title": "Record a partial run",
+          "inputs": {
+            "status": "partial"
+          }
+        }
+      ],
+      "failures": [
+        {
+          "match": {
+            "contains": "NEUROFLOW_SESSION is not set"
+          },
+          "meaning": "The script ran outside a NeuroFlow session.",
+          "remedy": "Run it as a workflow step through NeuroFlow.",
+          "retry": "never"
+        }
+      ]
     }
   }
 }
