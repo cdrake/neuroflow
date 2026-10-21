@@ -263,8 +263,7 @@ export function createStepFromRegistryEntry(
 
     if (def.optional) continue
 
-    const suggestion = getSourceSuggestions(workflow, toolMap, def.type).find((candidate) => candidate.exact)
-      ?? getSourceSuggestions(workflow, toolMap, def.type)[0]
+    const suggestion = pickAutoBinding(getSourceSuggestions(workflow, toolMap, def.type), name)
     if (suggestion) {
       inputs[name] = { ref: suggestion.ref }
     }
@@ -282,6 +281,29 @@ export function createStepFromRegistryEntry(
       }
     }
   }
+}
+
+/**
+ * The suggestion a new step's required input is bound to: an exact type match
+ * first, then the source whose name matches the input's. Several outputs of one
+ * tool can share a type (N4 writes both `output_image` and `output_bias` as
+ * `neuro:volume`), so the first in ref order is often the wrong one.
+ */
+export function pickAutoBinding(suggestions: SourceSuggestion[], inputName: string): SourceSuggestion | undefined {
+  const target = portStem(inputName)
+  const score = (suggestion: SourceSuggestion) => {
+    const source = portStem(suggestion.ref.slice(suggestion.ref.lastIndexOf('.') + 1))
+    if (source === target) return 2
+    return source.includes(target) || target.includes(source) ? 1 : 0
+  }
+  return suggestions
+    .map((suggestion, order) => ({ suggestion, order, score: score(suggestion) }))
+    .sort((a, b) => Number(b.suggestion.exact) - Number(a.suggestion.exact) || b.score - a.score || a.order - b.order)[0]
+    ?.suggestion
+}
+
+function portStem(name: string): string {
+  return name.toLowerCase().replace(/^(input|output|in|out)_/, '')
 }
 
 export function mergeRegistryContext(
