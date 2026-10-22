@@ -72,6 +72,29 @@ fn file_hash(path: &Path) -> Result<String, String> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
+/// The file's SHA-256, reusing this run's evidence while the stamp is unchanged.
+/// Without change time, a tool can preserve size and mtime after editing the
+/// bytes. Rehash on platforms without that signal or without an mtime.
+/// A prior run's record is always rehashed.
+fn stamped_hash(path: &Path, stamp: &Value, known: &HashMap<String, Value>) -> Result<String, String> {
+    match known.get(path.to_string_lossy().as_ref()) {
+        Some(seen)
+            if stamp.get("unix").is_some()
+                && stamp["modified"].is_number()
+                && &seen["stamp"] == stamp
+                && seen["sha256"].is_string() =>
+        {
+            Ok(seen["sha256"].as_str().unwrap_or_default().to_string())
+        }
+        _ => file_hash(path),
+    }
+}
+
+/// The SHA-256 of a regular file, for provenance checksums.
+pub fn content_hash(path: &Path, known: &HashMap<String, Value>) -> Result<String, String> {
+    stamped_hash(path, &file_stamp(path)?, known)
+}
+
 /// Inspect each element independently. Evidence obtained from an earlier run is
 /// useful only while the referenced file still has its recorded content hash.
 pub fn inspect(
@@ -99,20 +122,7 @@ pub fn inspect(
     }
     let key = path.to_string_lossy().into_owned();
     let stamp = file_stamp(path)?;
-    // Without change time, a tool can preserve size and mtime after editing the
-    // bytes. Rehash on platforms without that signal or without an mtime.
-    // A prior run's record is always rehashed.
-    let hash = match known.get(&key) {
-        Some(seen)
-            if stamp.get("unix").is_some()
-                && stamp["modified"].is_number()
-                && seen["stamp"] == stamp
-                && seen["sha256"].is_string() =>
-        {
-            seen["sha256"].as_str().unwrap_or_default().to_string()
-        }
-        _ => file_hash(path)?,
-    };
+    let hash = stamped_hash(path, &stamp, known)?;
     // Missing provenance is not a failure by itself. The consumer's constrained
     // axes decide: without a trusted claim they remain unresolved and `enforce`
     // refuses the launch; an unconstrained consumer proceeds with a `reason`.

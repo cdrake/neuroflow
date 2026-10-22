@@ -421,7 +421,7 @@ pub fn run_workflow_with_cancel(
     }
     write_json(&session.join("run.json"), &record)?;
 
-    let prov = provenance(&record, &activities, workflow, client, &public_refs);
+    let prov = provenance(&record, &activities, workflow, client, &public_refs, &session, &known_evidence);
     write_json(&session.join("run.provenance.json"), &prov)?;
 
     // Structured result and links.
@@ -1102,9 +1102,19 @@ pub fn write_json(path: &Path, value: &Value) -> Result<(), String> {
     fs::write(path, text + "\n").map_err(|e| format!("cannot write {}: {e}", path.display()))
 }
 
-/// Build a provenance document (spec section 17) for a finished run.
+/// Build a provenance document (spec section 17) for a finished run. File
+/// entities and the executed `workflow.json` carry SHA-256 checksums, and the
+/// tools' `provenance.jsonl` trail is folded in under `neuroflow/session-trail`.
 #[allow(clippy::type_complexity)]
-fn provenance(record: &Value, steps: &[StepRecord], workflow: &Value, client: &Value, public: &Map<String, Value>) -> Value {
+fn provenance(
+    record: &Value,
+    steps: &[StepRecord],
+    workflow: &Value,
+    client: &Value,
+    public: &Map<String, Value>,
+    session: &Path,
+    known: &HashMap<String, Value>,
+) -> Value {
     let run_id = record["runId"].as_str().unwrap_or("run");
     let mut agents = vec![json!({
         "id": "agent-runtime", "type": "software", "name": "neuroflow-mcp",
@@ -1135,6 +1145,10 @@ fn provenance(record: &Value, steps: &[StepRecord], workflow: &Value, client: &V
             if let Ok(meta) = fs::metadata(p) {
                 if meta.is_file() {
                     e["size"] = json!(meta.len());
+                    // An unreadable file keeps its entity without a checksum; provenance never fails a run.
+                    if let Ok(hash) = qualifiers::content_hash(Path::new(p), known) {
+                        e["checksum"] = json!({ "algorithm": "sha256", "value": hash });
+                    }
                 }
             }
             by_path.insert(p.to_string(), id.clone());
@@ -1234,6 +1248,24 @@ fn provenance(record: &Value, steps: &[StepRecord], workflow: &Value, client: &V
     }
     let wf_id = record.pointer("/workflow/id").and_then(Value::as_str).unwrap_or("neuroflow.mcp.adhoc/workflow");
     let wf_version = record.pointer("/workflow/version").and_then(Value::as_str).unwrap_or("0.0.0");
+    let mut workflow_ref = json!({ "id": wf_id, "version": if valid_semver(wf_version) { wf_version } else { "0.0.0" } });
+    // The digest of the session's workflow.json, so a reader can check it against the file.
+    if let Ok(hash) = qualifiers::content_hash(&session.join("workflow.json"), &HashMap::new()) {
+        workflow_ref["checksum"] = json!({ "algorithm": "sha256", "value": hash });
+    }
+    let mut extensions = json!({ "neuroflow/qualifiers": {
+        "inspectors": record["qualifierInspectors"],
+        "inputChecks": record["qualifierChecks"],
+        "outputChecks": record["outputQualifierChecks"],
+        "steps": steps.iter().map(|step| json!({ "step": step.step_id,
+            "checks": step.qualifier_checks, "inputs": step.input_evidence,
+            "outputs": step.output_evidence })).collect::<Vec<_>>()
+    } });
+    // Lossy, so a line cut inside a multibyte character still lands in `unparsed`.
+    if let Ok(bytes) = fs::read(session.join("provenance.jsonl")) {
+        let by_step = steps.iter().enumerate().map(|(n, step)| (step.step_id.clone(), format!("act-{}", n + 1))).collect();
+        extensions["neuroflow/session-trail"] = fold_trail(&String::from_utf8_lossy(&bytes), &by_step, &mut agents);
+    }
     json!({
         "neuroflow": "0.1.0",
         "kind": "provenance",
@@ -1241,21 +1273,60 @@ fn provenance(record: &Value, steps: &[StepRecord], workflow: &Value, client: &V
         "version": "1.0.0",
         "description": format!("Provenance for run {run_id} executed by neuroflow-mcp."),
         "run": run,
-        "workflow": { "id": wf_id, "version": if valid_semver(wf_version) { wf_version } else { "0.0.0" } },
+        "workflow": workflow_ref,
         "agents": agents,
         "activities": activities,
         "entities": entities,
         "inputs": inputs_map,
         "outputs": outputs_map,
-        "extensions": { "neuroflow/qualifiers": {
-            "inspectors": record["qualifierInspectors"],
-            "inputChecks": record["qualifierChecks"],
-            "outputChecks": record["outputQualifierChecks"],
-            "steps": steps.iter().map(|step| json!({ "step": step.step_id,
-                "checks": step.qualifier_checks, "inputs": step.input_evidence,
-                "outputs": step.output_evidence })).collect::<Vec<_>>()
-        } },
+        "extensions": extensions,
     })
+}
+
+/// Fold the tools' append-only trail (docs/neuroflow-session-contract.md) into
+/// the document. Activities and entities come from the runtime's own step
+/// records, and the schema closes both, so each line is kept verbatim under the
+/// activity of its `step`. Each reported `agent` (`name@version`) becomes a
+/// software Agent. A line that does not parse, such as one cut short when a step
+/// was killed, is counted rather than failing the run.
+fn fold_trail(text: &str, by_step: &HashMap<String, String>, agents: &mut Vec<Value>) -> Value {
+    let mut activities = Map::new();
+    let mut unmatched = Vec::new();
+    let mut unparsed = 0;
+    let mut reported = 0;
+    for line in text.lines().filter(|line| !line.trim().is_empty()) {
+        let entry = match serde_json::from_str::<Value>(line) {
+            Ok(entry @ Value::Object(_)) => entry,
+            _ => {
+                unparsed += 1;
+                continue;
+            }
+        };
+        if let Some(agent) = entry.get("agent").and_then(Value::as_str) {
+            let (name, version) = match agent.rsplit_once('@') {
+                Some((name, version)) if !name.is_empty() => (name, Some(version)),
+                _ => (agent, None),
+            };
+            if !agents.iter().any(|a| a["name"] == name && a.get("version").and_then(Value::as_str) == version) {
+                reported += 1;
+                let mut a = json!({ "id": format!("agent-reported-{reported}"), "type": "software", "name": name,
+                    "role": "reported-by-tool" });
+                if let Some(version) = version {
+                    a["version"] = json!(version);
+                }
+                agents.push(a);
+            }
+        }
+        match entry.get("step").and_then(Value::as_str).and_then(|step| by_step.get(step)) {
+            Some(activity) => {
+                if let Value::Array(lines) = activities.entry(activity.clone()).or_insert_with(|| json!([])) {
+                    lines.push(entry);
+                }
+            }
+            None => unmatched.push(entry),
+        }
+    }
+    json!({ "source": "provenance.jsonl", "activities": activities, "unmatched": unmatched, "unparsed": unparsed })
 }
 
 fn valid_semver(v: &str) -> bool {
@@ -1266,6 +1337,29 @@ fn valid_semver(v: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn folds_the_trail_under_its_activities_and_reports_agents_once() {
+        let text = concat!(
+            r#"{"ts":"2026-10-22T10:00:00Z","step":"bet","agent":"@niivue/brainchop@4.2.0","engine":"browser"}"#, "\n",
+            r#"{"ts":"2026-10-22T10:00:01Z","step":"bet","agent":"@niivue/brainchop@4.2.0","action":"mask"}"#, "\n",
+            "\n",
+            r#"{"step":"elsewhere","agent":"bidsvue"}"#, "\n",
+            r#"{"step":"bet","agent":"#,
+        );
+        let by_step = HashMap::from([("bet".to_string(), "act-1".to_string())]);
+        let mut agents = vec![json!({ "id": "agent-runtime", "type": "software", "name": "neuroflow-mcp", "version": "0.1.0" })];
+        let trail = fold_trail(text, &by_step, &mut agents);
+        assert_eq!(trail["activities"]["act-1"].as_array().unwrap().len(), 2);
+        assert_eq!(trail["activities"]["act-1"][0]["engine"], "browser");
+        assert_eq!(trail["unmatched"][0]["step"], "elsewhere");
+        assert_eq!(trail["unparsed"], 1);
+        // A scoped package name keeps its leading `@`; an agent without a version has none.
+        assert_eq!(&agents[1..], &[
+            json!({ "id": "agent-reported-1", "type": "software", "name": "@niivue/brainchop", "version": "4.2.0", "role": "reported-by-tool" }),
+            json!({ "id": "agent-reported-2", "type": "software", "name": "bidsvue", "role": "reported-by-tool" }),
+        ]);
+    }
 
     #[test]
     fn orders_steps_by_dependency() {
