@@ -246,6 +246,78 @@ fn provenance_checksums_files_and_the_workflow_and_folds_the_trail() {
 }
 
 #[test]
+fn export_packages_a_run_as_verified_bids_derivatives() {
+    use sha2::{Digest, Sha256};
+    let sha256 = |path: &Path| format!("{:x}", Sha256::digest(fs::read(path).unwrap()));
+    let f = Fixture::new();
+    let file = f.image("image.nii", false, 2, 1);
+    let registry = f.tool("copy", declaration(json!({})), declaration(json!({})));
+    let run = f.run(&registry, "copy", json!(file), "marker");
+    assert_eq!(run.status, "completed", "{}", run.structured);
+    let session = f.cfg.sessions_root.join(&run.run_id);
+    let provenance: Value =
+        serde_json::from_str(&fs::read_to_string(session.join("run.provenance.json")).unwrap()).unwrap();
+
+    let exported = crate::export::export_run(&f.cfg.sessions_root, &run.run_id).unwrap();
+    let package = session.join("derivatives");
+    assert_eq!(exported["path"], json!(package.to_string_lossy()));
+    assert!(!session.join("derivatives.partial").exists());
+    let copy = package.join("image/image.bin");
+    let entity = provenance["entities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| Some(&e["id"]) == provenance["outputs"].get("image"))
+        .unwrap();
+    assert_eq!(entity["checksum"]["value"], json!(sha256(&copy)));
+    let listed: Vec<&Value> = exported["files"].as_array().unwrap().iter().collect();
+    assert!(listed.iter().any(|e| e["path"] == "image/image.bin" && e["verified"] == true), "{exported}");
+    assert!(listed.iter().any(|e| e["path"] == "code/workflow.json" && e["verified"] == true), "{exported}");
+    assert_eq!(fs::read(package.join("code/workflow.json")).unwrap(), fs::read(session.join("workflow.json")).unwrap());
+    assert_eq!(
+        fs::read(package.join(format!("{}_prov.json", run.run_id))).unwrap(),
+        fs::read(session.join("run.provenance.json")).unwrap()
+    );
+
+    let description: Value =
+        serde_json::from_str(&fs::read_to_string(package.join("dataset_description.json")).unwrap()).unwrap();
+    assert_eq!(description["DatasetType"], "derivative");
+    assert_eq!(description["BIDSVersion"], crate::export::BIDS_VERSION);
+    let generated = description["GeneratedBy"].as_array().unwrap();
+    assert_eq!(generated[0]["Name"], provenance["workflow"]["id"]);
+    assert!(generated[0]["Description"].as_str().unwrap().contains(&sha256(&session.join("workflow.json"))));
+    assert!(generated.iter().any(|g| g["Name"] == "copy.py" && g["Version"] == "1.0.0"), "{description}");
+
+    // A second export replaces the first.
+    fs::write(package.join("stray.txt"), "old").unwrap();
+    crate::export::export_run(&f.cfg.sessions_root, &run.run_id).unwrap();
+    assert!(!package.join("stray.txt").exists());
+
+    // An output changed after the run is refused, and nothing is left behind.
+    fs::remove_dir_all(&package).unwrap();
+    let output = Path::new(entity["path"].as_str().unwrap());
+    fs::write(output, "tampered").unwrap();
+    let err = crate::export::export_run(&f.cfg.sessions_root, &run.run_id).unwrap_err();
+    assert!(err.contains("changed since the run"), "{err}");
+    assert!(!package.exists());
+    assert!(!session.join("derivatives.partial").exists());
+
+    assert!(crate::export::export_run(&f.cfg.sessions_root, "../escape").is_err());
+}
+
+#[test]
+fn export_refuses_a_run_that_did_not_complete() {
+    let f = Fixture::new();
+    let file = f.image("image.nii", false, 0, 1);
+    let registry = f.tool("copy", declaration(json!({ "resolution": 2 })), declaration(json!({})));
+    let run = f.run(&registry, "copy", json!(file), "marker");
+    assert_eq!(run.status, "failed");
+    let err = crate::export::export_run(&f.cfg.sessions_root, &run.run_id).unwrap_err();
+    assert!(err.contains("only completed runs"), "{err}");
+    assert!(!f.cfg.sessions_root.join(&run.run_id).join("derivatives").exists());
+}
+
+#[test]
 fn unknown_units_and_aligned_anatomy_are_not_assumed_mm_or_individual() {
     for (qualifier, units, code) in [
         (json!({ "resolution": 2 }), 0, 1),

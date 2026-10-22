@@ -95,6 +95,39 @@ pub fn content_hash(path: &Path, known: &HashMap<String, Value>) -> Result<Strin
     stamped_hash(path, &file_stamp(path)?, known)
 }
 
+/// How `tree_hash` digests a directory, stated in provenance so a reader can recompute it.
+pub const TREE_HASH_METHOD: &str = "sha256 of the sha256sum manifest (`<sha256>  <path>\\n` per regular file, \
+paths relative to the directory with `/` separators, sorted bytewise); symbolic links and other non-regular \
+files are skipped";
+
+/// The SHA-256 of a directory tree, per `TREE_HASH_METHOD`. An empty directory
+/// hashes the empty manifest. A name that is not UTF-8 is an error, since its
+/// manifest line would not be reproducible.
+pub fn tree_hash(dir: &Path, known: &HashMap<String, Value>) -> Result<String, String> {
+    fn walk(dir: &Path, rel: &str, out: &mut Vec<(String, std::path::PathBuf)>) -> Result<(), String> {
+        for entry in fs::read_dir(dir).map_err(|e| format!("{}: {e}", dir.display()))? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            let name = entry.file_name().into_string().map_err(|n| format!("non-UTF-8 name {n:?}"))?;
+            let rel = if rel.is_empty() { name } else { format!("{rel}/{name}") };
+            let kind = entry.file_type().map_err(|e| e.to_string())?;
+            if kind.is_dir() {
+                walk(&entry.path(), &rel, out)?;
+            } else if kind.is_file() {
+                out.push((rel, entry.path()));
+            }
+        }
+        Ok(())
+    }
+    let mut files = Vec::new();
+    walk(dir, "", &mut files)?;
+    files.sort_by(|a, b| a.0.as_bytes().cmp(b.0.as_bytes()));
+    let mut manifest = Sha256::new();
+    for (rel, path) in files {
+        manifest.update(format!("{}  {rel}\n", content_hash(&path, known)?));
+    }
+    Ok(format!("{:x}", manifest.finalize()))
+}
+
 /// Inspect each element independently. Evidence obtained from an earlier run is
 /// useful only while the referenced file still has its recorded content hash.
 pub fn inspect(
@@ -433,6 +466,49 @@ mod tests {
                 "{mutation} mutation reused trusted evidence: {result:?}"
             );
         }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn tree_hash_is_the_sha256sum_manifest_of_regular_files() {
+        let root = std::env::temp_dir().join(format!(
+            "neuroflow-tree-hash-{}-{}",
+            std::process::id(),
+            crate::util::new_run_id()
+        ));
+        let hex = |bytes: &[u8]| format!("{:x}", Sha256::digest(bytes));
+        let none = HashMap::new();
+        fs::create_dir_all(root.join("empty")).unwrap();
+        assert_eq!(tree_hash(&root.join("empty"), &none).unwrap(), hex(b""));
+
+        let dir = root.join("tree");
+        fs::create_dir_all(dir.join("sub")).unwrap();
+        fs::write(dir.join("b.txt"), "b").unwrap();
+        fs::write(dir.join("sub/a.txt"), "a").unwrap();
+        fs::write(dir.join("Z.txt"), "z").unwrap();
+        let manifest = format!(
+            "{}  Z.txt\n{}  b.txt\n{}  sub/a.txt\n",
+            hex(b"z"),
+            hex(b"b"),
+            hex(b"a")
+        );
+        let hash = tree_hash(&dir, &none).unwrap();
+        assert_eq!(hash, hex(manifest.as_bytes()));
+
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(dir.join("b.txt"), dir.join("link.txt")).unwrap();
+            std::os::unix::fs::symlink(dir.join("sub"), dir.join("linkdir")).unwrap();
+            assert_eq!(tree_hash(&dir, &none).unwrap(), hash, "links are skipped");
+        }
+        fs::create_dir(dir.join("hollow")).unwrap();
+        assert_eq!(tree_hash(&dir, &none).unwrap(), hash, "empty folders add nothing");
+
+        fs::write(dir.join("sub/a.txt"), "A").unwrap();
+        assert_ne!(tree_hash(&dir, &none).unwrap(), hash, "one changed byte changes the hash");
+        fs::write(dir.join("sub/a.txt"), "a").unwrap();
+        fs::rename(dir.join("sub/a.txt"), dir.join("sub/c.txt")).unwrap();
+        assert_ne!(tree_hash(&dir, &none).unwrap(), hash, "a rename changes the hash");
         fs::remove_dir_all(root).unwrap();
     }
 }

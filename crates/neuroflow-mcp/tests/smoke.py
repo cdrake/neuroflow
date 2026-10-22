@@ -109,7 +109,7 @@ def main() -> int:
     c.notify("notifications/initialized")
     check(init["protocolVersion"] == "2025-11-25", "negotiated 2025-11-25")
     tools = {t["name"]: t for t in c.request("tools/list")["tools"]}
-    for name in ("neuroflow_list", "neuroflow_validate", "neuroflow_run",
+    for name in ("neuroflow_list", "neuroflow_validate", "neuroflow_run", "neuroflow_export",
                  "neuroflow.gallery.tools.python-volume-filter", "neuroflow.gallery.filter-qa"):
         check(name in tools, f"tool {name} listed")
     schema = tools["neuroflow.gallery.tools.python-volume-filter"]["inputSchema"]
@@ -218,10 +218,29 @@ def main() -> int:
     check(prov["workflow"].get("checksum", {}).get("algorithm") == "sha256", "workflow checksum", prov["workflow"])
     files = [e for e in prov["entities"] if "size" in e]
     check(files and all("checksum" in e for e in files), "file entities carry checksums", files)
+    dirs = [e for e in prov["entities"] if "path" in e and Path(e["path"]).resolve() == bids.resolve()]
+    check(dirs and all(e.get("checksum", {}).get("algorithm") == "sha256" for e in dirs),
+          "directory entities carry tree checksums", dirs)
+    check("directory" in prov["extensions"].get("neuroflow/checksums", {}),
+          "directory checksum method recorded", prov["extensions"].get("neuroflow/checksums"))
     trail = prov["extensions"].get("neuroflow/session-trail", {})
     check(trail.get("activities") and trail.get("unparsed") == 0, "tool trail folded in", trail)
     prov_path = tmp / "runs" / sc2["runId"] / "run.provenance.json"
     print(f"  (provenance written to {prov_path})")
+
+    print("export:")
+    exp = c.call("neuroflow_export", {"runId": sc2["runId"]})
+    check(not exp.get("isError"), "neuroflow_export succeeded", exp["content"][0]["text"])
+    pkg = Path(exp["structuredContent"]["path"])
+    desc = json.loads((pkg / "dataset_description.json").read_text())
+    check(desc["DatasetType"] == "derivative" and desc["GeneratedBy"][0]["Name"], "derivative dataset_description", desc)
+    check((pkg / "code" / "workflow.json").is_file() and (pkg / f"{sc2['runId']}_prov.json").is_file(),
+          "workflow and provenance record packaged")
+    listed_files = exp["structuredContent"]["files"]
+    check(all(f.get("verified") is not False for f in listed_files if "sha256" in f and f["output"] != "provenance"),
+          "every copied output verified against its checksum", listed_files)
+    bad = c.call("neuroflow_export", {"runId": "../nope"})
+    check(bad.get("isError") is True, "export rejects a bad run id", bad["content"][0]["text"])
 
     print("failure reporting:")
     fail = c.call("neuroflow.gallery.tools.provenance-fold", {"status": "bogus"})
