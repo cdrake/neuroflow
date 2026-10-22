@@ -29,10 +29,19 @@ FWHM_TO_SIGMA = 1.0 / 2.354820045
 
 
 def find_volumes(bids_dir: Path) -> list[Path]:
+    """The anatomical volumes: NIfTI files in ``anat/`` folders of the raw dataset.
+
+    ``func``/``fmap`` series (often 4D), ``sourcedata``, ``derivatives`` and
+    hidden converter state such as HeuDiConv's ``.heudiconv`` are left out.
+    """
     vols: list[Path] = []
     for pat in ("*.nii", "*.nii.gz"):
         vols.extend(bids_dir.rglob(pat))
-    return sorted(v for v in vols if v.is_file())
+    def anatomical(v: Path) -> bool:
+        parts = v.relative_to(bids_dir).parts[:-1]
+        return (bool(parts) and parts[-1] == "anat"
+                and not any(p.startswith(".") or p in ("sourcedata", "derivatives") for p in parts))
+    return sorted(v for v in vols if v.is_file() and anatomical(v))
 
 
 def gaussian_smooth(data: np.ndarray, sigma: list[float]) -> np.ndarray:
@@ -73,6 +82,8 @@ def apply_filter(src: Path, dst: Path, operation: str, amount: float) -> str:
     elif operation == "smooth":
         zooms = img.header.get_zooms()[:3] or (1.0, 1.0, 1.0)
         sigma = [max(amount, 0) * FWHM_TO_SIGMA / (float(z) or 1.0) for z in zooms]
+        # Space only: a 4D anatomical series is not smoothed across volumes.
+        sigma += [0.0] * (data.ndim - len(sigma))
         data = gaussian_smooth(data, sigma)
     elif operation != "passthrough":
         raise ValueError(f"unknown operation {operation!r} (smooth | threshold | zscore | passthrough)")

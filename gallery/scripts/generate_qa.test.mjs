@@ -29,14 +29,14 @@ function nifti(name) {
   return path;
 }
 
-function run(name, inputs) {
+function run(name, inputs, env = {}) {
   const session = join(root, name);
   mkdirSync(session);
   writeFileSync(join(session, 'context.json'), JSON.stringify({ inputs }));
   const out = join(session, 'out');
   const r = spawnSync(process.execPath, [script], {
     encoding: 'utf8',
-    env: { ...process.env, NEUROFLOW_SESSION: session, NEUROFLOW_OUTPUT_DIR: out },
+    env: { ...process.env, NEUROFLOW_SESSION: session, NEUROFLOW_OUTPUT_DIR: out, ...env },
   });
   const prov = existsSync(join(session, 'provenance.jsonl'))
     ? readFileSync(join(session, 'provenance.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l))
@@ -79,4 +79,15 @@ test('a missing volume fails the step', () => {
   const { r } = run('missing', { volumes: [join(root, 'nope.nii')] });
   assert.equal(r.status, 1);
   assert.match(r.stderr, /generate_qa failed:.*volume\(s\) not found/);
+});
+
+test('a volume too large to embed becomes a reduced-resolution preview scene', () => {
+  const a = nifti('big.nii');
+  // 64 bytes of uint8 against a 32-byte cap: 2x2x2 float32 blocks fit.
+  const { r, out, prov } = run('big', { volumes: [a, nifti('small.nii')] }, { NEUROFLOW_QA_MAX_EMBED_BYTES: '32' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stderr, /big\.nii is too large to embed; showing a 1\/2 resolution preview/);
+  assert.deepEqual(prov.at(-1).previews, [{ scene: 'big.html', factor: 2 }, { scene: 'small.html', factor: 2 }]);
+  offlineScene(readFileSync(join(out, 'big.html'), 'utf8'));
+  assert.match(readFileSync(join(out, 'index.html'), 'utf8'), />big\.nii \(1\/2 resolution preview\)<\/a>/);
 });

@@ -24,8 +24,8 @@
     },
     "neuroflow/cli": {
       "command": "heudiconv", "env": "HEUDICONV",
-      "probe": { "args": ["--version"], "match": "[Hh]eu[Dd]i[Cc]onv", "advice": "Install HeuDiConv (including dcm2niix) or set HEUDICONV to its executable." },
-      "args": ["-f", "reproin", "--bids", "-o", "{{outputDir}}/bids", { "args": ["--subject", "{{subject}}"], "whenSet": "subject" }, { "args": ["--session", "{{session}}"], "whenSet": "session" }, "--files", "{{dicom_dir}}"],
+      "probe": { "args": ["--version"], "match": "^\\s*\\d+\\.\\d+\\.\\d+", "version": "\\d+\\.\\d+\\.\\d+", "advice": "Install HeuDiConv (including dcm2niix) or set HEUDICONV to its executable." },
+      "args": ["-f", "reproin", "--bids", "-o", "{{outputDir}}/bids", "-l", "", { "args": ["--subjects", "{{subject}}"], "whenSet": "subject" }, { "args": ["--ses", "{{session}}"], "whenSet": "session" }, "--files", "{{dicom_dir}}"],
       "outputs": { "bids_dir": "bids" },
       "source": "https://github.com/nipy/heudiconv"
     },

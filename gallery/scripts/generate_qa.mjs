@@ -29,6 +29,14 @@ import { fileURLToPath } from 'node:url'
 const TOOL_ID = 'neuroflow.gallery.tools/niivue-qa-page'
 const STEP = process.env.NEUROFLOW_STEP ?? 'qa'
 
+/**
+ * Largest image, in bytes, embedded at full resolution. A scene carries the volume
+ * gzipped and base64-encoded in one string, and V8 strings stop at about 512 MiB,
+ * so a 0.5 mm whole-head T1w (about 500 MB as float32) can't be embedded as is.
+ * Larger volumes are embedded as a block-averaged preview that fits.
+ */
+const MAX_EMBED_BYTES = Number(process.env.NEUROFLOW_QA_MAX_EMBED_BYTES) || 128 * 1024 * 1024
+
 const nowIso = () => new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')
 
 function loadContext() {
@@ -171,6 +179,63 @@ ${items}
 }
 
 /**
+ * A float32 NIfTI-1 of `vol` averaged over blocks of `factor` voxels on each
+ * spatial axis, small enough for `maxBytes`, with the affine scaled to match.
+ * Returns null when the volume already fits.
+ */
+function previewNifti(vol, maxBytes = MAX_EMBED_BYTES) {
+  if (vol.img.byteLength <= maxBytes) return null
+  const [nx, ny, nz] = vol.hdr.dims.slice(1, 4).map((d) => Math.max(d, 1))
+  const frames = vol.hdr.dims.slice(4, 1 + Math.max(vol.hdr.dims[0], 3)).reduce((a, d) => a * Math.max(d, 1), 1)
+  let factor = 2
+  const size = (f) => Math.ceil(nx / f) * Math.ceil(ny / f) * Math.ceil(nz / f) * frames * 4
+  while (size(factor) > maxBytes) factor++
+  const [mx, my, mz] = [nx, ny, nz].map((d) => Math.ceil(d / factor))
+  const slope = vol.hdr.scl_slope || 1
+  const inter = vol.hdr.scl_inter || 0
+  const data = new Float32Array(mx * my * mz * frames)
+  const count = new Uint32Array(mx * my * mz)
+  for (let t = 0; t < frames; t++) {
+    const src = t * nx * ny * nz
+    const dst = t * mx * my * mz
+    if (t === 0) count.fill(0)
+    for (let z = 0; z < nz; z++) {
+      for (let y = 0; y < ny; y++) {
+        const row = src + (z * ny + y) * nx
+        const out = ((Math.floor(z / factor) * my) + Math.floor(y / factor)) * mx
+        for (let x = 0; x < nx; x++) {
+          const v = Math.floor(x / factor) + out
+          data[dst + v] += vol.img[row + x] * slope + inter
+          if (t === 0) count[v]++
+        }
+      }
+    }
+    for (let v = 0; v < count.length; v++) data[dst + v] /= count[v]
+  }
+  // Voxel centres move from the corner of each block to its middle.
+  const a = vol.hdr.affine
+  const srow = [0, 1, 2].map((r) => [
+    a[r][0] * factor, a[r][1] * factor, a[r][2] * factor,
+    a[r][3] + ((factor - 1) / 2) * (a[r][0] + a[r][1] + a[r][2]),
+  ])
+  const hdr = Buffer.alloc(352)
+  hdr.writeInt32LE(348, 0)
+  const ndim = frames > 1 ? 4 : 3
+  ;[ndim, mx, my, mz, frames, 1, 1, 1].forEach((v, i) => hdr.writeInt16LE(v, 40 + 2 * i))
+  hdr.writeInt16LE(16, 70) // datatype: float32
+  hdr.writeInt16LE(32, 72) // bitpix
+  const pix = vol.hdr.pixDims
+  ;[1, pix[1] * factor, pix[2] * factor, pix[3] * factor, pix[4] || 1].forEach((v, i) => hdr.writeFloatLE(v, 76 + 4 * i))
+  hdr.writeFloatLE(352, 108) // vox_offset
+  hdr.writeFloatLE(1, 112) // scl_slope
+  hdr.writeUInt8(vol.hdr.xyzt_units ?? 10, 123)
+  hdr.writeInt16LE(vol.hdr.sform_code || 2, 254)
+  srow.flat().forEach((v, i) => hdr.writeFloatLE(v, 280 + 4 * i))
+  hdr.write('n+1\0', 344, 'latin1')
+  return { buffer: Buffer.concat([hdr, Buffer.from(data.buffer)]), factor }
+}
+
+/**
  * Write the offline page with @niivue/nv-ext-save-html. Returns the scene files
  * written, or throws when the extension, NiiVue or esbuild can't be used.
  */
@@ -184,14 +249,21 @@ async function writeExtensionPages(volumePaths, title, out) {
   const scenes = []
   for (const [i, p] of volumePaths.entries()) {
     const label = basename(p)
-    const nv = new NiiVue({})
+    let nv = new NiiVue({})
     await nv.loadVolumes([{ url: new File([readFileSync(p)], label), name: label }])
+    const preview = previewNifti(nv.volumes[0])
+    if (preview) {
+      console.error(`generate_qa: ${label} is too large to embed; showing a 1/${preview.factor} resolution preview`)
+      nv = new NiiVue({})
+      await nv.loadVolumes([{ url: new File([preview.buffer], label.replace(/\.nii(\.gz)?$/i, '.nii')), name: label }])
+    }
     const html = await generateHTML(nv, {
       niivueBundleSource: bundle.source,
       title: volumePaths.length === 1 ? title : `${title} · ${label}`,
     })
     writeFileSync(join(out, pages[i]), html)
-    scenes.push({ page: pages[i], label })
+    scenes.push({ page: pages[i], label: preview ? `${label} (1/${preview.factor} resolution preview)` : label,
+      previewFactor: preview?.factor })
   }
   if (volumePaths.length !== 1) writeFileSync(join(out, 'index.html'), indexHtml(title, scenes))
   return { scenes, niivue: bundle.version }
@@ -268,6 +340,8 @@ async function main() {
   try {
     const { scenes, niivue } = await writeExtensionPages(volumePaths, title, out)
     entry = { mode: 'nv-ext-save-html', niivue, scenes: scenes.map((s) => s.page) }
+    const previews = scenes.filter((s) => s.previewFactor).map((s) => ({ scene: s.page, factor: s.previewFactor }))
+    if (previews.length) entry.previews = previews
   } catch (err) {
     console.error(`generate_qa: save-html extension unavailable (${err.message ?? err}); writing the esm.sh page`)
     writeFallbackPage(volumePaths, title, out)
