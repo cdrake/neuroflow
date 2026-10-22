@@ -220,6 +220,15 @@ impl Server {
             run["outputSchema"] = run_output_schema();
         }
         tools.push(run);
+        tools.push(self.fixed_tool(
+            "neuroflow_export",
+            "Export a run as BIDS derivatives",
+            "Package a completed run as a BIDS-Derivatives folder in its session directory: dataset_description.json with GeneratedBy built from the provenance record, the run's public outputs (each checked against its recorded sha256), the workflow under code/, and the record as <runId>_prov.json. Exporting again replaces the earlier package. Output files keep their tool-given names, so the folder is derivatives-shaped rather than BIDS-validator clean.",
+            json!({ "type": "object", "properties": {
+                "runId": { "type": "string", "description": "Id of a completed run, as returned by neuroflow_run." }
+            }, "required": ["runId"], "additionalProperties": false }),
+            false,
+        ));
 
         for doc in self.registry.docs.iter().filter(|d| d.mcp_name.is_some()) {
             let name = doc.mcp_name.clone().unwrap_or_default();
@@ -372,6 +381,13 @@ impl Server {
                 }
                 let inputs = args.get("inputs").and_then(Value::as_object).cloned().unwrap_or_default();
                 Ok(self.execute(&wf, &inputs, token, rerun))
+            }
+            "neuroflow_export" => {
+                let run_id = args.get("runId").and_then(Value::as_str).unwrap_or("");
+                match crate::export::export_run(&self.cfg.sessions_root, run_id) {
+                    Ok(report) => Ok(self.ok_json(report)),
+                    Err(e) => Ok(tool_error(e)),
+                }
             }
             other => {
                 let Some(doc) = self.registry.by_mcp_name(other) else {

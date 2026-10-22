@@ -112,6 +112,7 @@ traceback. See `docs/python-tools.md`.
 | `neuroflow_validate` | Validate a document. Diagnostics carry a JSON Pointer and, where possible, a repair hint. |
 | `neuroflow_plan` | Execution order and runnability for a workflow. |
 | `neuroflow_run` | Run an inline workflow the agent composed, or a registry workflow by id. A repeat of the same workflow and inputs in the same session returns the earlier completed run; `rerun: true` forces a new one. |
+| `neuroflow_export` | Package a completed run as a BIDS-Derivatives folder in its session: `dataset_description.json` with `GeneratedBy`, the outputs, `code/workflow.json`, and `<runId>_prov.json`. Every copy is checked against its recorded checksum. |
 | One tool per runnable document | For example `neuroflow.gallery.tools.python-volume-filter` and `neuroflow.gallery.filter-qa`, with an `inputSchema` generated from the document's typed inputs. |
 
 **Resources**
@@ -143,8 +144,9 @@ registry so an agent can compose a pipeline.
    `result-file` (a path, or keys in `result.json`), `stdout-json`,
    `exit-code`, and `fixed-path`.
 4. `run.json` and `run.provenance.json` are written to the session. The MCP
-   client is recorded as an agent. File entities and the executed
-   `workflow.json` carry SHA-256 checksums, and the tools' `provenance.jsonl`
+   client is recorded as an agent. File entities, directory entities (a
+   tree checksum over their files) and the executed `workflow.json` carry
+   SHA-256 checksums, and the tools' `provenance.jsonl`
    lines are folded in under `extensions["neuroflow/session-trail"]`
    (`docs/neuroflow-session-contract.md`).
 5. The run's work fingerprint (the workflow document, the documents of the

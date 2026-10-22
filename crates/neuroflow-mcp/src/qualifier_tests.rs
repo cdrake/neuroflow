@@ -246,6 +246,128 @@ fn provenance_checksums_files_and_the_workflow_and_folds_the_trail() {
 }
 
 #[test]
+fn export_packages_a_run_as_verified_bids_derivatives() {
+    use sha2::{Digest, Sha256};
+    let sha256 = |path: &Path| format!("{:x}", Sha256::digest(fs::read(path).unwrap()));
+    let f = Fixture::new();
+    let file = f.image("image.nii", false, 2, 1);
+    let registry = f.tool("copy", declaration(json!({})), declaration(json!({})));
+    let run = f.run(&registry, "copy", json!(file), "marker");
+    assert_eq!(run.status, "completed", "{}", run.structured);
+    let session = f.cfg.sessions_root.join(&run.run_id);
+    let provenance: Value =
+        serde_json::from_str(&fs::read_to_string(session.join("run.provenance.json")).unwrap()).unwrap();
+
+    let exported = crate::export::export_run(&f.cfg.sessions_root, &run.run_id).unwrap();
+    let package = session.join("derivatives");
+    assert_eq!(exported["path"], json!(package.to_string_lossy()));
+    assert!(!session.join("derivatives.partial").exists());
+    let copy = package.join("image/image.bin");
+    let entity = provenance["entities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| Some(&e["id"]) == provenance["outputs"].get("image"))
+        .unwrap();
+    assert_eq!(entity["checksum"]["value"], json!(sha256(&copy)));
+    let listed: Vec<&Value> = exported["files"].as_array().unwrap().iter().collect();
+    assert!(listed.iter().any(|e| e["path"] == "image/image.bin" && e["verified"] == true), "{exported}");
+    assert!(listed.iter().any(|e| e["path"] == "code/workflow.json" && e["verified"] == true), "{exported}");
+    assert_eq!(fs::read(package.join("code/workflow.json")).unwrap(), fs::read(session.join("workflow.json")).unwrap());
+    assert_eq!(
+        fs::read(package.join(format!("{}_prov.json", run.run_id))).unwrap(),
+        fs::read(session.join("run.provenance.json")).unwrap()
+    );
+
+    let description: Value =
+        serde_json::from_str(&fs::read_to_string(package.join("dataset_description.json")).unwrap()).unwrap();
+    assert_eq!(description["DatasetType"], "derivative");
+    assert_eq!(description["BIDSVersion"], crate::export::BIDS_VERSION);
+    let generated = description["GeneratedBy"].as_array().unwrap();
+    assert_eq!(generated[0]["Name"], provenance["workflow"]["id"]);
+    assert!(generated[0]["Description"].as_str().unwrap().contains(&sha256(&session.join("workflow.json"))));
+    assert!(generated.iter().any(|g| g["Name"] == "copy.py" && g["Version"] == "1.0.0"), "{description}");
+
+    // A second export replaces the first.
+    fs::write(package.join("stray.txt"), "old").unwrap();
+    crate::export::export_run(&f.cfg.sessions_root, &run.run_id).unwrap();
+    assert!(!package.join("stray.txt").exists());
+
+    // An output changed after the run is refused, and nothing is left behind.
+    fs::remove_dir_all(&package).unwrap();
+    let output = Path::new(entity["path"].as_str().unwrap());
+    fs::write(output, "tampered").unwrap();
+    let err = crate::export::export_run(&f.cfg.sessions_root, &run.run_id).unwrap_err();
+    assert!(err.contains("changed since the run"), "{err}");
+    assert!(!package.exists());
+    assert!(!session.join("derivatives.partial").exists());
+
+    assert!(crate::export::export_run(&f.cfg.sessions_root, "../escape").is_err());
+}
+
+#[test]
+fn export_verifies_folder_outputs_and_writes_embedded_values() {
+    let f = Fixture::new();
+    let session = f.cfg.sessions_root.join("run-synthetic");
+    let folder = f.root.join("bids");
+    fs::create_dir_all(folder.join("sub-01/anat")).unwrap();
+    fs::write(folder.join("sub-01/anat/T1w.nii"), "volume").unwrap();
+    fs::write(folder.join("dataset_description.json"), "{}").unwrap();
+    fs::create_dir_all(&session).unwrap();
+    fs::write(session.join("workflow.json"), "{}").unwrap();
+    let write_record = |outputs: Value| {
+        let record = json!({
+            "run": { "status": "completed" },
+            "workflow": { "id": "test/synthetic", "version": "1.0.0" },
+            "outputs": outputs,
+            "entities": [
+                { "id": "ent-1", "path": folder.to_string_lossy(), "checksum": {
+                    "algorithm": "sha256",
+                    "value": crate::qualifiers::tree_hash(&folder, &HashMap::new()).unwrap() } },
+                { "id": "ent-2", "value": { "count": 3 } }
+            ]
+        });
+        fs::write(session.join("run.provenance.json"), record.to_string()).unwrap();
+    };
+    write_record(json!({ "dataset": "ent-1", "stats": "ent-2" }));
+
+    let exported = crate::export::export_run(&f.cfg.sessions_root, "run-synthetic").unwrap();
+    let package = session.join("derivatives");
+    assert_eq!(fs::read(package.join("dataset/bids/sub-01/anat/T1w.nii")).unwrap(), b"volume");
+    let files = exported["files"].as_array().unwrap();
+    assert!(files.iter().any(|e| e["path"] == "dataset/bids" && e["verified"] == true), "{exported}");
+    let stats: Value = serde_json::from_str(&fs::read_to_string(package.join("stats/stats.json")).unwrap()).unwrap();
+    assert_eq!(stats, json!({ "count": 3 }));
+
+    fs::write(folder.join("sub-01/anat/T1w.nii"), "volumf").unwrap();
+    let err = crate::export::export_run(&f.cfg.sessions_root, "run-synthetic").unwrap_err();
+    assert!(err.contains("dataset changed since the run"), "{err}");
+    // The earlier export is left as it was, and no staging folder remains.
+    assert_eq!(fs::read(package.join("dataset/bids/sub-01/anat/T1w.nii")).unwrap(), b"volume");
+    assert!(!session.join("derivatives.partial").exists());
+    fs::remove_dir_all(&package).unwrap();
+
+    for key in ["../up", "a..b", "/abs", ".0"] {
+        write_record(json!({ key: "ent-2" }));
+        let err = crate::export::export_run(&f.cfg.sessions_root, "run-synthetic").unwrap_err();
+        assert!(err.contains("not a usable folder name"), "{key}: {err}");
+        assert!(!f.cfg.sessions_root.join("up").exists() && !package.exists());
+    }
+}
+
+#[test]
+fn export_refuses_a_run_that_did_not_complete() {
+    let f = Fixture::new();
+    let file = f.image("image.nii", false, 0, 1);
+    let registry = f.tool("copy", declaration(json!({ "resolution": 2 })), declaration(json!({})));
+    let run = f.run(&registry, "copy", json!(file), "marker");
+    assert_eq!(run.status, "failed");
+    let err = crate::export::export_run(&f.cfg.sessions_root, &run.run_id).unwrap_err();
+    assert!(err.contains("only completed runs"), "{err}");
+    assert!(!f.cfg.sessions_root.join(&run.run_id).join("derivatives").exists());
+}
+
+#[test]
 fn unknown_units_and_aligned_anatomy_are_not_assumed_mm_or_individual() {
     for (qualifier, units, code) in [
         (json!({ "resolution": 2 }), 0, 1),

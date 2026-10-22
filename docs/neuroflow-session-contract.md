@@ -97,7 +97,14 @@ records and writes `run.provenance.json` to the session:
 - One Activity per step, with the tool as its Agent; the runtime and the MCP
   client are Agents too.
 - One Entity per workflow input, step input and step output. A file entity
-  carries its `size` and a SHA-256 `checksum`; a directory entity has neither.
+  carries its `size` and a SHA-256 `checksum`. A directory entity carries a
+  SHA-256 tree checksum: the SHA-256 of its `sha256sum` manifest, one
+  `<sha256>  <path>\n` line per regular file, with paths relative to the
+  directory, `/`-separated and sorted bytewise. Symbolic links and other
+  non-regular files are skipped, and empty folders add nothing. The method is
+  written in `extensions["neuroflow/checksums"].directory`, and
+  `find . -type f | LC_ALL=C sort | sed 's|^\./||' | xargs sha256sum | sha256sum`
+  run inside the directory reproduces it.
 - `workflow.checksum` is the SHA-256 of the session's `workflow.json`, the
   document as executed.
 - Each `provenance.jsonl` line is kept verbatim under
@@ -126,6 +133,30 @@ reference implementation is `gallery/scripts/fold_provenance.mjs` (exposed as th
 `run.provenance.json` to `$NEUROFLOW_OUTPUT_DIR`. Lineage folded from the
 lightweight trail is shallow (no `derivedFrom`); a tool that needs rich lineage
 SHOULD emit a `prov:run-record` output directly.
+
+### Packaging a run as BIDS derivatives
+
+RFC 0003 section 10 leaves the packaging of a record open. `neuroflow-mcp`
+offers one: `neuroflow_export` writes `<session>/derivatives/` for a completed
+run, from `run.provenance.json` alone.
+
+```
+derivatives/
+  dataset_description.json  # DatasetType "derivative", GeneratedBy[] (compacted record)
+  <runId>_prov.json         # the full provenance document
+  code/workflow.json        # the workflow as executed
+  <output>/<file or folder> # each run output; <output>/<i>/ for array elements
+  <output>/<output>.json    # an output with an embedded value
+```
+
+`GeneratedBy[0]` names the workflow (by its `bids/profile`
+`outputDataset.pipelineName` when it sets one), with the run id and the
+`code/workflow.json` checksum in its `Description`; each distinct software
+agent follows. Every copied file and folder is hashed again and compared with
+its recorded checksum. When anything changed after the run the export fails,
+writes nothing, and leaves an earlier export of the run as it was. Output files keep their tool-given names: a run
+carries no subject or session labels, so the folder is derivatives-shaped, not
+a dataset the BIDS validator will pass.
 
 ## Tool responsibilities (neuroflow-awareness)
 

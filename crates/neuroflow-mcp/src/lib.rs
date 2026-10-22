@@ -3,6 +3,7 @@
 //! workflows in-process through `runtime::run_workflow`).
 
 pub mod artifacts;
+pub mod export;
 pub mod qualifiers;
 #[cfg(test)]
 mod qualifier_tests;

@@ -1,7 +1,7 @@
 {
-  "runId": "run-20261022T140410Z-6b3e",
+  "runId": "run-20261022T170516Z-5096",
   "status": "completed",
-  "startedAt": "2026-10-22T14:04:10Z",
+  "startedAt": "2026-10-22T17:05:16Z",
   "workflow": {
     "id": "neuroflow.gallery/dicom-t1-mni-volumes",
     "version": "0.1.0"
@@ -22,14 +22,14 @@
       "toolVersion": "0.1.0",
       "status": "completed",
       "exitCode": 0,
-      "startedAt": "2026-10-22T14:04:10Z",
-      "endedAt": "2026-10-22T14:04:15Z",
+      "startedAt": "2026-10-22T17:05:16Z",
+      "endedAt": "2026-10-22T17:05:21Z",
       "inputs": {
         "dicom_dir": "<dicom>/crlab-session/05_anat-T1w_acq-dzneEp3dPt35Pf781TeTraLarge",
         "anonymize": true
       },
       "outputs": {
-        "volume": "<home>/.neuroflow/runs/run-20261022T140410Z-6b3e/outputs/convert/volume.nii.gz",
+        "volume": "<home>/.neuroflow/runs/run-20261022T170516Z-5096/outputs/convert/volume.nii.gz",
         "sidecar": {
           "Modality": "MR",
           "MagneticFieldStrength": 3,
@@ -147,17 +147,17 @@
       },
       "outputEvidence": {
         "volume": {
-          "path": "<home>/.neuroflow/runs/run-20261022T140410Z-6b3e/outputs/convert/volume.nii.gz",
+          "path": "<home>/.neuroflow/runs/run-20261022T170516Z-5096/outputs/convert/volume.nii.gz",
           "sha256": "3dd56f38594e524e611aa6ec72cf9e9d35d25aaf588c2de3a1e13cd7abece36e",
           "stamp": {
             "size": 183207715,
-            "modified": 1792677854000000000,
+            "modified": 1792688720000000000,
             "unix": {
               "device": 16777233,
-              "inode": 52506311,
+              "inode": 52899021,
               "changed": [
-                1792677855,
-                549646760
+                1792688721,
+                639962841
               ]
             }
           },
@@ -192,7 +192,7 @@
             "spatialUnits": 2
           },
           "producer": {
-            "run": "run-20261022T140410Z-6b3e",
+            "run": "run-20261022T170516Z-5096",
             "step": "convert",
             "output": "volume",
             "tool": "neuroflow.gallery.tools/dcm2niix",
@@ -214,15 +214,15 @@
       "toolVersion": "0.1.0",
       "status": "completed",
       "exitCode": 0,
-      "startedAt": "2026-10-22T14:04:15Z",
-      "endedAt": "2026-10-22T14:04:24Z",
+      "startedAt": "2026-10-22T17:05:21Z",
+      "endedAt": "2026-10-22T17:05:30Z",
       "inputs": {
-        "t1": "<home>/.neuroflow/runs/run-20261022T140410Z-6b3e/outputs/convert/volume.nii.gz",
+        "t1": "<home>/.neuroflow/runs/run-20261022T170516Z-5096/outputs/convert/volume.nii.gz",
         "border": 0
       },
       "outputs": {
-        "brain": "<home>/.neuroflow/runs/run-20261022T140410Z-6b3e/outputs/strip/brain.nii.gz",
-        "brain_mask": "<home>/.neuroflow/runs/run-20261022T140410Z-6b3e/outputs/strip/brain_mask.nii.gz"
+        "brain": "<home>/.neuroflow/runs/run-20261022T170516Z-5096/outputs/strip/brain.nii.gz",
+        "brain_mask": "<home>/.neuroflow/runs/run-20261022T170516Z-5096/outputs/strip/brain_mask.nii.gz"
       },
       "types": {
         "brain": "neuro:volume",
@@ -232,17 +232,17 @@
       "qualifierChecks": [],
       "inputEvidence": {
         "t1": {
-          "path": "<home>/.neuroflow/runs/run-20261022T140410Z-6b3e/outputs/convert/volume.nii.gz",
+          "path": "<home>/.neuroflow/runs/run-20261022T170516Z-5096/outputs/convert/volume.nii.gz",
           "sha256": "3dd56f38594e524e611aa6ec72cf9e9d35d25aaf588c2de3a1e13cd7abece36e",
           "stamp": {
             "size": 183207715,
-            "modified": 1792677854000000000,
+            "modified": 1792688720000000000,
             "unix": {
               "device": 16777233,
-              "inode": 52506311,
+              "inode": 52899021,
               "changed": [
-                1792677855,
-                549646760
+                1792688721,
+                639962841
               ]
             }
           },
@@ -277,7 +277,7 @@
             "spatialUnits": 2
           },
           "producer": {
-            "run": "run-20261022T140410Z-6b3e",
+            "run": "run-20261022T170516Z-5096",
             "step": "convert",
             "output": "volume",
             "tool": "neuroflow.gallery.tools/dcm2niix",
@@ -295,17 +295,17 @@
       },
       "outputEvidence": {
         "brain": {
-          "path": "<home>/.neuroflow/runs/run-20261022T140410Z-6b3e/outputs/strip/brain.nii.gz",
+          "path": "<home>/.neuroflow/runs/run-20261022T170516Z-5096/outputs/strip/brain.nii.gz",
           "sha256": "2832d3c6755fead2e399cfb868fdafd79c645f0b6688c9a4201cf06e28060b9b",
           "stamp": {
             "size": 59621610,
-            "modified": 1792677864115358767,
+            "modified": 1792688730622005349,
             "unix": {
               "device": 16777233,
-              "inode": 52506364,
+              "inode": 52899037,
               "changed": [
-                1792677864,
-                115358767
+                1792688730,
+                622005349
               ]
             }
           },
@@ -340,7 +340,7 @@
             "spatialUnits": 2
           },
           "producer": {
-            "run": "run-20261022T140410Z-6b3e",
+            "run": "run-20261022T170516Z-5096",
             "step": "strip",
             "output": "brain",
             "tool": "neuroflow.gallery.tools/mindgrab",
@@ -356,17 +356,17 @@
           }
         },
         "brain_mask": {
-          "path": "<home>/.neuroflow/runs/run-20261022T140410Z-6b3e/outputs/strip/brain_mask.nii.gz",
+          "path": "<home>/.neuroflow/runs/run-20261022T170516Z-5096/outputs/strip/brain_mask.nii.gz",
           "sha256": "fad78c60ea5a9ade4d71897adede8149c782aea8943f67be1322d58fdaa076db",
           "stamp": {
             "size": 988363,
-            "modified": 1792677861977662858,
+            "modified": 1792688728476165754,
             "unix": {
               "device": 16777233,
-              "inode": 52506362,
+              "inode": 52899034,
               "changed": [
-                1792677861,
-                977662858
+                1792688728,
+                476165754
               ]
             }
           },
@@ -401,7 +401,7 @@
             "spatialUnits": 2
           },
           "producer": {
-            "run": "run-20261022T140410Z-6b3e",
+            "run": "run-20261022T170516Z-5096",
             "step": "strip",
             "output": "brain_mask",
             "tool": "neuroflow.gallery.tools/mindgrab",
@@ -423,17 +423,17 @@
       "toolVersion": "0.1.0",
       "status": "completed",
       "exitCode": 0,
-      "startedAt": "2026-10-22T14:04:24Z",
-      "endedAt": "2026-10-22T14:04:28Z",
+      "startedAt": "2026-10-22T17:05:30Z",
+      "endedAt": "2026-10-22T17:05:35Z",
       "inputs": {
-        "moving": "<home>/.neuroflow/runs/run-20261022T140410Z-6b3e/outputs/strip/brain.nii.gz",
+        "moving": "<home>/.neuroflow/runs/run-20261022T170516Z-5096/outputs/strip/brain.nii.gz",
         "template": "<home>/Data/templates/MNI152_T1_1mm_brain.nii.gz",
         "cost": "fast",
         "interpolation": "cubic"
       },
       "outputs": {
-        "registered": "<home>/.neuroflow/runs/run-20261022T140410Z-6b3e/outputs/register/registered.nii.gz",
-        "transform": "<home>/.neuroflow/runs/run-20261022T140410Z-6b3e/outputs/register/transform.json"
+        "registered": "<home>/.neuroflow/runs/run-20261022T170516Z-5096/outputs/register/registered.nii.gz",
+        "transform": "<home>/.neuroflow/runs/run-20261022T170516Z-5096/outputs/register/transform.json"
       },
       "types": {
         "registered": "neuro:volume",
@@ -443,17 +443,17 @@
       "qualifierChecks": [],
       "inputEvidence": {
         "moving": {
-          "path": "<home>/.neuroflow/runs/run-20261022T140410Z-6b3e/outputs/strip/brain.nii.gz",
+          "path": "<home>/.neuroflow/runs/run-20261022T170516Z-5096/outputs/strip/brain.nii.gz",
           "sha256": "2832d3c6755fead2e399cfb868fdafd79c645f0b6688c9a4201cf06e28060b9b",
           "stamp": {
             "size": 59621610,
-            "modified": 1792677864115358767,
+            "modified": 1792688730622005349,
             "unix": {
               "device": 16777233,
-              "inode": 52506364,
+              "inode": 52899037,
               "changed": [
-                1792677864,
-                115358767
+                1792688730,
+                622005349
               ]
             }
           },
@@ -488,7 +488,7 @@
             "spatialUnits": 2
           },
           "producer": {
-            "run": "run-20261022T140410Z-6b3e",
+            "run": "run-20261022T170516Z-5096",
             "step": "strip",
             "output": "brain",
             "tool": "neuroflow.gallery.tools/mindgrab",
@@ -551,17 +551,17 @@
       },
       "outputEvidence": {
         "registered": {
-          "path": "<home>/.neuroflow/runs/run-20261022T140410Z-6b3e/outputs/register/registered.nii.gz",
+          "path": "<home>/.neuroflow/runs/run-20261022T170516Z-5096/outputs/register/registered.nii.gz",
           "sha256": "e8db32ed989a6877925a21676876e95ab1abf395ef32762c5acd665b24996232",
           "stamp": {
             "size": 6387168,
-            "modified": 1792677868315756105,
+            "modified": 1792688734972903373,
             "unix": {
               "device": 16777233,
-              "inode": 52506401,
+              "inode": 52899045,
               "changed": [
-                1792677868,
-                315756105
+                1792688734,
+                972903373
               ]
             }
           },
@@ -594,7 +594,7 @@
             "spatialUnits": 2
           },
           "producer": {
-            "run": "run-20261022T140410Z-6b3e",
+            "run": "run-20261022T170516Z-5096",
             "step": "register",
             "output": "registered",
             "tool": "neuroflow.gallery.tools/niimath-allineate",
@@ -610,17 +610,17 @@
           }
         },
         "transform": {
-          "path": "<home>/.neuroflow/runs/run-20261022T140410Z-6b3e/outputs/register/transform.json",
-          "sha256": "db46217abdbd2d85b70864a4b72707c7c8f3e8ea0ce590a4b41c2bb143422f1a",
+          "path": "<home>/.neuroflow/runs/run-20261022T170516Z-5096/outputs/register/transform.json",
+          "sha256": "50b11f20736b2c7ba03332fc1922015f52354080ba6a3eb7e32b123807dda326",
           "stamp": {
             "size": 1114,
-            "modified": 1792677868250943332,
+            "modified": 1792688734907910331,
             "unix": {
               "device": 16777233,
-              "inode": 52506400,
+              "inode": 52899044,
               "changed": [
-                1792677868,
-                250943332
+                1792688734,
+                907910331
               ]
             }
           },
@@ -629,7 +629,7 @@
               "json"
             ]
           },
-          "spaceIdentity": "artifact-sha256:db46217abdbd2d85b70864a4b72707c7c8f3e8ea0ce590a4b41c2bb143422f1a",
+          "spaceIdentity": "artifact-sha256:50b11f20736b2c7ba03332fc1922015f52354080ba6a3eb7e32b123807dda326",
           "inspection": {
             "facts": {
               "formats": [
@@ -639,7 +639,7 @@
             "inspector": "json-parser-v1"
           },
           "producer": {
-            "run": "run-20261022T140410Z-6b3e",
+            "run": "run-20261022T170516Z-5096",
             "step": "register",
             "output": "transform",
             "tool": "neuroflow.gallery.tools/niimath-allineate",
@@ -661,21 +661,21 @@
       "toolVersion": "0.1.0",
       "status": "completed",
       "exitCode": 0,
-      "startedAt": "2026-10-22T14:04:28Z",
-      "endedAt": "2026-10-22T14:04:34Z",
+      "startedAt": "2026-10-22T17:05:35Z",
+      "endedAt": "2026-10-22T17:05:41Z",
       "inputs": {
-        "t1": "<home>/.neuroflow/runs/run-20261022T140410Z-6b3e/outputs/convert/volume.nii.gz",
+        "t1": "<home>/.neuroflow/runs/run-20261022T170516Z-5096/outputs/convert/volume.nii.gz",
         "mode": "fast"
       },
       "outputs": {
-        "labels": "<home>/.neuroflow/runs/run-20261022T140410Z-6b3e/outputs/segment/synthseg.nii.gz",
+        "labels": "<home>/.neuroflow/runs/run-20261022T170516Z-5096/outputs/segment/synthseg.nii.gz",
         "report": {
           "citation": "Billot et al. (2023) SynthSeg: Segmentation of brain MRI scans of any contrast and resolution without retraining. Med Image Anal. PMID: 36857946",
           "ct": false,
           "executionProvider": "metal",
           "fast": true,
           "flip": false,
-          "input": "<home>/.neuroflow/runs/run-20261022T140410Z-6b3e/outputs/convert/volume.nii.gz",
+          "input": "<home>/.neuroflow/runs/run-20261022T170516Z-5096/outputs/convert/volume.nii.gz",
           "inputShape": [
             500,
             600,
@@ -684,7 +684,7 @@
           "model": "synthseg_2.0 (FreeSurfer 8.1.0 synthseg_2.0.h5)",
           "modelSha256": "94412cd4ece229cee1ec21ac05d9aa6f084ea7b600303d2e598707d86a9a9b13",
           "onnxRuntime": "1.27",
-          "output": "<home>/.neuroflow/runs/run-20261022T140410Z-6b3e/outputs/segment/synthseg.nii.gz",
+          "output": "<home>/.neuroflow/runs/run-20261022T170516Z-5096/outputs/segment/synthseg.nii.gz",
           "outputAffine": [
             [
               0.9966065111291302,
@@ -716,16 +716,16 @@
             224,
             160
           ],
-          "seconds": 6.016075042,
+          "seconds": 6.411838958,
           "target": "aarch64-macos",
           "threads": 18,
           "timings": {
-            "inference": 1.668316458,
-            "initialize": 0.082252084,
-            "postprocess": 0.412488916,
-            "preprocess": 3.057621333,
-            "read": 0.795206125,
-            "release": 0.000181292
+            "inference": 1.997954834,
+            "initialize": 0.123820541,
+            "postprocess": 0.438668417,
+            "preprocess": 3.036553125,
+            "read": 0.814663917,
+            "release": 0.000169666
           },
           "version": "0.3.20260924"
         }
@@ -738,17 +738,17 @@
       "qualifierChecks": [],
       "inputEvidence": {
         "t1": {
-          "path": "<home>/.neuroflow/runs/run-20261022T140410Z-6b3e/outputs/convert/volume.nii.gz",
+          "path": "<home>/.neuroflow/runs/run-20261022T170516Z-5096/outputs/convert/volume.nii.gz",
           "sha256": "3dd56f38594e524e611aa6ec72cf9e9d35d25aaf588c2de3a1e13cd7abece36e",
           "stamp": {
             "size": 183207715,
-            "modified": 1792677854000000000,
+            "modified": 1792688720000000000,
             "unix": {
               "device": 16777233,
-              "inode": 52506311,
+              "inode": 52899021,
               "changed": [
-                1792677855,
-                549646760
+                1792688721,
+                639962841
               ]
             }
           },
@@ -783,7 +783,7 @@
             "spatialUnits": 2
           },
           "producer": {
-            "run": "run-20261022T140410Z-6b3e",
+            "run": "run-20261022T170516Z-5096",
             "step": "convert",
             "output": "volume",
             "tool": "neuroflow.gallery.tools/dcm2niix",
@@ -801,17 +801,17 @@
       },
       "outputEvidence": {
         "labels": {
-          "path": "<home>/.neuroflow/runs/run-20261022T140410Z-6b3e/outputs/segment/synthseg.nii.gz",
+          "path": "<home>/.neuroflow/runs/run-20261022T170516Z-5096/outputs/segment/synthseg.nii.gz",
           "sha256": "3c9970bfc6687a31e353af98ff95509998d672d793d40158fb92cc745826373a",
           "stamp": {
             "size": 241322,
-            "modified": 1792677874445976994,
+            "modified": 1792688741521192201,
             "unix": {
               "device": 16777233,
-              "inode": 52506451,
+              "inode": 52899056,
               "changed": [
-                1792677874,
-                446075994
+                1792688741,
+                521302951
               ]
             }
           },
@@ -844,7 +844,7 @@
             "spatialUnits": 2
           },
           "producer": {
-            "run": "run-20261022T140410Z-6b3e",
+            "run": "run-20261022T170516Z-5096",
             "step": "segment",
             "output": "labels",
             "tool": "neurodesk.webapps/synthseg",
@@ -866,14 +866,14 @@
       "toolVersion": "0.1.0",
       "status": "completed",
       "exitCode": 0,
-      "startedAt": "2026-10-22T14:04:34Z",
-      "endedAt": "2026-10-22T14:04:34Z",
+      "startedAt": "2026-10-22T17:05:41Z",
+      "endedAt": "2026-10-22T17:05:42Z",
       "inputs": {
-        "labels": "<home>/.neuroflow/runs/run-20261022T140410Z-6b3e/outputs/segment/synthseg.nii.gz",
-        "mask": "<home>/.neuroflow/runs/run-20261022T140410Z-6b3e/outputs/strip/brain_mask.nii.gz"
+        "labels": "<home>/.neuroflow/runs/run-20261022T170516Z-5096/outputs/segment/synthseg.nii.gz",
+        "mask": "<home>/.neuroflow/runs/run-20261022T170516Z-5096/outputs/strip/brain_mask.nii.gz"
       },
       "outputs": {
-        "volumes": "<home>/.neuroflow/runs/run-20261022T140410Z-6b3e/outputs/volumes/volumes.tsv",
+        "volumes": "<home>/.neuroflow/runs/run-20261022T170516Z-5096/outputs/volumes/volumes.tsv",
         "table": {
           "voxel_volume_ml": 0.001,
           "totals": {
@@ -1025,17 +1025,17 @@
       "qualifierChecks": [],
       "inputEvidence": {
         "labels": {
-          "path": "<home>/.neuroflow/runs/run-20261022T140410Z-6b3e/outputs/segment/synthseg.nii.gz",
+          "path": "<home>/.neuroflow/runs/run-20261022T170516Z-5096/outputs/segment/synthseg.nii.gz",
           "sha256": "3c9970bfc6687a31e353af98ff95509998d672d793d40158fb92cc745826373a",
           "stamp": {
             "size": 241322,
-            "modified": 1792677874445976994,
+            "modified": 1792688741521192201,
             "unix": {
               "device": 16777233,
-              "inode": 52506451,
+              "inode": 52899056,
               "changed": [
-                1792677874,
-                446075994
+                1792688741,
+                521302951
               ]
             }
           },
@@ -1068,7 +1068,7 @@
             "spatialUnits": 2
           },
           "producer": {
-            "run": "run-20261022T140410Z-6b3e",
+            "run": "run-20261022T170516Z-5096",
             "step": "segment",
             "output": "labels",
             "tool": "neurodesk.webapps/synthseg",
@@ -1084,17 +1084,17 @@
           }
         },
         "mask": {
-          "path": "<home>/.neuroflow/runs/run-20261022T140410Z-6b3e/outputs/strip/brain_mask.nii.gz",
+          "path": "<home>/.neuroflow/runs/run-20261022T170516Z-5096/outputs/strip/brain_mask.nii.gz",
           "sha256": "fad78c60ea5a9ade4d71897adede8149c782aea8943f67be1322d58fdaa076db",
           "stamp": {
             "size": 988363,
-            "modified": 1792677861977662858,
+            "modified": 1792688728476165754,
             "unix": {
               "device": 16777233,
-              "inode": 52506362,
+              "inode": 52899034,
               "changed": [
-                1792677861,
-                977662858
+                1792688728,
+                476165754
               ]
             }
           },
@@ -1129,7 +1129,7 @@
             "spatialUnits": 2
           },
           "producer": {
-            "run": "run-20261022T140410Z-6b3e",
+            "run": "run-20261022T170516Z-5096",
             "step": "strip",
             "output": "brain_mask",
             "tool": "neuroflow.gallery.tools/mindgrab",
@@ -1147,17 +1147,17 @@
       },
       "outputEvidence": {
         "volumes": {
-          "path": "<home>/.neuroflow/runs/run-20261022T140410Z-6b3e/outputs/volumes/volumes.tsv",
+          "path": "<home>/.neuroflow/runs/run-20261022T170516Z-5096/outputs/volumes/volumes.tsv",
           "sha256": "8ce0e540efa14b5da4c85966f7b6aac2ee8a4dfc0fe3c9d594b3770eda684b70",
           "stamp": {
             "size": 746,
-            "modified": 1792677874840783760,
+            "modified": 1792688742025344954,
             "unix": {
               "device": 16777233,
-              "inode": 52506457,
+              "inode": 52899062,
               "changed": [
-                1792677874,
-                840783760
+                1792688742,
+                25344954
               ]
             }
           },
@@ -1169,7 +1169,7 @@
             "reason": "no inspector recognizes this encoding"
           },
           "producer": {
-            "run": "run-20261022T140410Z-6b3e",
+            "run": "run-20261022T170516Z-5096",
             "step": "volumes",
             "output": "volumes",
             "tool": "neuroflow.gallery.tools/label-volumes",
@@ -1219,7 +1219,7 @@
     "embeddedLabelTables": false,
     "missingInspector": "fail"
   },
-  "endedAt": "2026-10-22T14:04:34Z",
+  "endedAt": "2026-10-22T17:05:42Z",
   "outputs": {
     "t1": {
       "step": "convert",

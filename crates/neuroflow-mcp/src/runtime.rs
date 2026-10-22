@@ -1129,6 +1129,7 @@ fn provenance(
     }
     let mut entities: Vec<Value> = Vec::new();
     let mut by_path: HashMap<String, String> = HashMap::new();
+    let mut hashed_dirs = 0;
     let mut entity = |entities: &mut Vec<Value>, path_or_value: &Value, t: &str, role: &str, artifact: bool| -> String {
         if artifact {
             if let Some(p) = path_or_value.as_str() {
@@ -1148,6 +1149,11 @@ fn provenance(
                     // An unreadable file keeps its entity without a checksum; provenance never fails a run.
                     if let Ok(hash) = qualifiers::content_hash(Path::new(p), known) {
                         e["checksum"] = json!({ "algorithm": "sha256", "value": hash });
+                    }
+                } else if meta.is_dir() {
+                    if let Ok(hash) = qualifiers::tree_hash(Path::new(p), known) {
+                        e["checksum"] = json!({ "algorithm": "sha256", "value": hash });
+                        hashed_dirs += 1;
                     }
                 }
             }
@@ -1261,6 +1267,9 @@ fn provenance(
             "checks": step.qualifier_checks, "inputs": step.input_evidence,
             "outputs": step.output_evidence })).collect::<Vec<_>>()
     } });
+    if hashed_dirs > 0 {
+        extensions["neuroflow/checksums"] = json!({ "directory": qualifiers::TREE_HASH_METHOD });
+    }
     // Lossy, so a line cut inside a multibyte character still lands in `unparsed`.
     if let Ok(bytes) = fs::read(session.join("provenance.jsonl")) {
         let by_step = steps.iter().enumerate().map(|(n, step)| (step.step_id.clone(), format!("act-{}", n + 1))).collect();
