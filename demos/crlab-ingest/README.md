@@ -14,7 +14,7 @@ QA page) can be run in front of the audience.
 | `slides.md` | The deck, Marp markdown. The demo and QA slides contain small scripts that talk to `serve.mjs`. |
 | `serve.mjs` | Renders `slides.md` to `slides.html` with `marp --html`, serves it on `127.0.0.1:4173`, and exposes `/launch`, `/stop`, `/status` for the demo slide. `/launch` runs `npm run tauri:dev` in this checkout; it never starts a second copy if the desktop app is already running. |
 | `assets/qa-montage.png` | Slice montage of the MNI-registered T1w with SynthSeg labels from the recorded run. |
-| `out/` | Records of run `run-20261007T132051Z-0321` (`dicom-t1-mni-volumes`): `run.json`, `provenance.jsonl`, `run.provenance.json`, `workflow.json`, `volumes.tsv`. Home paths are replaced with `<home>`, the DICOM session folder with `<dicom>/crlab-session`, and scanner-site fields are dropped, as in `demos/prompt-to-workflow`. |
+| `out/` | Records of run `run-20261022T140410Z-6b3e` (`dicom-t1-mni-volumes`, called through the MCP server by a small stdio client that identifies as `crlab-demo`): `run.json`, `provenance.jsonl`, `run.provenance.json`, `workflow.json`, `volumes.tsv`. Home paths are replaced with `<home>`, the DICOM session folder with `<dicom>/crlab-session`, and scanner-site fields are dropped, as in `demos/prompt-to-workflow`. |
 
 `slides.html` and `launch.log` are generated and gitignored.
 

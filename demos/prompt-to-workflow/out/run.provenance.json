@@ -1,13 +1,13 @@
 {
   "neuroflow": "0.1.0",
   "kind": "provenance",
-  "id": "neuroflow.runs/run-20260928T154101Z-152f",
+  "id": "neuroflow.runs/run-20261022T140312Z-e07c",
   "version": "1.0.0",
-  "description": "Provenance for run run-20260928T154101Z-152f executed by neuroflow-mcp.",
+  "description": "Provenance for run run-20261022T140312Z-e07c executed by neuroflow-mcp.",
   "run": {
-    "runId": "run-20260928T154101Z-152f",
-    "startedAt": "2026-09-28T15:41:01Z",
-    "endedAt": "2026-09-28T15:41:16Z",
+    "runId": "run-20261022T140312Z-e07c",
+    "startedAt": "2026-10-22T14:03:12Z",
+    "endedAt": "2026-10-22T14:03:29Z",
     "status": "completed",
     "host": {
       "platform": "macos",
@@ -15,8 +15,12 @@
     }
   },
   "workflow": {
-    "id": "local/t1-dicom-mni-structure-volumes",
-    "version": "0.1.0"
+    "id": "user.analysis/dicom-t1-strip-mni-synthseg-volumes",
+    "version": "0.1.0",
+    "checksum": {
+      "algorithm": "sha256",
+      "value": "0b1b99bb92085dc0d1781c2fb2b2fb08f8143bc7bc570aa45c567e408900f9f9"
+    }
   },
   "agents": [
     {
@@ -31,7 +35,7 @@
       "type": "software",
       "name": "claude-code",
       "role": "mcp-client",
-      "version": "2.1.283"
+      "version": "2.1.307"
     },
     {
       "id": "agent-tool-1",
@@ -67,6 +71,36 @@
       "name": "neuroflow.gallery.tools/label-volumes",
       "version": "0.1.0",
       "role": "tool"
+    },
+    {
+      "id": "agent-reported-1",
+      "type": "software",
+      "name": "dcm2niix v1.0.20260724",
+      "role": "reported-by-tool"
+    },
+    {
+      "id": "agent-reported-2",
+      "type": "software",
+      "name": "brainchop",
+      "role": "reported-by-tool"
+    },
+    {
+      "id": "agent-reported-3",
+      "type": "software",
+      "name": "niimath v1.0.20260924",
+      "role": "reported-by-tool"
+    },
+    {
+      "id": "agent-reported-4",
+      "type": "software",
+      "name": "synthseg (native)",
+      "role": "reported-by-tool"
+    },
+    {
+      "id": "agent-reported-5",
+      "type": "software",
+      "name": "Python 3.12.12 + nibabel 5.4.0 + numpy 2.1.3",
+      "role": "reported-by-tool"
     }
   ],
   "activities": [
@@ -75,16 +109,16 @@
       "stepId": "convert",
       "toolId": "neuroflow.gallery.tools/dcm2niix",
       "agent": "agent-tool-1",
-      "startedAt": "2026-09-28T15:41:01Z",
-      "endedAt": "2026-09-28T15:41:02Z",
+      "startedAt": "2026-10-22T14:03:12Z",
+      "endedAt": "2026-10-22T14:03:13Z",
       "status": "completed",
       "toolVersion": "0.1.0",
       "used": [
         "ent-1"
       ],
       "generated": [
-        "ent-5",
-        "ent-6"
+        "ent-4",
+        "ent-5"
       ],
       "exitCode": 0
     },
@@ -93,16 +127,16 @@
       "stepId": "strip",
       "toolId": "neuroflow.gallery.tools/mindgrab",
       "agent": "agent-tool-2",
-      "startedAt": "2026-09-28T15:41:02Z",
-      "endedAt": "2026-09-28T15:41:06Z",
+      "startedAt": "2026-10-22T14:03:13Z",
+      "endedAt": "2026-10-22T14:03:18Z",
       "status": "completed",
       "toolVersion": "0.1.0",
       "used": [
-        "ent-5"
+        "ent-4"
       ],
       "generated": [
-        "ent-7",
-        "ent-8"
+        "ent-6",
+        "ent-7"
       ],
       "exitCode": 0
     },
@@ -111,17 +145,17 @@
       "stepId": "register",
       "toolId": "neuroflow.gallery.tools/niimath-allineate",
       "agent": "agent-tool-3",
-      "startedAt": "2026-09-28T15:41:06Z",
-      "endedAt": "2026-09-28T15:41:07Z",
+      "startedAt": "2026-10-22T14:03:18Z",
+      "endedAt": "2026-10-22T14:03:19Z",
       "status": "completed",
       "toolVersion": "0.1.0",
       "used": [
-        "ent-7",
+        "ent-6",
         "ent-2"
       ],
       "generated": [
-        "ent-9",
-        "ent-10"
+        "ent-8",
+        "ent-9"
       ],
       "exitCode": 0
     },
@@ -130,16 +164,16 @@
       "stepId": "segment",
       "toolId": "neurodesk.webapps/synthseg",
       "agent": "agent-tool-4",
-      "startedAt": "2026-09-28T15:41:07Z",
-      "endedAt": "2026-09-28T15:41:15Z",
+      "startedAt": "2026-10-22T14:03:19Z",
+      "endedAt": "2026-10-22T14:03:29Z",
       "status": "completed",
       "toolVersion": "0.1.0",
       "used": [
-        "ent-5"
+        "ent-4"
       ],
       "generated": [
-        "ent-11",
-        "ent-12"
+        "ent-10",
+        "ent-11"
       ],
       "exitCode": 0
     },
@@ -148,17 +182,17 @@
       "stepId": "volumes",
       "toolId": "neuroflow.gallery.tools/label-volumes",
       "agent": "agent-tool-5",
-      "startedAt": "2026-09-28T15:41:15Z",
-      "endedAt": "2026-09-28T15:41:16Z",
+      "startedAt": "2026-10-22T14:03:29Z",
+      "endedAt": "2026-10-22T14:03:29Z",
       "status": "completed",
       "toolVersion": "0.1.0",
       "used": [
-        "ent-11",
-        "ent-8"
+        "ent-10",
+        "ent-7"
       ],
       "generated": [
-        "ent-13",
-        "ent-14"
+        "ent-12",
+        "ent-13"
       ],
       "exitCode": 0
     }
@@ -175,7 +209,11 @@
       "type": "neuro:volume",
       "role": "workflow-input",
       "path": "<local-path>",
-      "size": 4147830
+      "size": 4147830,
+      "checksum": {
+        "algorithm": "sha256",
+        "value": "40da9c25a7e64f656b31f7c1c6369e0b908c44bde6d84aec7c7186849c18115e"
+      }
     },
     {
       "id": "ent-3",
@@ -185,19 +223,17 @@
     },
     {
       "id": "ent-4",
-      "type": "core:string",
-      "role": "workflow-input",
-      "value": "default"
-    },
-    {
-      "id": "ent-5",
       "type": "neuro:volume",
       "role": "step-output",
       "path": "<local-path>",
-      "size": 11416491
+      "size": 11416491,
+      "checksum": {
+        "algorithm": "sha256",
+        "value": "fc0a069f742db7e4e8c5e90b56f8082e2e8cc38c0df8adc2082c094e98a6d94e"
+      }
     },
     {
-      "id": "ent-6",
+      "id": "ent-5",
       "type": "core:json",
       "role": "step-output",
       "value": {
@@ -214,6 +250,7 @@
         "ProtocolName": "anat-T1w",
         "ScanningSequence": "GR\\IR",
         "SequenceVariant": "SK\\SP\\MP",
+        "PulseSequenceType": "MPRAGE",
         "ScanOptions": "IR",
         "SequenceName": "*tfl3d1_224ns",
         "ImageType": [
@@ -246,7 +283,6 @@
         "SpoilingState": true,
         "InversionTime": 0.9,
         "FlipAngle": 8,
-        "PartialFourier": 1,
         "BaseResolution": 256,
         "ShimSetting": [
           -2880,
@@ -274,6 +310,7 @@
         "AcquisitionMatrixPE": 256,
         "ReconMatrixPE": 256,
         "ParallelReductionFactorInPlane": 2,
+        "ParallelReductionFactorOutOfPlane": 1,
         "PixelBandwidth": 199,
         "DwellTime": 0.0000098,
         "ImageOrientationPatientDICOM": [
@@ -290,46 +327,66 @@
           "_acq-tfl3p2_run-5_T1w"
         ],
         "ConversionSoftware": "dcm2niix",
-        "ConversionSoftwareVersion": "v1.0.20250505"
+        "ConversionSoftwareVersion": "v1.0.20260724"
+      }
+    },
+    {
+      "id": "ent-6",
+      "type": "neuro:volume",
+      "role": "step-output",
+      "path": "<local-path>",
+      "size": 2725456,
+      "checksum": {
+        "algorithm": "sha256",
+        "value": "c53df3bcc28bd73ee52ee7086626b0ed6cb702cf418770d86fc5e281c4bcf5c6"
       }
     },
     {
       "id": "ent-7",
-      "type": "neuro:volume",
-      "role": "step-output",
-      "path": "<local-path>",
-      "size": 2725456
-    },
-    {
-      "id": "ent-8",
       "type": "neuro:mask",
       "role": "step-output",
       "path": "<local-path>",
-      "size": 73201
+      "size": 73201,
+      "checksum": {
+        "algorithm": "sha256",
+        "value": "13f195212304d4e4c70a4e8fee48978c9f49bbc272b532dae7dd231c3fb3ee14"
+      }
     },
     {
-      "id": "ent-9",
+      "id": "ent-8",
       "type": "neuro:volume",
       "role": "step-output",
       "path": "<local-path>",
-      "size": 6960540
+      "size": 6960540,
+      "checksum": {
+        "algorithm": "sha256",
+        "value": "1eda575a1c373b3326a190af2db7d834d1f6f9a813068753e3a02273cd87df3e"
+      }
     },
     {
-      "id": "ent-10",
+      "id": "ent-9",
       "type": "neuro:transform",
       "role": "step-output",
       "path": "<local-path>",
-      "size": 1117
+      "size": 1117,
+      "checksum": {
+        "algorithm": "sha256",
+        "value": "68ba80aea6030ce95bd2fbea6ba52d447968b5d8e6330705bd0e3c558e8b2c46"
+      }
     },
     {
-      "id": "ent-11",
+      "id": "ent-10",
       "type": "neuro:label-map",
       "role": "step-output",
       "path": "<local-path>",
-      "size": 337577
+      "size": 337577,
+      "checksum": {
+        "algorithm": "sha256",
+        "value": "fd5617431b42644c9159096c8957fecbc94eb84b5e74820f3a3a9fbb314347c4"
+      }
     },
     {
-      "id": "ent-12",
+      "id": "ent-11",
       "type": "core:json",
       "role": "step-output",
       "value": {
@@ -379,29 +436,33 @@
           256,
           256
         ],
-        "seconds": 8.274629042,
+        "seconds": 8.824747041,
         "target": "aarch64-macos",
         "threads": 18,
         "timings": {
-          "inference": 6.368896917,
-          "initialize": 0.080923083,
-          "postprocess": 1.479207417,
-          "preprocess": 0.206747959,
-          "read": 0.067267708,
-          "release": 0.071569208
+          "inference": 6.851810417,
+          "initialize": 0.104952875,
+          "postprocess": 1.4628955,
+          "preprocess": 0.230736917,
+          "read": 0.075971458,
+          "release": 0.098357416
         },
         "version": "0.3.20260924"
       }
     },
     {
-      "id": "ent-13",
+      "id": "ent-12",
       "type": "core:tabular",
       "role": "step-output",
       "path": "<local-path>",
-      "size": 1077
+      "size": 1077,
+      "checksum": {
+        "algorithm": "sha256",
+        "value": "f58342f6a294b377b5a61e9e06a97586887076aae1909f3bbd546ea3f2a466d4"
+      }
     },
     {
-      "id": "ent-14",
+      "id": "ent-13",
       "type": "core:json",
       "role": "step-output",
       "value": {
@@ -611,18 +672,971 @@
   "inputs": {
     "dicom_dir": "ent-1",
     "template": "ent-2",
-    "cost": "ent-3",
-    "mode": "ent-4"
+    "cost": "ent-3"
   },
   "outputs": {
-    "t1": "ent-5",
-    "sidecar": "ent-6",
-    "brain": "ent-7",
-    "brain_mask": "ent-8",
-    "brain_mni": "ent-9",
-    "to_mni": "ent-10",
-    "labels": "ent-11",
-    "volumes": "ent-13",
-    "table": "ent-14"
+    "t1": "ent-4",
+    "brain": "ent-6",
+    "brain_mask": "ent-7",
+    "brain_mni": "ent-8",
+    "transform": "ent-9",
+    "labels": "ent-10",
+    "volumes": "ent-12",
+    "table": "ent-13"
+  },
+  "extensions": {
+    "neuroflow/qualifiers": {
+      "inspectors": {
+        "enforcement": "before-consumer-launch",
+        "formats": [
+          "nii",
+          "nii-gz",
+          "json"
+        ],
+        "resolution": {
+          "formats": [
+            "nii",
+            "nii-gz"
+          ],
+          "units": "explicit NIfTI spatial units"
+        },
+        "space": [
+          "scanner frame scoped to one content hash",
+          "registered producer provenance",
+          "inputs.* inheritance"
+        ],
+        "labelSystem": [
+          "registered producer provenance",
+          "inputs.* inheritance"
+        ],
+        "density": [
+          "registered producer provenance",
+          "inputs.* inheritance"
+        ],
+        "revisionEquivalence": false,
+        "embeddedLabelTables": false,
+        "missingInspector": "fail"
+      },
+      "inputChecks": [],
+      "outputChecks": null,
+      "steps": [
+        {
+          "step": "convert",
+          "checks": [],
+          "inputs": {
+            "dicom_dir": {
+              "path": "<local-path>",
+              "declaration": {},
+              "inspection": {
+                "reason": "no directory-layout inspector"
+              }
+            }
+          },
+          "outputs": {
+            "volume": {
+              "path": "<local-path>",
+              "sha256": "fc0a069f742db7e4e8c5e90b56f8082e2e8cc38c0df8adc2082c094e98a6d94e",
+              "stamp": {
+                "size": 11416491,
+                "modified": 1792677793000000000,
+                "unix": {
+                  "device": 16777233,
+                  "inode": 52505076,
+                  "changed": [
+                    1792677793,
+                    188023210
+                  ]
+                }
+              },
+              "declaration": {
+                "formats": [
+                  "nii-gz"
+                ],
+                "resolution": [
+                  0.8999999761581421,
+                  0.9375,
+                  0.9375
+                ],
+                "space": "individual"
+              },
+              "spaceIdentity": "artifact-sha256:fc0a069f742db7e4e8c5e90b56f8082e2e8cc38c0df8adc2082c094e98a6d94e",
+              "inspection": {
+                "facts": {
+                  "formats": [
+                    "nii-gz"
+                  ],
+                  "resolution": [
+                    0.8999999761581421,
+                    0.9375,
+                    0.9375
+                  ],
+                  "space": "individual"
+                },
+                "inspector": "nifti-header-v1",
+                "niftiVersion": 1,
+                "qformCode": 1,
+                "sformCode": 1,
+                "spatialUnits": 2
+              },
+              "producer": {
+                "run": "run-20261022T140312Z-e07c",
+                "step": "convert",
+                "output": "volume",
+                "tool": "neuroflow.gallery.tools/dcm2niix",
+                "version": "0.1.0",
+                "declaration": {
+                  "type": "neuro:volume",
+                  "description": "Converted NIfTI volume (gzip), RAS-reoriented by dcm2niix.",
+                  "delivery": {
+                    "mode": "core:result-dir",
+                    "path": "volume.nii.gz"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "step": "strip",
+          "checks": [],
+          "inputs": {
+            "t1": {
+              "path": "<local-path>",
+              "sha256": "fc0a069f742db7e4e8c5e90b56f8082e2e8cc38c0df8adc2082c094e98a6d94e",
+              "stamp": {
+                "size": 11416491,
+                "modified": 1792677793000000000,
+                "unix": {
+                  "device": 16777233,
+                  "inode": 52505076,
+                  "changed": [
+                    1792677793,
+                    188023210
+                  ]
+                }
+              },
+              "declaration": {
+                "formats": [
+                  "nii-gz"
+                ],
+                "resolution": [
+                  0.8999999761581421,
+                  0.9375,
+                  0.9375
+                ],
+                "space": "individual"
+              },
+              "spaceIdentity": "artifact-sha256:fc0a069f742db7e4e8c5e90b56f8082e2e8cc38c0df8adc2082c094e98a6d94e",
+              "inspection": {
+                "facts": {
+                  "formats": [
+                    "nii-gz"
+                  ],
+                  "resolution": [
+                    0.8999999761581421,
+                    0.9375,
+                    0.9375
+                  ],
+                  "space": "individual"
+                },
+                "inspector": "nifti-header-v1",
+                "niftiVersion": 1,
+                "qformCode": 1,
+                "sformCode": 1,
+                "spatialUnits": 2
+              },
+              "producer": {
+                "run": "run-20261022T140312Z-e07c",
+                "step": "convert",
+                "output": "volume",
+                "tool": "neuroflow.gallery.tools/dcm2niix",
+                "version": "0.1.0",
+                "declaration": {
+                  "type": "neuro:volume",
+                  "description": "Converted NIfTI volume (gzip), RAS-reoriented by dcm2niix.",
+                  "delivery": {
+                    "mode": "core:result-dir",
+                    "path": "volume.nii.gz"
+                  }
+                }
+              }
+            }
+          },
+          "outputs": {
+            "brain": {
+              "path": "<local-path>",
+              "sha256": "c53df3bcc28bd73ee52ee7086626b0ed6cb702cf418770d86fc5e281c4bcf5c6",
+              "stamp": {
+                "size": 2725456,
+                "modified": 1792677798416419847,
+                "unix": {
+                  "device": 16777233,
+                  "inode": 52505095,
+                  "changed": [
+                    1792677798,
+                    416419847
+                  ]
+                }
+              },
+              "declaration": {
+                "formats": [
+                  "nii-gz"
+                ],
+                "resolution": [
+                  0.8999999761581421,
+                  0.9375,
+                  0.9375
+                ],
+                "space": "individual"
+              },
+              "spaceIdentity": "artifact-sha256:c53df3bcc28bd73ee52ee7086626b0ed6cb702cf418770d86fc5e281c4bcf5c6",
+              "inspection": {
+                "facts": {
+                  "formats": [
+                    "nii-gz"
+                  ],
+                  "resolution": [
+                    0.8999999761581421,
+                    0.9375,
+                    0.9375
+                  ],
+                  "space": "individual"
+                },
+                "inspector": "nifti-header-v1",
+                "niftiVersion": 1,
+                "qformCode": 1,
+                "sformCode": 1,
+                "spatialUnits": 2
+              },
+              "producer": {
+                "run": "run-20261022T140312Z-e07c",
+                "step": "strip",
+                "output": "brain",
+                "tool": "neuroflow.gallery.tools/mindgrab",
+                "version": "0.1.0",
+                "declaration": {
+                  "type": "neuro:volume",
+                  "description": "Input image with everything outside the brain zeroed.",
+                  "delivery": {
+                    "mode": "core:result-dir",
+                    "path": "brain.nii.gz"
+                  }
+                }
+              }
+            },
+            "brain_mask": {
+              "path": "<local-path>",
+              "sha256": "13f195212304d4e4c70a4e8fee48978c9f49bbc272b532dae7dd231c3fb3ee14",
+              "stamp": {
+                "size": 73201,
+                "modified": 1792677798206088739,
+                "unix": {
+                  "device": 16777233,
+                  "inode": 52505094,
+                  "changed": [
+                    1792677798,
+                    206088739
+                  ]
+                }
+              },
+              "declaration": {
+                "formats": [
+                  "nii-gz"
+                ],
+                "resolution": [
+                  0.8999999761581421,
+                  0.9375,
+                  0.9375
+                ],
+                "space": "individual"
+              },
+              "spaceIdentity": "artifact-sha256:13f195212304d4e4c70a4e8fee48978c9f49bbc272b532dae7dd231c3fb3ee14",
+              "inspection": {
+                "facts": {
+                  "formats": [
+                    "nii-gz"
+                  ],
+                  "resolution": [
+                    0.8999999761581421,
+                    0.9375,
+                    0.9375
+                  ],
+                  "space": "individual"
+                },
+                "inspector": "nifti-header-v1",
+                "niftiVersion": 1,
+                "qformCode": 1,
+                "sformCode": 1,
+                "spatialUnits": 2
+              },
+              "producer": {
+                "run": "run-20261022T140312Z-e07c",
+                "step": "strip",
+                "output": "brain_mask",
+                "tool": "neuroflow.gallery.tools/mindgrab",
+                "version": "0.1.0",
+                "declaration": {
+                  "type": "neuro:mask",
+                  "description": "Binary brain mask on the input grid.",
+                  "delivery": {
+                    "mode": "core:result-dir",
+                    "path": "brain_mask.nii.gz"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "step": "register",
+          "checks": [],
+          "inputs": {
+            "moving": {
+              "path": "<local-path>",
+              "sha256": "c53df3bcc28bd73ee52ee7086626b0ed6cb702cf418770d86fc5e281c4bcf5c6",
+              "stamp": {
+                "size": 2725456,
+                "modified": 1792677798416419847,
+                "unix": {
+                  "device": 16777233,
+                  "inode": 52505095,
+                  "changed": [
+                    1792677798,
+                    416419847
+                  ]
+                }
+              },
+              "declaration": {
+                "formats": [
+                  "nii-gz"
+                ],
+                "resolution": [
+                  0.8999999761581421,
+                  0.9375,
+                  0.9375
+                ],
+                "space": "individual"
+              },
+              "spaceIdentity": "artifact-sha256:c53df3bcc28bd73ee52ee7086626b0ed6cb702cf418770d86fc5e281c4bcf5c6",
+              "inspection": {
+                "facts": {
+                  "formats": [
+                    "nii-gz"
+                  ],
+                  "resolution": [
+                    0.8999999761581421,
+                    0.9375,
+                    0.9375
+                  ],
+                  "space": "individual"
+                },
+                "inspector": "nifti-header-v1",
+                "niftiVersion": 1,
+                "qformCode": 1,
+                "sformCode": 1,
+                "spatialUnits": 2
+              },
+              "producer": {
+                "run": "run-20261022T140312Z-e07c",
+                "step": "strip",
+                "output": "brain",
+                "tool": "neuroflow.gallery.tools/mindgrab",
+                "version": "0.1.0",
+                "declaration": {
+                  "type": "neuro:volume",
+                  "description": "Input image with everything outside the brain zeroed.",
+                  "delivery": {
+                    "mode": "core:result-dir",
+                    "path": "brain.nii.gz"
+                  }
+                }
+              }
+            },
+            "template": {
+              "path": "<local-path>",
+              "sha256": "40da9c25a7e64f656b31f7c1c6369e0b908c44bde6d84aec7c7186849c18115e",
+              "stamp": {
+                "size": 4147830,
+                "modified": 1790609772380722500,
+                "unix": {
+                  "device": 16777233,
+                  "inode": 43705102,
+                  "changed": [
+                    1790609772,
+                    380722500
+                  ]
+                }
+              },
+              "declaration": {
+                "formats": [
+                  "nii-gz"
+                ],
+                "resolution": [
+                  1.0,
+                  1.0,
+                  1.0
+                ]
+              },
+              "spaceIdentity": "artifact-sha256:40da9c25a7e64f656b31f7c1c6369e0b908c44bde6d84aec7c7186849c18115e",
+              "inspection": {
+                "facts": {
+                  "formats": [
+                    "nii-gz"
+                  ],
+                  "resolution": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ]
+                },
+                "inspector": "nifti-header-v1",
+                "niftiVersion": 1,
+                "qformCode": 4,
+                "sformCode": 4,
+                "spatialUnits": 2
+              },
+              "producer": null
+            }
+          },
+          "outputs": {
+            "registered": {
+              "path": "<local-path>",
+              "sha256": "1eda575a1c373b3326a190af2db7d834d1f6f9a813068753e3a02273cd87df3e",
+              "stamp": {
+                "size": 6960540,
+                "modified": 1792677799905053936,
+                "unix": {
+                  "device": 16777233,
+                  "inode": 52505106,
+                  "changed": [
+                    1792677799,
+                    905053936
+                  ]
+                }
+              },
+              "declaration": {
+                "formats": [
+                  "nii-gz"
+                ],
+                "resolution": [
+                  1.0,
+                  1.0,
+                  1.0
+                ]
+              },
+              "spaceIdentity": "artifact-sha256:1eda575a1c373b3326a190af2db7d834d1f6f9a813068753e3a02273cd87df3e",
+              "inspection": {
+                "facts": {
+                  "formats": [
+                    "nii-gz"
+                  ],
+                  "resolution": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ]
+                },
+                "inspector": "nifti-header-v1",
+                "niftiVersion": 1,
+                "qformCode": 4,
+                "sformCode": 4,
+                "spatialUnits": 2
+              },
+              "producer": {
+                "run": "run-20261022T140312Z-e07c",
+                "step": "register",
+                "output": "registered",
+                "tool": "neuroflow.gallery.tools/niimath-allineate",
+                "version": "0.1.0",
+                "declaration": {
+                  "type": "neuro:volume",
+                  "description": "Moving image resampled onto the template grid.",
+                  "delivery": {
+                    "mode": "core:result-dir",
+                    "path": "registered.nii.gz"
+                  }
+                }
+              }
+            },
+            "transform": {
+              "path": "<local-path>",
+              "sha256": "68ba80aea6030ce95bd2fbea6ba52d447968b5d8e6330705bd0e3c558e8b2c46",
+              "stamp": {
+                "size": 1117,
+                "modified": 1792677799824434666,
+                "unix": {
+                  "device": 16777233,
+                  "inode": 52505105,
+                  "changed": [
+                    1792677799,
+                    824434666
+                  ]
+                }
+              },
+              "declaration": {
+                "formats": [
+                  "json"
+                ]
+              },
+              "spaceIdentity": "artifact-sha256:68ba80aea6030ce95bd2fbea6ba52d447968b5d8e6330705bd0e3c558e8b2c46",
+              "inspection": {
+                "facts": {
+                  "formats": [
+                    "json"
+                  ]
+                },
+                "inspector": "json-parser-v1"
+              },
+              "producer": {
+                "run": "run-20261022T140312Z-e07c",
+                "step": "register",
+                "output": "transform",
+                "tool": "neuroflow.gallery.tools/niimath-allineate",
+                "version": "0.1.0",
+                "declaration": {
+                  "type": "neuro:transform",
+                  "description": "niimath allineate_affine JSON: the 4x4 world-mm matrix (template to moving, plus its inverse), cost, engine and inputs. Replay with niimath <image> -applymat transform.json -master <template> <out>.",
+                  "delivery": {
+                    "mode": "core:result-dir",
+                    "path": "transform.json"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "step": "segment",
+          "checks": [],
+          "inputs": {
+            "t1": {
+              "path": "<local-path>",
+              "sha256": "fc0a069f742db7e4e8c5e90b56f8082e2e8cc38c0df8adc2082c094e98a6d94e",
+              "stamp": {
+                "size": 11416491,
+                "modified": 1792677793000000000,
+                "unix": {
+                  "device": 16777233,
+                  "inode": 52505076,
+                  "changed": [
+                    1792677793,
+                    188023210
+                  ]
+                }
+              },
+              "declaration": {
+                "formats": [
+                  "nii-gz"
+                ],
+                "resolution": [
+                  0.8999999761581421,
+                  0.9375,
+                  0.9375
+                ],
+                "space": "individual"
+              },
+              "spaceIdentity": "artifact-sha256:fc0a069f742db7e4e8c5e90b56f8082e2e8cc38c0df8adc2082c094e98a6d94e",
+              "inspection": {
+                "facts": {
+                  "formats": [
+                    "nii-gz"
+                  ],
+                  "resolution": [
+                    0.8999999761581421,
+                    0.9375,
+                    0.9375
+                  ],
+                  "space": "individual"
+                },
+                "inspector": "nifti-header-v1",
+                "niftiVersion": 1,
+                "qformCode": 1,
+                "sformCode": 1,
+                "spatialUnits": 2
+              },
+              "producer": {
+                "run": "run-20261022T140312Z-e07c",
+                "step": "convert",
+                "output": "volume",
+                "tool": "neuroflow.gallery.tools/dcm2niix",
+                "version": "0.1.0",
+                "declaration": {
+                  "type": "neuro:volume",
+                  "description": "Converted NIfTI volume (gzip), RAS-reoriented by dcm2niix.",
+                  "delivery": {
+                    "mode": "core:result-dir",
+                    "path": "volume.nii.gz"
+                  }
+                }
+              }
+            }
+          },
+          "outputs": {
+            "labels": {
+              "path": "<local-path>",
+              "sha256": "fd5617431b42644c9159096c8957fecbc94eb84b5e74820f3a3a9fbb314347c4",
+              "stamp": {
+                "size": 337577,
+                "modified": 1792677809260511224,
+                "unix": {
+                  "device": 16777233,
+                  "inode": 52505155,
+                  "changed": [
+                    1792677809,
+                    260622433
+                  ]
+                }
+              },
+              "declaration": {
+                "formats": [
+                  "nii-gz"
+                ],
+                "resolution": [
+                  1.0,
+                  1.0,
+                  1.0
+                ]
+              },
+              "spaceIdentity": "artifact-sha256:fd5617431b42644c9159096c8957fecbc94eb84b5e74820f3a3a9fbb314347c4",
+              "inspection": {
+                "facts": {
+                  "formats": [
+                    "nii-gz"
+                  ],
+                  "resolution": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ]
+                },
+                "inspector": "nifti-header-v1",
+                "niftiVersion": 1,
+                "qformCode": 0,
+                "sformCode": 2,
+                "spatialUnits": 2
+              },
+              "producer": {
+                "run": "run-20261022T140312Z-e07c",
+                "step": "segment",
+                "output": "labels",
+                "tool": "neurodesk.webapps/synthseg",
+                "version": "0.1.0",
+                "declaration": {
+                  "type": "neuro:label-map",
+                  "description": "SynthSeg label map (FreeSurfer label ids).",
+                  "delivery": {
+                    "mode": "core:result-dir",
+                    "path": "synthseg.nii.gz"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "step": "volumes",
+          "checks": [],
+          "inputs": {
+            "labels": {
+              "path": "<local-path>",
+              "sha256": "fd5617431b42644c9159096c8957fecbc94eb84b5e74820f3a3a9fbb314347c4",
+              "stamp": {
+                "size": 337577,
+                "modified": 1792677809260511224,
+                "unix": {
+                  "device": 16777233,
+                  "inode": 52505155,
+                  "changed": [
+                    1792677809,
+                    260622433
+                  ]
+                }
+              },
+              "declaration": {
+                "formats": [
+                  "nii-gz"
+                ],
+                "resolution": [
+                  1.0,
+                  1.0,
+                  1.0
+                ]
+              },
+              "spaceIdentity": "artifact-sha256:fd5617431b42644c9159096c8957fecbc94eb84b5e74820f3a3a9fbb314347c4",
+              "inspection": {
+                "facts": {
+                  "formats": [
+                    "nii-gz"
+                  ],
+                  "resolution": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ]
+                },
+                "inspector": "nifti-header-v1",
+                "niftiVersion": 1,
+                "qformCode": 0,
+                "sformCode": 2,
+                "spatialUnits": 2
+              },
+              "producer": {
+                "run": "run-20261022T140312Z-e07c",
+                "step": "segment",
+                "output": "labels",
+                "tool": "neurodesk.webapps/synthseg",
+                "version": "0.1.0",
+                "declaration": {
+                  "type": "neuro:label-map",
+                  "description": "SynthSeg label map (FreeSurfer label ids).",
+                  "delivery": {
+                    "mode": "core:result-dir",
+                    "path": "synthseg.nii.gz"
+                  }
+                }
+              }
+            },
+            "mask": {
+              "path": "<local-path>",
+              "sha256": "13f195212304d4e4c70a4e8fee48978c9f49bbc272b532dae7dd231c3fb3ee14",
+              "stamp": {
+                "size": 73201,
+                "modified": 1792677798206088739,
+                "unix": {
+                  "device": 16777233,
+                  "inode": 52505094,
+                  "changed": [
+                    1792677798,
+                    206088739
+                  ]
+                }
+              },
+              "declaration": {
+                "formats": [
+                  "nii-gz"
+                ],
+                "resolution": [
+                  0.8999999761581421,
+                  0.9375,
+                  0.9375
+                ],
+                "space": "individual"
+              },
+              "spaceIdentity": "artifact-sha256:13f195212304d4e4c70a4e8fee48978c9f49bbc272b532dae7dd231c3fb3ee14",
+              "inspection": {
+                "facts": {
+                  "formats": [
+                    "nii-gz"
+                  ],
+                  "resolution": [
+                    0.8999999761581421,
+                    0.9375,
+                    0.9375
+                  ],
+                  "space": "individual"
+                },
+                "inspector": "nifti-header-v1",
+                "niftiVersion": 1,
+                "qformCode": 1,
+                "sformCode": 1,
+                "spatialUnits": 2
+              },
+              "producer": {
+                "run": "run-20261022T140312Z-e07c",
+                "step": "strip",
+                "output": "brain_mask",
+                "tool": "neuroflow.gallery.tools/mindgrab",
+                "version": "0.1.0",
+                "declaration": {
+                  "type": "neuro:mask",
+                  "description": "Binary brain mask on the input grid.",
+                  "delivery": {
+                    "mode": "core:result-dir",
+                    "path": "brain_mask.nii.gz"
+                  }
+                }
+              }
+            }
+          },
+          "outputs": {
+            "volumes": {
+              "path": "<local-path>",
+              "sha256": "f58342f6a294b377b5a61e9e06a97586887076aae1909f3bbd546ea3f2a466d4",
+              "stamp": {
+                "size": 1077,
+                "modified": 1792677809653435407,
+                "unix": {
+                  "device": 16777233,
+                  "inode": 52505161,
+                  "changed": [
+                    1792677809,
+                    653435407
+                  ]
+                }
+              },
+              "declaration": {},
+              "spaceIdentity": "artifact-sha256:f58342f6a294b377b5a61e9e06a97586887076aae1909f3bbd546ea3f2a466d4",
+              "inspection": {
+                "facts": {},
+                "inspector": null,
+                "reason": "no inspector recognizes this encoding"
+              },
+              "producer": {
+                "run": "run-20261022T140312Z-e07c",
+                "step": "volumes",
+                "output": "volumes",
+                "tool": "neuroflow.gallery.tools/label-volumes",
+                "version": "0.1.0",
+                "declaration": {
+                  "type": "core:tabular",
+                  "description": "label, name, voxels, volume_ml.",
+                  "delivery": {
+                    "mode": "core:result-dir",
+                    "path": "volumes.tsv"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "neuroflow/session-trail": {
+      "source": "provenance.jsonl",
+      "activities": {
+        "act-1": [
+          {
+            "ts": "2026-10-22T14:03:13Z",
+            "step": "convert",
+            "tool": "neuroflow.gallery.tools/dcm2niix",
+            "agent": "dcm2niix v1.0.20260724",
+            "action": "cli",
+            "executable": "<local-path>",
+            "args": [
+              "-z",
+              "y",
+              "-f",
+              "volume",
+              "-b",
+              "y",
+              "-ba",
+              "y",
+              "-o",
+              "<local-path>",
+              "<local-path>"
+            ],
+            "durationMs": 385,
+            "outputs": {
+              "volume": "volume.nii.gz",
+              "sidecar": "volume.json"
+            }
+          }
+        ],
+        "act-2": [
+          {
+            "ts": "2026-10-22T14:03:18Z",
+            "step": "strip",
+            "tool": "neuroflow.gallery.tools/mindgrab",
+            "agent": "brainchop",
+            "action": "cli",
+            "executable": "<local-path>",
+            "args": [
+              "<local-path>",
+              "--skull-strip",
+              "--mask",
+              "<local-path>",
+              "--border",
+              "0",
+              "--no-optimize",
+              "-o",
+              "<local-path>"
+            ],
+            "durationMs": 4841,
+            "outputs": {
+              "brain": "brain.nii.gz",
+              "brain_mask": "brain_mask.nii.gz"
+            }
+          }
+        ],
+        "act-3": [
+          {
+            "ts": "2026-10-22T14:03:19Z",
+            "step": "register",
+            "tool": "neuroflow.gallery.tools/niimath-allineate",
+            "agent": "niimath v1.0.20260924",
+            "action": "cli",
+            "executable": "<local-path>",
+            "args": [
+              "<local-path>",
+              "-allineate",
+              "<local-path>",
+              "-cost",
+              "fast",
+              "-final",
+              "cubic",
+              "-savemat",
+              "<local-path>",
+              "<local-path>"
+            ],
+            "durationMs": 1283,
+            "outputs": {
+              "registered": "registered.nii.gz",
+              "transform": "transform.json"
+            }
+          }
+        ],
+        "act-4": [
+          {
+            "ts": "2026-10-22T14:03:29Z",
+            "step": "segment",
+            "tool": "neurodesk.webapps/synthseg",
+            "agent": "synthseg (native)",
+            "action": "neurodesk-native",
+            "executable": "<local-path>",
+            "args": [
+              "--i",
+              "<local-path>",
+              "--o",
+              "<local-path>",
+              "--force",
+              "--quiet"
+            ],
+            "outputs": {
+              "labels": "synthseg.nii.gz",
+              "report": "synthseg.json"
+            }
+          }
+        ],
+        "act-5": [
+          {
+            "ts": "2026-10-22T14:03:29Z",
+            "step": "volumes",
+            "tool": "neuroflow.gallery.tools/label-volumes",
+            "agent": "Python 3.12.12 + nibabel 5.4.0 + numpy 2.1.3",
+            "action": "python",
+            "executable": "<local-path>",
+            "args": [
+              "<local-path>"
+            ],
+            "entry": {
+              "kind": "function",
+              "module": "nf_label_volumes",
+              "name": "run"
+            },
+            "python": "3.12.12",
+            "packages": {
+              "nibabel": "5.4.0",
+              "numpy": "2.1.3"
+            },
+            "durationMs": 168,
+            "outputs": {
+              "volumes": "volumes.tsv"
+            }
+          }
+        ]
+      },
+      "unmatched": [],
+      "unparsed": 0
+    }
   }
 }
