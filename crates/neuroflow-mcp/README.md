@@ -143,7 +143,10 @@ registry so an agent can compose a pipeline.
    `result-file` (a path, or keys in `result.json`), `stdout-json`,
    `exit-code`, and `fixed-path`.
 4. `run.json` and `run.provenance.json` are written to the session. The MCP
-   client is recorded as an agent.
+   client is recorded as an agent. File entities and the executed
+   `workflow.json` carry SHA-256 checksums, and the tools' `provenance.jsonl`
+   lines are folded in under `extensions["neuroflow/session-trail"]`
+   (`docs/neuroflow-session-contract.md`).
 5. The run's work fingerprint (the workflow document, the documents of the
    tools it references, and the resolved inputs with the size and
    modification time of every input file or folder entry) is stored in

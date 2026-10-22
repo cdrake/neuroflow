@@ -36,6 +36,9 @@ marker=pathlib.Path(ctx['inputs']['marker']); marker.write_text('launched')
 shutil.copyfile(ctx['inputs']['image'], out/'image.bin')
 (out/'result.json').write_text(json.dumps({'image': 'image.bin'}))
 marker.with_suffix('.env').write_text(json.dumps({k: v for k, v in os.environ.items() if k.startswith('NEUROFLOW_INTERPRETER_')}))
+with open(pathlib.Path(os.environ['NEUROFLOW_SESSION'])/'provenance.jsonl', 'a') as trail:
+    trail.write(json.dumps({'ts': '2026-10-22T10:00:00Z', 'step': ctx['step'], 'tool': 'test/copy', 'action': 'copy',
+        'agent': 'copy.py@1.0.0', 'engine': 'python3', 'outputs': {'image': str(out/'image.bin')}}) + '\n')
 "#,
         )
         .unwrap();
@@ -209,6 +212,37 @@ fn valid_nifti_launches_and_keeps_measured_and_inherited_evidence() {
     )
     .unwrap();
     assert!(provenance["extensions"]["neuroflow/qualifiers"]["steps"].is_array());
+}
+
+#[test]
+fn provenance_checksums_files_and_the_workflow_and_folds_the_trail() {
+    use sha2::{Digest, Sha256};
+    let sha256 = |path: &Path| format!("{:x}", Sha256::digest(fs::read(path).unwrap()));
+    let f = Fixture::new();
+    let file = f.image("image.nii", false, 2, 1);
+    let registry = f.tool("copy", declaration(json!({})), declaration(json!({})));
+    let run = f.run(&registry, "copy", json!(file), "marker");
+    assert_eq!(run.status, "completed", "{}", run.structured);
+    let session = f.cfg.sessions_root.join(&run.run_id);
+    let provenance: Value =
+        serde_json::from_str(&fs::read_to_string(session.join("run.provenance.json")).unwrap()).unwrap();
+
+    assert_eq!(provenance["workflow"]["checksum"],
+        json!({ "algorithm": "sha256", "value": sha256(&session.join("workflow.json")) }));
+    let files: Vec<&Value> = provenance["entities"].as_array().unwrap().iter().filter(|e| e["path"].is_string()).collect();
+    assert_eq!(files.len(), 2, "the input and the copy: {}", provenance["entities"]);
+    for entity in files {
+        let path = Path::new(entity["path"].as_str().unwrap());
+        assert_eq!(entity["checksum"], json!({ "algorithm": "sha256", "value": sha256(path) }));
+    }
+
+    let trail = &provenance["extensions"]["neuroflow/session-trail"];
+    assert_eq!(provenance["activities"][0]["stepId"], "copy");
+    assert_eq!(trail["activities"]["act-1"][0]["engine"], "python3");
+    assert_eq!(trail["unparsed"], 0);
+    let reported: Vec<&Value> = provenance["agents"].as_array().unwrap().iter().filter(|a| a["name"] == "copy.py").collect();
+    assert_eq!(reported.len(), 1);
+    assert_eq!(reported[0]["version"], "1.0.0");
 }
 
 #[test]

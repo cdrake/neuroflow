@@ -1,54 +1,57 @@
-The workflow ran to completion and every requested number comes from the run outputs.
+I built a five-step workflow from the registered tools, fixed the two validation errors, and ran it on your data. Run `run-20261022T140312Z-e07c` completed.
 
-**Results** (run `run-20260928T154101Z-152f`)
+**Results (from the tool outputs):**
 
-| Quantity | Value |
+| Measure | Value |
 |---|---|
-| Left hippocampus | 4.747 mL (4747 voxels) |
-| Right hippocampus | 4.845 mL (4845 voxels) |
-| Brain-mask volume (mindgrab mask) | 1592.272 mL |
-| Registration cost function | `hel+cr` (the `fast` preset, engine `coreg_fast`, 12 DOF) |
-| Brain in MNI space | `neuroflow://runs/run-20260928T154101Z-152f/artifacts/register/transform` is the transform; the image is `neuroflow://runs/run-20260928T154101Z-152f/artifacts/register/registered` |
+| Left hippocampus (label 17) | **4.747 mL** (4,747 voxels) |
+| Right hippocampus (label 53) | **4.845 mL** (4,845 voxels) |
+| Total brain-mask volume (mindgrab) | **1592.272 mL** |
+| Registration cost function | **`fast`**, which niimath reports as **`hel+cr`** (Hellinger plus correlation ratio), 12-dof affine |
+| Brain in MNI space | **`neuroflow://runs/run-20261022T140312Z-e07c/artifacts/register/registered`** |
 
-The registered brain sits on the template grid: 182 x 218 x 182 voxels at 1 mm, LAS orientation, matching the MNI152 template. The SynthSeg label map covered 32 structures with a labeled total of 1600.359 mL. The DICOM sidecar confirms the input is a Siemens MAGNETOM Vida 3T MPRAGE T1w series.
+The MNI-space brain is on the template grid (182×218×182 at 1 mm, LAS), and its world matrix matches the template's (sform code 4). The 4×4 matrix is saved in the `transform` artifact; you can replay it on other images with `niimath -applymat`.
 
-**How the workflow is composed**
+**How it's put together:**
+- **Segmentation input:** SynthSeg runs on the full-head NIfTI from dcm2niix, not on the stripped brain, because the tool document says it expects a full-head image. The stripped brain goes only to registration, which matches your brain-only template.
+- **Skull-stripping tool:** I used mindgrab, which runs locally through the brainchop command-line tool. Neurodesk's brain-extraction tool was the other option.
+- **What the mask covers:** the brain-mask volume includes CSF inside the mask. Brain tissue alone totals 1240.882 mL, and SynthSeg's CSF label is 332.086 mL. All SynthSeg labels together total 1600.359 mL. Every structure's volume is in the `volumes` output (`volumes.tsv`).
+- **Two fixes before validation passed:** fixed values must be written as `{"constant": ...}` bindings. My first two tries used a bare string and then `{"value": ...}`, and validation rejected both.
 
-- `convert` runs dcm2niix on the DICOM folder to produce the full-head NIfTI and sidecar.
-- `strip` runs mindgrab on that volume to get the skull-stripped brain and binary mask.
-- `register` feeds the stripped brain and your skull-stripped MNI template to niimath -allineate with cubic resampling.
-- `segment` runs SynthSeg on the native full-head T1, because that tool's contract expects an unstripped image. Volumes are therefore measured in native space, not scaled by the affine.
-- `volumes` runs label-volumes on the SynthSeg labels with the mindgrab mask so the brain-mask volume is reported alongside the structures.
-
-Two validation passes failed before the third succeeded. Literal step inputs must be bindings with a single `constant` key, not bare values or `value` objects. Pre-built gallery workflows were not run. I only read one to learn the document syntax.
-
-**Workflow document as run**
+**Workflow document as run:**
 
 ```json
 {
   "neuroflow": "0.1.0",
   "kind": "workflow",
-  "id": "local/t1-dicom-mni-structure-volumes",
+  "id": "user.analysis/dicom-t1-strip-mni-synthseg-volumes",
   "version": "0.1.0",
-  "description": "DICOM T1 series to NIfTI (dcm2niix), skull-strip (mindgrab), affine registration of the stripped brain to a skull-stripped MNI152 template (niimath -allineate), SynthSeg whole-brain segmentation of the native full-head T1, and per-structure volumes in mL plus the brain-mask volume.",
+  "description": "DICOM T1 series to NIfTI (dcm2niix), skull-strip (mindgrab), affine-register the brain to a skull-stripped MNI152 template (niimath -allineate), segment the full-head T1 with SynthSeg, and measure every structure's volume in mL plus the brain-mask volume.",
   "inputs": {
     "dicom_dir": { "type": "neuro:dicom-folder", "description": "Folder holding one T1-weighted DICOM series." },
-    "template": { "type": "neuro:volume", "description": "Skull-stripped MNI152 T1 template (fixed image for the affine registration)." },
-    "cost": { "type": "core:string", "description": "niimath -allineate cost function.", "optional": true, "default": "fast",
-              "enum": ["fast", "fastx", "fasthel", "fastcr", "hel", "nmi", "lpc", "lpa", "ls"] },
-    "mode": { "type": "core:string", "description": "SynthSeg mode.", "optional": true, "default": "default", "enum": ["default", "fast"] }
+    "template": { "type": "neuro:volume", "description": "Skull-stripped MNI152 T1 template." },
+    "cost": {
+      "type": "core:string",
+      "description": "Registration cost function.",
+      "optional": true,
+      "default": "fast",
+      "enum": ["fast", "fastx", "fasthel", "fastcr", "hel", "nmi", "lpc", "lpa", "ls"]
+    }
   },
   "steps": {
     "convert": {
-      "tool": "neuroflow.gallery.tools/dcm2niix", "stage": "ingest",
-      "inputs": { "dicom_dir": { "ref": "inputs.dicom_dir" }, "anonymize": { "constant": true } }
+      "tool": "neuroflow.gallery.tools/dcm2niix",
+      "stage": "ingest",
+      "inputs": { "dicom_dir": { "ref": "inputs.dicom_dir" } }
     },
     "strip": {
-      "tool": "neuroflow.gallery.tools/mindgrab", "stage": "explore",
-      "inputs": { "t1": { "ref": "steps.convert.outputs.volume" }, "border": { "constant": 0 } }
+      "tool": "neuroflow.gallery.tools/mindgrab",
+      "stage": "explore",
+      "inputs": { "t1": { "ref": "steps.convert.outputs.volume" } }
     },
     "register": {
-      "tool": "neuroflow.gallery.tools/niimath-allineate", "stage": "explore",
+      "tool": "neuroflow.gallery.tools/niimath-allineate",
+      "stage": "explore",
       "inputs": {
         "moving": { "ref": "steps.strip.outputs.brain" },
         "template": { "ref": "inputs.template" },
@@ -57,26 +60,33 @@ Two validation passes failed before the third succeeded. Literal step inputs mus
       }
     },
     "segment": {
-      "tool": "neurodesk.webapps/synthseg", "stage": "explore",
-      "inputs": { "t1": { "ref": "steps.convert.outputs.volume" }, "mode": { "ref": "inputs.mode" } }
+      "tool": "neurodesk.webapps/synthseg",
+      "stage": "explore",
+      "inputs": {
+        "t1": { "ref": "steps.convert.outputs.volume" },
+        "mode": { "constant": "default" }
+      }
     },
     "volumes": {
-      "tool": "neuroflow.gallery.tools/label-volumes", "stage": "publish",
-      "inputs": { "labels": { "ref": "steps.segment.outputs.labels" }, "mask": { "ref": "steps.strip.outputs.brain_mask" } }
+      "tool": "neuroflow.gallery.tools/label-volumes",
+      "stage": "publish",
+      "inputs": {
+        "labels": { "ref": "steps.segment.outputs.labels" },
+        "mask": { "ref": "steps.strip.outputs.brain_mask" }
+      }
     }
   },
   "outputs": {
-    "t1":         { "type": "neuro:volume",    "ref": "steps.convert.outputs.volume" },
-    "sidecar":    { "type": "core:json",       "ref": "steps.convert.outputs.sidecar" },
-    "brain":      { "type": "neuro:volume",    "ref": "steps.strip.outputs.brain" },
-    "brain_mask": { "type": "neuro:mask",      "ref": "steps.strip.outputs.brain_mask" },
-    "brain_mni":  { "type": "neuro:volume",    "ref": "steps.register.outputs.registered" },
-    "to_mni":     { "type": "neuro:transform", "ref": "steps.register.outputs.transform" },
-    "labels":     { "type": "neuro:label-map", "ref": "steps.segment.outputs.labels" },
-    "volumes":    { "type": "core:tabular",    "ref": "steps.volumes.outputs.volumes" },
-    "table":      { "type": "core:json",       "ref": "steps.volumes.outputs.table" }
+    "t1": { "type": "neuro:volume", "ref": "steps.convert.outputs.volume" },
+    "brain": { "type": "neuro:volume", "ref": "steps.strip.outputs.brain" },
+    "brain_mask": { "type": "neuro:mask", "ref": "steps.strip.outputs.brain_mask" },
+    "brain_mni": { "type": "neuro:volume", "ref": "steps.register.outputs.registered" },
+    "transform": { "type": "neuro:transform", "ref": "steps.register.outputs.transform" },
+    "labels": { "type": "neuro:label-map", "ref": "steps.segment.outputs.labels" },
+    "volumes": { "type": "core:tabular", "ref": "steps.volumes.outputs.volumes" },
+    "table": { "type": "core:json", "ref": "steps.volumes.outputs.table" }
   }
 }
 ```
 
-Run inputs were your DICOM folder, your MNI template, `cost` = `fast`, and `mode` = `default`. Full per-structure volumes are in the TSV at `neuroflow://runs/run-20260928T154101Z-152f/artifacts/volumes/volumes`, and the provenance record is at `neuroflow://runs/run-20260928T154101Z-152f/provenance`.
+Run inputs: `dicom_dir` = `~/Data/DICOMs/5_anat-T1w`, `template` = `~/Data/templates/MNI152_T1_1mm_brain.nii.gz`, `cost` = `"fast"`. The provenance record is at `neuroflow://runs/run-20261022T140312Z-e07c/provenance`.

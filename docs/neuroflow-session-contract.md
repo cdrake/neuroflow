@@ -87,9 +87,32 @@ Timestamps are ISO-8601 UTC. Tools MUST append, never rewrite.
 
 When a run finishes, the runtime folds `provenance.jsonl` into a single
 conformant **provenance document** (`kind: "provenance"`,
-`neuroflow-spec/schemas/0.1/provenance.schema.json`) — the durable, W3C
-PROV-aligned artifact that embeds in BIDS-Derivatives `GeneratedBy[]` and
-RO-Crate. Each line maps to PROV:
+`neuroflow-spec/schemas/0.1/provenance.schema.json`), the durable, W3C
+PROV-aligned artifact intended to embed in BIDS-Derivatives `GeneratedBy[]` and
+RO-Crate.
+
+`neuroflow-mcp` builds the document's activities and entities from its own step
+records and writes `run.provenance.json` to the session:
+
+- One Activity per step, with the tool as its Agent; the runtime and the MCP
+  client are Agents too.
+- One Entity per workflow input, step input and step output. A file entity
+  carries its `size` and a SHA-256 `checksum`; a directory entity has neither.
+- `workflow.checksum` is the SHA-256 of the session's `workflow.json`, the
+  document as executed.
+- Each `provenance.jsonl` line is kept verbatim under
+  `extensions["neuroflow/session-trail"].activities[<activity id>]`, matched by
+  its `step`. The schema closes activities, so fields such as `engine` or
+  `contractSha256` stay in the line. A line naming no step of the run goes in
+  `unmatched`, and a line that does not parse (cut short when a step was
+  killed) is counted in `unparsed`.
+- Each distinct line `agent` becomes an Agent with `role: "reported-by-tool"`.
+  `name@version` is split at the last `@` (a scoped name such as
+  `@niivue/brainchop@4.2.0` keeps its leading `@`); any other string is the
+  name.
+
+A runtime without step records of its own can fold the trail alone, mapping
+each line to PROV:
 
 | `provenance.jsonl` line | provenance document |
 | --- | --- |

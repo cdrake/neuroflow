@@ -215,6 +215,11 @@ def main() -> int:
     check(prov["kind"] == "provenance" and prov["run"]["status"] == "completed", "provenance document")
     check(any(a["name"] == "smoke-test" for a in prov["agents"]), "MCP client recorded as an agent")
     check(len(prov["activities"]) == 2, "one activity per step")
+    check(prov["workflow"].get("checksum", {}).get("algorithm") == "sha256", "workflow checksum", prov["workflow"])
+    files = [e for e in prov["entities"] if "size" in e]
+    check(files and all("checksum" in e for e in files), "file entities carry checksums", files)
+    trail = prov["extensions"].get("neuroflow/session-trail", {})
+    check(trail.get("activities") and trail.get("unparsed") == 0, "tool trail folded in", trail)
     prov_path = tmp / "runs" / sc2["runId"] / "run.provenance.json"
     print(f"  (provenance written to {prov_path})")
 

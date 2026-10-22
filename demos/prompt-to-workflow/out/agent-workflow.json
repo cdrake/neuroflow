@@ -1,9 +1,9 @@
 {
   "neuroflow": "0.1.0",
   "kind": "workflow",
-  "id": "local/t1-dicom-mni-structure-volumes",
+  "id": "user.analysis/dicom-t1-strip-mni-synthseg-volumes",
   "version": "0.1.0",
-  "description": "DICOM T1 series to NIfTI (dcm2niix), skull-strip (mindgrab), affine registration of the stripped brain to a skull-stripped MNI152 template (niimath -allineate), SynthSeg whole-brain segmentation of the native full-head T1, and per-structure volumes in mL plus the brain-mask volume.",
+  "description": "DICOM T1 series to NIfTI (dcm2niix), skull-strip (mindgrab), affine-register the brain to a skull-stripped MNI152 template (niimath -allineate), segment the full-head T1 with SynthSeg, and measure every structure's volume in mL plus the brain-mask volume.",
   "inputs": {
     "dicom_dir": {
       "type": "neuro:dicom-folder",
@@ -11,11 +11,11 @@
     },
     "template": {
       "type": "neuro:volume",
-      "description": "Skull-stripped MNI152 T1 template (fixed image for the affine registration)."
+      "description": "Skull-stripped MNI152 T1 template."
     },
     "cost": {
       "type": "core:string",
-      "description": "niimath -allineate cost function.",
+      "description": "Registration cost function.",
       "optional": true,
       "default": "fast",
       "enum": [
@@ -29,16 +29,6 @@
         "lpa",
         "ls"
       ]
-    },
-    "mode": {
-      "type": "core:string",
-      "description": "SynthSeg mode.",
-      "optional": true,
-      "default": "default",
-      "enum": [
-        "default",
-        "fast"
-      ]
     }
   },
   "steps": {
@@ -48,9 +38,6 @@
       "inputs": {
         "dicom_dir": {
           "ref": "inputs.dicom_dir"
-        },
-        "anonymize": {
-          "constant": true
         }
       }
     },
@@ -60,9 +47,6 @@
       "inputs": {
         "t1": {
           "ref": "steps.convert.outputs.volume"
-        },
-        "border": {
-          "constant": 0
         }
       }
     },
@@ -92,7 +76,7 @@
           "ref": "steps.convert.outputs.volume"
         },
         "mode": {
-          "ref": "inputs.mode"
+          "constant": "default"
         }
       }
     },
@@ -114,10 +98,6 @@
       "type": "neuro:volume",
       "ref": "steps.convert.outputs.volume"
     },
-    "sidecar": {
-      "type": "core:json",
-      "ref": "steps.convert.outputs.sidecar"
-    },
     "brain": {
       "type": "neuro:volume",
       "ref": "steps.strip.outputs.brain"
@@ -130,7 +110,7 @@
       "type": "neuro:volume",
       "ref": "steps.register.outputs.registered"
     },
-    "to_mni": {
+    "transform": {
       "type": "neuro:transform",
       "ref": "steps.register.outputs.transform"
     },

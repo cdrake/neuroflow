@@ -119,14 +119,14 @@ Input: series 5 only (T1w magnitude, 500 × 600 × 416 at 0.35 mm). Template: `M
 
 | Step | Tool | Time |
 |---|---|---|
-| convert | `neuroflow.gallery.tools/dcm2niix` | 6 s |
-| strip | `neuroflow.gallery.tools/mindgrab` (brainchop CLI) | 10 s |
-| register | `neuroflow.gallery.tools/niimath-allineate` | 5 s |
-| segment | `neurodesk.webapps/synthseg` | 9 s |
+| convert | `neuroflow.gallery.tools/dcm2niix` | 5 s |
+| strip | `neuroflow.gallery.tools/mindgrab` (brainchop CLI) | 9 s |
+| register | `neuroflow.gallery.tools/niimath-allineate` | 4 s |
+| segment | `neurodesk.webapps/synthseg` | 6 s |
 | volumes | `neuroflow.gallery.tools/label-volumes` | < 1 s |
-| **total** | `run-20261007T132051Z-0321`, status **completed** | **30 s** |
+| **total** | `run-20261022T140410Z-6b3e`, status **completed** | **24 s** |
 
-Outputs: `t1`, `brain`, `brain_mask`, `brain_mni`, `to_mni`, `labels`, `volumes` (TSV + JSON table).
+Outputs: `t1`, `brain`, `brain_mask`, `brain_mni`, `to_mni`, `labels`, `volumes` (TSV + JSON table). The recorded run was replayed through the same MCP server by a small stdio client (`crlab-demo`); its provenance carries a sha256 for every file and folds each tool's trail.
 
 ---
 
@@ -263,7 +263,7 @@ The MCP client is recorded too: `claude-code 2.1.291` composed and issued the ca
 
 ## Takeaways and follow-ups
 
-- **It works on real Siemens XA data**, end to end, from the original compressed DICOM, headless in 30 s. The desktop host adds the human-in-the-loop steps with the same runtime and records.
+- **It works on real Siemens XA data**, end to end, from the original compressed DICOM, headless in 24 s. The desktop host adds the human-in-the-loop steps with the same runtime and records.
 - **Ship a newer `dcm2niix` in the BIDSvue release.** The April 2026 sidecar cannot read enhanced multi-frame JPEG Lossless; the May and July builds can.
 - **Quality gates belong in the workflow.** A registration-sanity check (mask overlap with the template) before SynthSeg would have flagged this run instead of printing volumes.
 - **Prefer an MPRAGE/MP2RAGE for the volumes pipeline**; keep the EP3D T1w for what it was acquired for.

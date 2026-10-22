@@ -61,23 +61,26 @@ provides.
 
 ## The recorded run
 
-Agent: Claude Fable 5.1 through `claude -p`, 19 turns, 123 s wall clock (the
-pipeline itself took 14 s), about $1.35.
+Agent: Claude Opus 5.5 through `claude -p` (Claude Code 2.1.307), 18 turns,
+97 s of agent time and 1:41 wall clock (the pipeline itself took 17 s), about
+$0.60.
 
 What the agent did, from `out/tool-calls.jsonl`:
 
-1. `neuroflow_list` for runnable documents, then `neuroflow_inspect` on the
-   DICOM folder (192 files, one series) and on the template (182×218×182, 1 mm).
-2. `neuroflow_describe` on each candidate tool, and on the gallery's
-   `brain-volumes` workflow to learn the document syntax.
+1. `neuroflow_list` for the tools, then `neuroflow_inspect` on the DICOM folder
+   and on the template.
+2. `neuroflow_describe` on each candidate tool (including Neurodesk's
+   `brain-extraction`, which it passed over for mindgrab), and on the
+   gallery's `brain-volumes` workflow to learn the document syntax.
 3. `neuroflow_validate` three times. The first two failed on literal step
-   inputs (`"anonymize": true`, then `{"value": true}`); the diagnostics named
-   the pointer and the rule ("Binding must contain exactly one of ref or
-   constant"), and the third attempt used `{ "constant": true }`.
+   inputs (`"interpolation": "cubic"`, then `{"value": "cubic"}`); the
+   diagnostics named the pointer and the rule ("Binding must contain exactly
+   one of ref or constant"), and the third attempt used
+   `{ "constant": "cubic" }`.
 4. `neuroflow_run` with the inline workflow, the DICOM folder and template as
-   inputs, `cost` = `fast`, `mode` = `default`.
-5. `neuroflow_inspect` on the registered brain and the transform artifact
-   before answering, so the reported grid and cost function come from the run.
+   inputs, `cost` = `fast`.
+5. `neuroflow_inspect` on the transform and the registered brain before
+   answering, so the reported grid and cost function come from the run.
 
 The workflow it composed:
 
@@ -93,36 +96,43 @@ Results reported (all from `out/answer.md`, matching `outputs/volumes/volumes.ts
 | --- | --- |
 | Left hippocampus | 4.747 mL |
 | Right hippocampus | 4.845 mL |
-| Brain mask (mindgrab) | 1592.3 mL |
+| Brain mask (mindgrab) | 1592.272 mL |
 | Registration cost | `hel+cr` (`fast`), 12 DOF |
-| Brain in MNI space | `neuroflow://runs/run-20260928T154101Z-152f/artifacts/register/registered`, 182×218×182 at 1 mm |
+| Brain in MNI space | `neuroflow://runs/run-20261022T140312Z-e07c/artifacts/register/registered`, 182×218×182 at 1 mm |
 
 The agent also noted, unprompted, that SynthSeg must see the unstripped T1 (the
 tool description says so) and therefore measured volumes in native space rather
 than on the MNI-resampled brain.
 
+`out/run.provenance.json` carries a sha256 for every file the run used or
+produced and for the workflow document, and folds each tool's
+`provenance.jsonl` lines under its activity (`extensions."neuroflow/session-trail"`),
+so the executable versions the tools reported (dcm2niix v1.0.20260724,
+niimath v1.0.20260924, …) appear as agents in the record.
+
 ## The same prompt under Codex
 
-`NEUROFLOW_DEMO_AGENT=codex demos/prompt-to-workflow/run.sh` ran the identical
-prompt through `codex exec` (codex-cli 0.155.1), with results in `out-codex/`.
-Nothing in the server, the tool documents or the prompt changed; only the
-client did.
+`NEUROFLOW_DEMO_AGENT=codex demos/prompt-to-workflow/run.sh -m gpt-6-sol` ran
+the identical prompt through `codex exec` (codex-cli 0.155.1, model
+`gpt-6-sol`), with results in `out-codex/`. Nothing in the server, the tool
+documents or the prompt changed; only the client did. The `-m` flag is passed
+through to Codex; it is only needed when the model in your Codex config is not
+available to your account.
 
-- 10 tool calls: `neuroflow_list`, five `neuroflow_describe` (one per tool),
-  `neuroflow_validate` twice, `neuroflow_run` once, and `neuroflow_inspect`
-  on the transform artifact.
-- The first validation failed on one rule: the agent had exposed the
-  registration cost as a workflow output referencing a workflow input, and
-  outputs may only reference step outputs. It dropped that output and read
-  the cost from the transform artifact after the run instead.
-- The composed workflow has the same five steps as the Claude run, with
-  different step names (`skull_strip`, `register_affine`, `measure`); the
-  cost is a workflow input with an enum, `anonymize`, `border`,
-  `interpolation` and `mode` are constants.
+- 13 tool calls in 1:26 wall clock (the pipeline took 14 s):
+  `neuroflow_list`, five `neuroflow_describe` (one per tool),
+  `neuroflow_inspect` on both inputs, `neuroflow_list` for workflows and
+  `neuroflow_describe` on the gallery's `dicom-t1-mni-volumes` (it read the
+  reference workflow but did not run it), then `neuroflow_validate` once,
+  `neuroflow_run` once, and `neuroflow_inspect` on the transform artifact.
+- The first validation passed with no diagnostics.
+- The composed workflow has the same five steps as the Claude run, with the
+  last step named `measure`; `anonymize`, `border`, `cost`, `interpolation`
+  and `mode` are constants.
 - It reported left/right hippocampus 4.747/4.845 mL, brain mask 1592.272 mL,
   cost `hel+cr`, and the MNI-space brain URI, all matching the run's
-  `volumes.tsv` and `transform.json`. Token usage: 292 k input (261 k
-  cached), 5.1 k output.
+  `volumes.tsv` and `transform.json`. Token usage: 375 k input (332 k
+  cached), 2.9 k output.
 
 An earlier Codex run of the same prompt (not the one recorded here) called
 `neuroflow_run` twice with a byte-identical document and inputs: the second
