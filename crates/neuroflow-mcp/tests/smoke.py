@@ -237,7 +237,7 @@ def main() -> int:
     check((pkg / "code" / "workflow.json").is_file() and (pkg / f"{sc2['runId']}_prov.json").is_file(),
           "workflow and provenance record packaged")
     listed_files = exp["structuredContent"]["files"]
-    check(all(f.get("verified") is not False for f in listed_files if "sha256" in f and f["output"] != "provenance"),
+    check(all(f.get("verified") is True for f in listed_files if "sha256" in f and f["output"] != "provenance"),
           "every copied output verified against its checksum", listed_files)
     bad = c.call("neuroflow_export", {"runId": "../nope"})
     check(bad.get("isError") is True, "export rejects a bad run id", bad["content"][0]["text"])

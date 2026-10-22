@@ -22,7 +22,8 @@ pub const BIDS_VERSION: &str = "1.10.0";
 pub const EXPORT_DIR: &str = "derivatives";
 
 /// Write `<session>/derivatives/` for a completed run and describe what it holds.
-/// An earlier export of the same run is replaced.
+/// An earlier export of the same run is replaced, but only once the new one is
+/// complete: a failed export leaves it as it was.
 pub fn export_run(sessions_root: &Path, run_id: &str) -> Result<Value, String> {
     if run_id.is_empty() || !run_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
         return Err(format!("not a run id: {run_id:?}"));
@@ -62,8 +63,13 @@ fn write_package(prov: &Value, session: &Path, root: &Path, run_id: &str) -> Res
     let mut files = Vec::new();
     for (key, id) in prov["outputs"].as_object().into_iter().flatten() {
         let entity = id.as_str().and_then(|id| entities.get(id)).ok_or_else(|| format!("output {key}: no entity {id}"))?;
-        // `name.0` for an element of an array output.
-        let dir = root.join(key.replace('.', "/"));
+        // `name.0` for an element of an array output. Output names are not
+        // constrained by the schema, so keep each part a plain folder name.
+        let parts: Vec<&str> = key.split('.').collect();
+        if parts.iter().any(|p| p.is_empty() || *p == ".." || p.contains(['/', '\\', ':'])) {
+            return Err(format!("output {key:?} is not a usable folder name"));
+        }
+        let dir = root.join(parts.join("/"));
         fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
         if let Some(src) = entity.get("path").and_then(Value::as_str) {
             let src = Path::new(src);

@@ -306,6 +306,56 @@ fn export_packages_a_run_as_verified_bids_derivatives() {
 }
 
 #[test]
+fn export_verifies_folder_outputs_and_writes_embedded_values() {
+    let f = Fixture::new();
+    let session = f.cfg.sessions_root.join("run-synthetic");
+    let folder = f.root.join("bids");
+    fs::create_dir_all(folder.join("sub-01/anat")).unwrap();
+    fs::write(folder.join("sub-01/anat/T1w.nii"), "volume").unwrap();
+    fs::write(folder.join("dataset_description.json"), "{}").unwrap();
+    fs::create_dir_all(&session).unwrap();
+    fs::write(session.join("workflow.json"), "{}").unwrap();
+    let write_record = |outputs: Value| {
+        let record = json!({
+            "run": { "status": "completed" },
+            "workflow": { "id": "test/synthetic", "version": "1.0.0" },
+            "outputs": outputs,
+            "entities": [
+                { "id": "ent-1", "path": folder.to_string_lossy(), "checksum": {
+                    "algorithm": "sha256",
+                    "value": crate::qualifiers::tree_hash(&folder, &HashMap::new()).unwrap() } },
+                { "id": "ent-2", "value": { "count": 3 } }
+            ]
+        });
+        fs::write(session.join("run.provenance.json"), record.to_string()).unwrap();
+    };
+    write_record(json!({ "dataset": "ent-1", "stats": "ent-2" }));
+
+    let exported = crate::export::export_run(&f.cfg.sessions_root, "run-synthetic").unwrap();
+    let package = session.join("derivatives");
+    assert_eq!(fs::read(package.join("dataset/bids/sub-01/anat/T1w.nii")).unwrap(), b"volume");
+    let files = exported["files"].as_array().unwrap();
+    assert!(files.iter().any(|e| e["path"] == "dataset/bids" && e["verified"] == true), "{exported}");
+    let stats: Value = serde_json::from_str(&fs::read_to_string(package.join("stats/stats.json")).unwrap()).unwrap();
+    assert_eq!(stats, json!({ "count": 3 }));
+
+    fs::write(folder.join("sub-01/anat/T1w.nii"), "volumf").unwrap();
+    let err = crate::export::export_run(&f.cfg.sessions_root, "run-synthetic").unwrap_err();
+    assert!(err.contains("dataset changed since the run"), "{err}");
+    // The earlier export is left as it was, and no staging folder remains.
+    assert_eq!(fs::read(package.join("dataset/bids/sub-01/anat/T1w.nii")).unwrap(), b"volume");
+    assert!(!session.join("derivatives.partial").exists());
+    fs::remove_dir_all(&package).unwrap();
+
+    for key in ["../up", "a..b", "/abs", ".0"] {
+        write_record(json!({ key: "ent-2" }));
+        let err = crate::export::export_run(&f.cfg.sessions_root, "run-synthetic").unwrap_err();
+        assert!(err.contains("not a usable folder name"), "{key}: {err}");
+        assert!(!f.cfg.sessions_root.join("up").exists() && !package.exists());
+    }
+}
+
+#[test]
 fn export_refuses_a_run_that_did_not_complete() {
     let f = Fixture::new();
     let file = f.image("image.nii", false, 0, 1);

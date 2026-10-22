@@ -153,8 +153,8 @@ derivatives/
 `outputDataset.pipelineName` when it sets one), with the run id and the
 `code/workflow.json` checksum in its `Description`; each distinct software
 agent follows. Every copied file and folder is hashed again and compared with
-its recorded checksum, and the export fails, leaving nothing behind, when
-anything changed after the run. Output files keep their tool-given names: a run
+its recorded checksum. When anything changed after the run the export fails,
+writes nothing, and leaves an earlier export of the run as it was. Output files keep their tool-given names: a run
 carries no subject or session labels, so the folder is derivatives-shaped, not
 a dataset the BIDS validator will pass.
 
