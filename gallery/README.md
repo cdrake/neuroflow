@@ -165,7 +165,10 @@ The uiApp tools are served by NeuroFlow-aware builds of the reference apps:
   out `neuroflow/headless-ingest` (#18's branch) or `neuroflow/window-ingest`. The
   `bidsvue` window needs `neuroflow/window-ingest`, which has both the window mode
   and the CLI.
-- NeuroVue — a `neurovue` checkout on branch `neuroflow-aware`
+- NeuroVue — a `neurovue` checkout of [cdrake/neurovue](https://github.com/cdrake/neurovue)
+  on `main` (the NeuroFlow session support is merged there). It has no headless
+  mode yet, so it only runs as the interactive uiApp; see
+  [neurovue#13](https://github.com/cdrake/neurovue/issues/13).
 
 Both honor the session contract: read `$NEUROFLOW_SESSION/context.json`, write
 outputs to `$NEUROFLOW_OUTPUT_DIR`, and append to `provenance.jsonl`.
