@@ -29,7 +29,7 @@
     },
     "review_state": {
       "type": "core:json",
-      "description": "Viewer state captured when the user finished review.",
+      "description": "Viewer state captured when the user finished review. Not written by NeuroVue yet (cdrake/neurovue#13).",
       "optional": true,
       "delivery": {
         "mode": "core:result-file",
@@ -55,7 +55,7 @@
       "kind": "uiApp",
       "app": "neurovue",
       "repo": "neurovue",
-      "branch": "neuroflow-aware",
+      "branch": "main",
       "command": "bun",
       "args": ["tauri", "dev"],
       "completion": "outputsAvailable",
@@ -78,7 +78,7 @@
         "At least one of bids_dir or volumes is given."
       ],
       "effects": [
-        "When the user saves, writes correction.patch.json and the review state to the output directory, plus a provenance line."
+        "When the user saves, writes correction.patch.json to the output directory, plus a provenance line. review.state.json is declared but NeuroVue does not write it yet (cdrake/neurovue#13)."
       ],
       "examples": [
         {
