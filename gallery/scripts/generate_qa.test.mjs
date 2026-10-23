@@ -84,10 +84,17 @@ test('a missing volume fails the step', () => {
 test('a volume too large to embed becomes a reduced-resolution preview scene', () => {
   const a = nifti('big.nii');
   // 64 bytes of uint8 against a 32-byte cap: 2x2x2 float32 blocks fit.
-  const { r, out, prov } = run('big', { volumes: [a, nifti('small.nii')] }, { NEUROFLOW_QA_MAX_EMBED_BYTES: '32' });
+  const { r, out, prov } = run('big', { volumes: [a, nifti('small.nii')], max_embed_mb: 32 / 2 ** 20 });
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stderr, /big\.nii is too large to embed; showing a 1\/2 resolution preview/);
+  assert.equal(prov.at(-1).maxEmbedMb, 32 / 2 ** 20);
   assert.deepEqual(prov.at(-1).previews, [{ scene: 'big.html', factor: 2 }, { scene: 'small.html', factor: 2 }]);
   offlineScene(readFileSync(join(out, 'big.html'), 'utf8'));
   assert.match(readFileSync(join(out, 'index.html'), 'utf8'), />big\.nii \(1\/2 resolution preview\)<\/a>/);
+});
+
+test('max_embed_mb past what a scene can hold fails the step', () => {
+  const { r } = run('cap', { volumes: [nifti('cap.nii')], max_embed_mb: 1000 });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /max_embed_mb must be above 0 and at most 360/);
 });

@@ -1,0 +1,123 @@
+{
+  "$schema": "../../../neuroflow-spec/schemas/0.1/tool.schema.json",
+  "neuroflow": "0.1.0",
+  "kind": "tool",
+  "id": "neuroflow.gallery.tools/bids-tidy-names",
+  "version": "0.1.0",
+  "description": "Headless Python script that gives BIDS names to the series HeuDiConv marked __dup-NN. It reads each sidecar: a bold series described as _SBRef becomes sbref, magnitude and phase of one acquisition get part-mag and part-phase, and repeats of one protocol get run numbers in SeriesNumber order. scans.tsv and IntendedFor follow the new names, and sourcedata is renamed to match. The tidy dataset is written as a new folder whose unchanged files are hard links to the input.",
+  "inputs": {
+    "bids_dir": {
+      "type": "neuro:bids-dataset",
+      "description": "BIDS dataset from HeuDiConv, possibly with __dup-NN series."
+    }
+  },
+  "outputs": {
+    "bids_dir": {
+      "type": "neuro:bids-dataset",
+      "description": "The dataset with the duplicate series renamed; HeuDiConv's .heudiconv state is left out.",
+      "delivery": {
+        "mode": "core:result-dir",
+        "path": "bids"
+      }
+    },
+    "summary": {
+      "type": "core:json",
+      "description": "renamed [{from, to, why}], unresolved groups, and remainingDup: series still carrying a __dup marker.",
+      "delivery": {
+        "mode": "core:result-file"
+      }
+    }
+  },
+  "outputDelivery": {
+    "default": "core:result-dir"
+  },
+  "extensions": {
+    "niivue/ui": {
+      "block": {
+        "id": "bids-tidy-names",
+        "label": "Tidy BIDS Names",
+        "description": "Rename HeuDiConv __dup series from their sidecars.",
+        "category": "Processing",
+        "stage": "ingest",
+        "exposedFields": []
+      }
+    },
+    "neuroflow/launch": {
+      "kind": "script",
+      "interpreter": "node",
+      "script": "../scripts/python_tool.mjs",
+      "completion": "exit",
+      "interactive": false,
+      "contract": "../../docs/neuroflow-session-contract.md",
+      "requirements": [
+        "Python 3.10+ (standard library only); set NEUROFLOW_PYTHON to choose the interpreter"
+      ],
+      "description": "python_tool.mjs finds a Python interpreter, then calls nf_bids_tidy.run(bids_dir), which writes the tidy dataset to $NEUROFLOW_OUTPUT_DIR/bids and appends a provenance line listing the renames."
+    },
+    "neuroflow/python": {
+      "interpreter": {
+        "env": "NEUROFLOW_PYTHON",
+        "paths": [
+          "{{toolDir}}/.venv/bin/python",
+          "~/.venvs/neuroflow/bin/python"
+        ],
+        "minVersion": "3.10"
+      },
+      "requirements": [],
+      "singleThread": true,
+      "entry": {
+        "kind": "function",
+        "module": "nf_bids_tidy",
+        "name": "run",
+        "args": [
+          "{{bids_dir}}"
+        ],
+        "result": "summary"
+      },
+      "outputs": {
+        "bids_dir": "bids"
+      }
+    },
+    "neuroflow/usage": {
+      "useWhen": [
+        "A HeuDiConv dataset has __dup-NN series, typically magnitude/phase reconstructions, SBRef images or repeated protocols.",
+        "Run it between heudiconv-reproin and any tool that expects valid BIDS names."
+      ],
+      "avoidWhen": [
+        {
+          "when": "A person should decide the names: review the session interactively instead.",
+          "instead": "neuroflow.gallery.tools/bidsvue"
+        }
+      ],
+      "preconditions": [
+        "bids_dir has JSON sidecars with SeriesNumber, SeriesDescription and ImageType (dcm2niix writes them)."
+      ],
+      "effects": [
+        "Writes a new dataset to <output dir>/bids; the input is not changed. Unchanged files are hard links, so the copy costs little disk on one filesystem.",
+        "Series still sharing a name after the rules keep HeuDiConv's names; the step log and provenance list them."
+      ],
+      "duration": {
+        "typicalSeconds": 2,
+        "basis": "One 4.5 GB session with 32 series, hard-linked on one APFS volume."
+      },
+      "examples": [
+        {
+          "title": "Tidy a HeuDiConv dataset",
+          "inputs": {
+            "bids_dir": "<bids_dir>"
+          }
+        }
+      ],
+      "failures": [
+        {
+          "match": {
+            "contains": "no Python interpreter found"
+          },
+          "meaning": "No Python environment was found for the tool.",
+          "remedy": "Set NEUROFLOW_PYTHON to a Python 3.10+ interpreter.",
+          "retry": "after-fix"
+        }
+      ]
+    }
+  }
+}

@@ -30,12 +30,14 @@ const TOOL_ID = 'neuroflow.gallery.tools/niivue-qa-page'
 const STEP = process.env.NEUROFLOW_STEP ?? 'qa'
 
 /**
- * Largest image, in bytes, embedded at full resolution. A scene carries the volume
- * gzipped and base64-encoded in one string, and V8 strings stop at about 512 MiB,
- * so a 0.5 mm whole-head T1w (about 500 MB as float32) can't be embedded as is.
- * Larger volumes are embedded as a block-averaged preview that fits.
+ * Default for inputs.max_embed_mb: the largest image embedded at full resolution.
+ * Larger ones are embedded as a block-averaged preview that fits. A scene carries
+ * the volume gzipped and base64-encoded in one string, and V8 strings stop at about
+ * 512 MiB, so the cap can't go past 360 MiB (a 0.5 mm whole-head float32 T1w is
+ * about 500 MB).
  */
-const MAX_EMBED_BYTES = Number(process.env.NEUROFLOW_QA_MAX_EMBED_BYTES) || 128 * 1024 * 1024
+const DEFAULT_EMBED_MB = 128
+const MAX_EMBED_MB = 360
 
 const nowIso = () => new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')
 
@@ -183,7 +185,7 @@ ${items}
  * spatial axis, small enough for `maxBytes`, with the affine scaled to match.
  * Returns null when the volume already fits.
  */
-function previewNifti(vol, maxBytes = MAX_EMBED_BYTES) {
+function previewNifti(vol, maxBytes) {
   if (vol.img.byteLength <= maxBytes) return null
   const [nx, ny, nz] = vol.hdr.dims.slice(1, 4).map((d) => Math.max(d, 1))
   const frames = vol.hdr.dims.slice(4, 1 + Math.max(vol.hdr.dims[0], 3)).reduce((a, d) => a * Math.max(d, 1), 1)
@@ -239,7 +241,7 @@ function previewNifti(vol, maxBytes = MAX_EMBED_BYTES) {
  * Write the offline page with @niivue/nv-ext-save-html. Returns the scene files
  * written, or throws when the extension, NiiVue or esbuild can't be used.
  */
-async function writeExtensionPages(volumePaths, title, out) {
+async function writeExtensionPages(volumePaths, title, out, maxBytes) {
   const [{ default: NiiVue }, { generateHTML }] = await Promise.all([
     import('@niivue/niivue'),
     import('@niivue/nv-ext-save-html'),
@@ -251,7 +253,7 @@ async function writeExtensionPages(volumePaths, title, out) {
     const label = basename(p)
     let nv = new NiiVue({})
     await nv.loadVolumes([{ url: new File([readFileSync(p)], label), name: label }])
-    const preview = previewNifti(nv.volumes[0])
+    const preview = previewNifti(nv.volumes[0], maxBytes)
     if (preview) {
       console.error(`generate_qa: ${label} is too large to embed; showing a 1/${preview.factor} resolution preview`)
       nv = new NiiVue({})
@@ -332,16 +334,18 @@ async function main() {
   const title = ctx.inputs?.title ?? 'NeuroFlow QA'
   const out = outputDir(ctx)
   const volumePaths = resolveVolumes(ctx)
+  const embedMb = Number(ctx.inputs?.max_embed_mb ?? DEFAULT_EMBED_MB)
+  if (!(embedMb > 0 && embedMb <= MAX_EMBED_MB)) throw new Error(`max_embed_mb must be above 0 and at most ${MAX_EMBED_MB}`)
   const missing = volumePaths.filter((p) => !existsSync(p))
   if (missing.length) throw new Error(`volume(s) not found: ${missing.join(', ')}`)
   if (!volumePaths.length) throw new Error('no volumes: set inputs.volumes (or inputs.volumesDir)')
 
   let entry
   try {
-    const { scenes, niivue } = await writeExtensionPages(volumePaths, title, out)
+    const { scenes, niivue } = await writeExtensionPages(volumePaths, title, out, embedMb * 1024 * 1024)
     entry = { mode: 'nv-ext-save-html', niivue, scenes: scenes.map((s) => s.page) }
     const previews = scenes.filter((s) => s.previewFactor).map((s) => ({ scene: s.page, factor: s.previewFactor }))
-    if (previews.length) entry.previews = previews
+    if (previews.length) Object.assign(entry, { maxEmbedMb: embedMb, previews })
   } catch (err) {
     console.error(`generate_qa: save-html extension unavailable (${err.message ?? err}); writing the esm.sh page`)
     writeFallbackPage(volumePaths, title, out)

@@ -16,6 +16,7 @@ planes for one reviewed asset, not filter settings.
 """
 from __future__ import annotations
 
+import fnmatch
 import json
 import shutil
 from pathlib import Path
@@ -28,11 +29,12 @@ from neuroflow import session
 FWHM_TO_SIGMA = 1.0 / 2.354820045
 
 
-def find_volumes(bids_dir: Path) -> list[Path]:
+def find_volumes(bids_dir: Path, match: str | None = None) -> list[Path]:
     """The anatomical volumes: NIfTI files in ``anat/`` folders of the raw dataset.
 
     ``func``/``fmap`` series (often 4D), ``sourcedata``, ``derivatives`` and
     hidden converter state such as HeuDiConv's ``.heudiconv`` are left out.
+    ``match`` (a glob on the file name, e.g. ``*part-mag*``) narrows the set.
     """
     vols: list[Path] = []
     for pat in ("*.nii", "*.nii.gz"):
@@ -41,7 +43,8 @@ def find_volumes(bids_dir: Path) -> list[Path]:
         parts = v.relative_to(bids_dir).parts[:-1]
         return (bool(parts) and parts[-1] == "anat"
                 and not any(p.startswith(".") or p in ("sourcedata", "derivatives") for p in parts))
-    return sorted(v for v in vols if v.is_file() and anatomical(v))
+    return sorted(v for v in vols if v.is_file() and anatomical(v)
+                  and (not match or fnmatch.fnmatchcase(v.name, match)))
 
 
 def gaussian_smooth(data: np.ndarray, sigma: list[float]) -> np.ndarray:
@@ -118,7 +121,8 @@ def summarize_patch(patch) -> dict | None:
 
 
 def run(
-    bids_dir: Path, operation: str = "smooth", amount: float = 3.0, correction_patch=None
+    bids_dir: Path, operation: str = "smooth", amount: float = 3.0, correction_patch=None,
+    match: str | None = None,
 ) -> dict:
     s = session()
     patch = summarize_patch(correction_patch)
@@ -132,7 +136,9 @@ def run(
     operation = str(operation or "smooth")
     amount = float(amount if amount is not None else 3.0)
 
-    volumes = find_volumes(Path(bids_dir))
+    volumes = find_volumes(Path(bids_dir), match or None)
+    if match and not volumes:
+        raise ValueError(f"no anatomical volume matches {match!r}")
     written: list[str] = []
     modes: dict[str, str] = {}
     for src in volumes:
@@ -144,7 +150,7 @@ def run(
 
     extra = {"correctionPatch": patch} if patch else {}
     s.provenance(
-        action="filter", operation=operation, amount=amount, inputCount=len(volumes),
+        action="filter", operation=operation, amount=amount, match=match or None, inputCount=len(volumes),
         modes=modes, outputs={"filtered_volumes": [f"{out.name}/{n}" for n in written]}, **extra,
     )
     s.log(f"wrote {len(written)} volume(s) to {out}")

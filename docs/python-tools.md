@@ -21,11 +21,12 @@ user to act (install a package, create an environment, point at a different
 Python) is detected up front and reported in one message, never discovered as
 a traceback three steps into a workflow and never papered over.
 
-Three gallery tools run on it:
+Four gallery tools run on it:
 
 | Tool | Module | Needs |
 | --- | --- | --- |
-| `python-volume-filter` (smooth, threshold, z-score or passthrough over a BIDS dataset) | `python/nf_filter_volumes.py` | nibabel, numpy; scipy optional (NumPy convolution otherwise) |
+| `bids-tidy-names` (replace heudiconv `__dup-NN` names with `part`, `sbref` and `run` entities; hardlinks the rest) | `python/nf_bids_tidy.py` | nothing beyond the standard library |
+| `python-volume-filter` (smooth, threshold, z-score or passthrough over anatomical volumes, optionally only those matching `match`) | `python/nf_filter_volumes.py` | nibabel, numpy; scipy optional (NumPy convolution otherwise) |
 | `label-volumes` (per-structure mL from a SynthSeg label map, plus inline totals) | `python/nf_label_volumes.py` | nibabel, numpy |
 | `dti-fit` (FA and MD maps from a DWI series and gradient table) | `python/nf_dti_fit.py` | nibabel, numpy, dipy 1.9+ |
 

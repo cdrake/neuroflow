@@ -6,7 +6,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -399,4 +399,94 @@ test('gallery python-volume-filter: filters a dataset, falls back to NumPy smoot
   const bad = runGalleryTool('python-volume-filter.tool.json', { bids_dir: join(root, 'bids'), operation: 'invert' });
   assert.equal(bad.status, 1);
   assert.match(bad.stderr, /ValueError: unknown operation 'invert'/);
+});
+
+test('gallery python-volume-filter: takes anat volumes only and smooths a 4D one in space', { skip: !hasNibabel && 'nibabel not importable by python3' }, () => {
+  const ds = join(root, 'bids4d');
+  for (const [rel, dim] of [['sub-01/anat/sub-01_T1w.nii.gz', [4, 3, 2, 3]], ['sub-01/func/sub-01_task-rest_bold.nii.gz', [4, 3, 2, 5]],
+    ['sub-01/fmap/sub-01_phasediff.nii.gz', [4, 3, 2]], ['derivatives/x/sub-01/anat/sub-01_T1w.nii.gz', [4, 3, 2]],
+    ['.heudiconv/01/anat/sub-01_T1w.nii.gz', [4, 3, 2]]]) {
+    mkdirSync(dirname(join(ds, rel)), { recursive: true });
+    writeNifti(join(ds, rel), dim, [1.5, 2, 2.5], Array.from({ length: dim.reduce((a, b) => a * b) }, (_, i) => i));
+  }
+  const r = runGalleryTool('python-volume-filter.tool.json', { bids_dir: ds, operation: 'smooth', amount: 4 });
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(Object.keys(r.prov.find((p) => p.action === 'filter').modes), ['sub-01_T1w.nii.gz']);
+  const peek = spawnSync(python3, ['-c', `import nibabel; print(nibabel.load(${JSON.stringify(join(r.outputDir, 'filtered', 'sub-01_T1w.nii.gz'))}).shape)`], { encoding: 'utf8' });
+  assert.equal(peek.stdout.trim(), '(4, 3, 2, 3)');  const none = runGalleryTool('python-volume-filter.tool.json', { bids_dir: ds, match: '*part-mag*' });
+  assert.equal(none.status, 1);
+  assert.match(none.stderr, /no anatomical volume matches '\*part-mag\*'/);
+});
+
+test('gallery bids-tidy-names: renames HeuDiConv __dup series from their sidecars', () => {
+  const src = join(root, 'heudi');
+  const ses = join(src, 'sub-01', 'ses-1');
+  const series = [
+    // [folder, heudiconv stem, SeriesNumber, SeriesDescription, ImageType part, dims]
+    ['anat', 'acq-mp_T1w__dup-01', 5, 'anat-T1w_acq-mp', 'M', [4, 3, 2]],
+    ['anat', 'acq-mp_T1w__dup-02', 6, 'anat-T1w_acq-mp', 'P', [4, 3, 2]],
+    ['anat', 'acq-mp_T1w__dup-03', 9, 'anat-T1w_acq-mp', 'M', [4, 3, 2]],
+    ['anat', 'acq-mp_T1w', 10, 'anat-T1w_acq-mp', 'P', [4, 3, 2]],
+    ['anat', 'acq-mp_dir-REV_T1w', 11, 'anat-T1w_dir-REV_acq-mp', 'M', [4, 3, 2]],
+    ['func', 'task-rest_run-01_sbref', 15, 'func-bold_task-rest_run-1_SBRef', 'MAGNITUDE', [4, 3, 2]],
+    ['func', 'task-rest_run-01_bold__dup-01', 16, 'func-bold_task-rest_run-1_SBRef_Pha', 'PHASE', [4, 3, 2]],
+    ['func', 'task-rest_run-01_bold__dup-02', 17, 'func-bold_task-rest_run-1', 'MAGNITUDE', [4, 3, 2, 4]],
+    ['func', 'task-rest_run-01_bold', 18, 'func-bold_task-rest_run-1_Pha', 'PHASE', [4, 3, 2, 4]],
+    ['func', 'task-rest_run-02_bold__echo-1_dup-01', 20, 'func-bold_task-rest_run-2', 'MAGNITUDE', [4, 3, 2, 4]],
+    ['func', 'task-rest_run-02_echo-1_bold', 21, 'func-bold_task-rest_run-2', 'MAGNITUDE', [4, 3, 2, 4]],
+  ];
+  const name = (stem) => `sub-01_ses-1_${stem}`;
+  const scans = ['filename\tacq_time'];
+  for (const [folder, stem, number, desc, part, dim] of series) {
+    mkdirSync(join(ses, folder), { recursive: true });
+    mkdirSync(join(src, 'sourcedata', 'sub-01', 'ses-1', folder), { recursive: true });
+    writeNifti(join(ses, folder, `${name(stem)}.nii.gz`), dim);
+    writeFileSync(join(ses, folder, `${name(stem)}.json`), JSON.stringify({ SeriesNumber: number, SeriesDescription: desc, ImageType: ['ORIGINAL', 'PRIMARY', part] }));
+    writeFileSync(join(src, 'sourcedata', 'sub-01', 'ses-1', folder, `${name(stem)}.dicom.tgz`), 'dicom');
+    scans.push(`${folder}/${name(stem)}.nii.gz\t2026-07-09T10:00:00`);
+  }
+  mkdirSync(join(ses, 'fmap'), { recursive: true });
+  writeFileSync(join(ses, 'fmap', 'sub-01_ses-1_phasediff.json'), JSON.stringify({
+    IntendedFor: ['ses-1/func/sub-01_ses-1_task-rest_run-01_bold.nii.gz', 'ses-1/func/sub-01_ses-1_task-rest_run-01_bold__dup-02.nii.gz'],
+  }));
+  writeFileSync(join(ses, 'sub-01_ses-1_scans.tsv'), scans.join('\n') + '\n');
+  writeFileSync(join(src, 'dataset_description.json'), '{"Name": "t", "BIDSVersion": "1.8.0"}');
+  mkdirSync(join(src, '.heudiconv', '01'), { recursive: true });
+  writeFileSync(join(src, '.heudiconv', '01', 'state.txt'), 'x');
+
+  const r = runGalleryTool('bids-tidy-names.tool.json', { bids_dir: src });
+  assert.equal(r.status, 0, r.stderr);
+  const out = join(r.outputDir, 'bids');
+  const ls = (folder) => readdirSync(join(out, 'sub-01', 'ses-1', folder)).filter((f) => f.endsWith('.nii.gz')).sort();
+  assert.deepEqual(ls('anat'), [
+    'sub-01_ses-1_acq-mpDirREV_T1w.nii.gz',
+    'sub-01_ses-1_acq-mp_run-01_part-mag_T1w.nii.gz', 'sub-01_ses-1_acq-mp_run-01_part-phase_T1w.nii.gz',
+    'sub-01_ses-1_acq-mp_run-02_part-mag_T1w.nii.gz', 'sub-01_ses-1_acq-mp_run-02_part-phase_T1w.nii.gz',
+  ]);
+  assert.deepEqual(ls('func'), [
+    'sub-01_ses-1_task-rest_run-01_part-mag_bold.nii.gz', 'sub-01_ses-1_task-rest_run-01_part-mag_sbref.nii.gz',
+    'sub-01_ses-1_task-rest_run-01_part-phase_bold.nii.gz', 'sub-01_ses-1_task-rest_run-01_part-phase_sbref.nii.gz',
+    // Two magnitude series under one run: nothing in the sidecars tells them apart, so HeuDiConv's names stay.
+    'sub-01_ses-1_task-rest_run-02_bold__echo-1_dup-01.nii.gz', 'sub-01_ses-1_task-rest_run-02_echo-1_bold.nii.gz',
+  ]);
+  const summary = JSON.parse(r.result).summary;
+  assert.deepEqual(summary.unresolved, ['func/sub-01_ses-1_task-rest_run-02_echo-1_bold: 2 series share a run']);
+  assert.deepEqual(summary.remainingDup, ['func/sub-01_ses-1_task-rest_run-02_bold__echo-1_dup-01']);
+  const sbref = summary.renamed.find((x) => x.from.endsWith('run-01_bold__dup-01.nii.gz'));
+  assert.equal(sbref.to, 'sub-01/ses-1/func/sub-01_ses-1_task-rest_run-01_part-phase_sbref.nii.gz');
+  assert.deepEqual(sbref.why, ['sbref: SeriesDescription marks a single-band reference', 'part-phase: ImageType']);
+  // Sidecars, sourcedata, scans.tsv and IntendedFor follow the new names.
+  assert.ok(existsSync(join(out, 'sub-01', 'ses-1', 'func', 'sub-01_ses-1_task-rest_run-01_part-phase_sbref.json')));
+  assert.ok(existsSync(join(out, 'sourcedata', 'sub-01', 'ses-1', 'func', 'sub-01_ses-1_task-rest_run-01_part-phase_sbref.dicom.tgz')));
+  const tsv = readFileSync(join(out, 'sub-01', 'ses-1', 'sub-01_ses-1_scans.tsv'), 'utf8');
+  assert.match(tsv, /^anat\/sub-01_ses-1_acq-mp_run-01_part-mag_T1w\.nii\.gz\t/m);
+  assert.doesNotMatch(tsv, /acq-mp_T1w__dup/);
+  assert.deepEqual(JSON.parse(readFileSync(join(out, 'sub-01', 'ses-1', 'fmap', 'sub-01_ses-1_phasediff.json'), 'utf8')).IntendedFor, [
+    'ses-1/func/sub-01_ses-1_task-rest_run-01_part-phase_bold.nii.gz', 'ses-1/func/sub-01_ses-1_task-rest_run-01_part-mag_bold.nii.gz',
+  ]);
+  assert.ok(!existsSync(join(out, '.heudiconv')), 'converter state left out');
+  // The input is untouched; unchanged files are hard links to it.
+  assert.ok(existsSync(join(ses, 'anat', 'sub-01_ses-1_acq-mp_T1w__dup-01.nii.gz')));
+  assert.ok(statSync(join(out, 'dataset_description.json')).nlink > 1);
+  assert.equal(r.prov.find((p) => p.action === 'tidy-names').renamed, 9);
 });

@@ -15,6 +15,7 @@ node gallery/validate.mjs        # or: npm run validate:gallery
 | `bidsvue.tool.json` | `…tools/bidsvue` | ingest | uiApp | `bids_dir` (result-dir) |
 | `bidsvue-ingest.tool.json` | `…tools/bidsvue-ingest` | ingest | script → app CLI (BIDSvue) | `bids_dir` (result-dir) |
 | `heudiconv-reproin.tool.json` | `…tools/heudiconv-reproin` | ingest | script → native CLI | `bids_dir` (result-dir) |
+| `bids-tidy-names.tool.json` | `…tools/bids-tidy-names` | ingest | script → Python | `bids_dir` (result-dir), `summary` (JSON) |
 | `neurovue.tool.json` | `…tools/neurovue` | explore | uiApp | `correction_patch`, `review_state` (result-file) |
 | `python-volume-filter.tool.json` | `…tools/python-volume-filter` | explore | script → Python | `filtered_volumes` (result-dir) |
 | `niivue-qa-page.tool.json` | `…tools/niivue-qa-page` | publish | script | `qa_html` (result-file `index.html`) |
@@ -37,8 +38,8 @@ niimath `-allineate` (the lightNIIng tool set), plus HeuDiConv with its reproin
 heuristic. The **MATLAB/Octave** tool (a NIfTI header
 reader) runs through `scripts/matlab_tool.mjs` from
 `extensions["neuroflow/matlab"]`, which also covers SPM batches; see
-`../docs/matlab-tools.md`. The three **Python** tools (volume filter, label
-volumes, DTI fit) run through `scripts/python_tool.mjs` from
+`../docs/matlab-tools.md`. The four **Python** tools (BIDS name tidy, volume
+filter, label volumes, DTI fit) run through `scripts/python_tool.mjs` from
 `extensions["neuroflow/python"]`, which checks the declared packages before
 launch; see `../docs/python-tools.md`. **bidsvue-ingest** is BIDSvue's import pipeline without the
 window: `scripts/app_cli.mjs` runs `bun run neuroflow-ingest` (BIDSvue's package
@@ -75,6 +76,16 @@ prompt.
 `filter-qa.neuroflow.json` is fully headless (filter, then QA page), so the
 MCP server (`crates/neuroflow-mcp`) can run it end to end.
 
+`dicom-reproin-filter-qa.neuroflow.json` is the headless path from a ReproIn
+DICOM session: HeuDiConv → BIDS name tidy → filter → QA page. The tidy step
+replaces heudiconv's `__dup-NN` names with BIDS entities (`part-mag`/`part-phase`
+from ImageType, `sbref` for single-band references, `run-NN` in SeriesNumber
+order, non-anat entities such as `dir` folded into `acq`) and updates sidecars,
+`scans.tsv` and `IntendedFor`. How much data goes downstream is the caller's
+choice: `match` picks which volumes the filter takes, and `max_embed_mb` caps
+each embedded QA scene (larger volumes become block-averaged previews). An agent
+building the run should ask the user for both on a large session.
+
 `dicom-ingest-review-publish.neuroflow.json` chains all four tools:
 
 ```
@@ -95,8 +106,8 @@ Reference implementations the script-tools point at:
   `nf_driver.py` for function entries, maps outputs, appends provenance with the
   Python and package versions. `python/neuroflow.py` is the stdlib helper that
   gives tool code the session as an object; `python/nf_filter_volumes.py`,
-  `python/nf_label_volumes.py` and `python/nf_dti_fit.py` (DIPY tensor fit) are
-  the gallery's tools on it. `python_tool.test.mjs` covers the adapter and the
+  `python/nf_label_volumes.py`, `python/nf_dti_fit.py` (DIPY tensor fit) and
+  `python/nf_bids_tidy.py` (stdlib only) are the gallery's tools on it. `python_tool.test.mjs` covers the adapter and the
   first two; `dti_fit.test.mjs` covers the DIPY tool when dipy is importable
   (`npm run test:gallery`). See `../docs/python-tools.md`.
 - `generate_qa.mjs` — builds an offline QA page with `@niivue/nv-ext-save-html`:
