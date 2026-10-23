@@ -708,6 +708,8 @@ pub fn is_type_compatible(source_type: &str, input_type: &str) -> bool {
         array_element_type(input_type),
     ) {
         (Some(source), Some(input)) => is_type_compatible(source, input),
+        // A single value fills a one-element array input.
+        (None, Some(input)) => is_type_compatible(source_type, input),
         _ => false,
     }
 }
@@ -1019,6 +1021,18 @@ mod tests {
     }
 
     #[test]
+    fn a_single_volume_fills_an_array_input() {
+        let (workflow, mut tools) = strip_segment_workflow("steps.strip.outputs.brain_volume");
+        tools[1]["inputs"]["brain"]["type"] = serde_json::json!("core:array<neuro:volume>");
+        let report = validate_workflow_value_with_tools(&workflow, Some(&tools));
+        assert!(report.ok, "{report:?}");
+
+        tools[1]["inputs"]["brain"]["type"] = serde_json::json!("core:array<neuro:mask>");
+        let report = validate_workflow_value_with_tools(&workflow, Some(&tools));
+        assert!(!report.ok, "a volume is not a mask: {report:?}");
+    }
+
+    #[test]
     fn coercion_table_matches_typescript_rules() {
         assert!(is_type_compatible("neuro:statmap", "neuro:volume"));
         assert!(is_type_compatible(
@@ -1026,6 +1040,10 @@ mod tests {
             "core:array<neuro:volume>"
         ));
         assert!(!is_type_compatible("neuro:volume", "neuro:mask"));
+        assert!(is_type_compatible("neuro:volume", "core:array<neuro:volume>"));
+        assert!(is_type_compatible("neuro:mask", "core:array<neuro:volume>"));
+        assert!(!is_type_compatible("neuro:volume", "core:array<neuro:mask>"));
+        assert!(!is_type_compatible("core:array<neuro:volume>", "neuro:volume"));
     }
 
     #[test]
