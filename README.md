@@ -56,6 +56,9 @@ Build the Rust/WASM package:
 npm run wasm:build
 ```
 
+The build remaps host paths out of the binary, so the same rustc, wasm-bindgen
+and wasm-opt versions give byte-identical `src/wasm/` output on any machine.
+
 Run Rust checks:
 
 ```bash
