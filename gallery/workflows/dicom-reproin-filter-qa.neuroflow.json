@@ -1,0 +1,150 @@
+{
+  "$schema": "../../../neuroflow-spec/schemas/0.1/workflow.schema.json",
+  "neuroflow": "0.1.0",
+  "kind": "workflow",
+  "id": "neuroflow.gallery/dicom-reproin-filter-qa",
+  "version": "0.1.0",
+  "description": "Headless DICOM-to-QA pipeline for ReproIn-named sessions: convert with HeuDiConv's reproin heuristic, give the __dup series BIDS names from their sidecars, filter the anatomical volumes, and publish a NiiVue QA page. match and max_embed_mb decide how much is filtered and embedded.",
+  "inputs": {
+    "dicom_dir": {
+      "type": "neuro:dicom-folder",
+      "description": "DICOM session whose series names follow ReproIn."
+    },
+    "operation": {
+      "type": "core:string",
+      "description": "Filter operation to apply.",
+      "optional": true,
+      "default": "smooth",
+      "enum": [
+        "smooth",
+        "threshold",
+        "zscore",
+        "passthrough"
+      ]
+    },
+    "amount": {
+      "type": "core:number",
+      "description": "Operation magnitude (FWHM mm for smooth, intensity for threshold).",
+      "optional": true,
+      "default": 3
+    },
+    "match": {
+      "type": "core:string",
+      "description": "Optional glob on the file name that picks which anatomical volumes to filter and show (e.g. *part-mag*); all of them when unset.",
+      "optional": true
+    },
+    "max_embed_mb": {
+      "type": "core:number",
+      "description": "Largest volume, in MiB, embedded in the QA page at full resolution (at most 360); larger ones become reduced-resolution previews.",
+      "optional": true,
+      "default": 128
+    },
+    "title": {
+      "type": "core:string",
+      "description": "Heading shown on the QA page.",
+      "optional": true,
+      "default": "ReproIn QA"
+    }
+  },
+  "steps": {
+    "convert": {
+      "tool": "neuroflow.gallery.tools/heudiconv-reproin",
+      "stage": "ingest",
+      "inputs": {
+        "dicom_dir": {
+          "ref": "inputs.dicom_dir"
+        }
+      }
+    },
+    "tidy": {
+      "tool": "neuroflow.gallery.tools/bids-tidy-names",
+      "stage": "ingest",
+      "inputs": {
+        "bids_dir": {
+          "ref": "steps.convert.outputs.bids_dir"
+        }
+      }
+    },
+    "filter": {
+      "tool": "neuroflow.gallery.tools/python-volume-filter",
+      "stage": "explore",
+      "inputs": {
+        "bids_dir": {
+          "ref": "steps.tidy.outputs.bids_dir"
+        },
+        "operation": {
+          "ref": "inputs.operation"
+        },
+        "amount": {
+          "ref": "inputs.amount"
+        },
+        "match": {
+          "ref": "inputs.match"
+        }
+      }
+    },
+    "qa": {
+      "tool": "neuroflow.gallery.tools/niivue-qa-page",
+      "stage": "publish",
+      "inputs": {
+        "volumes": {
+          "ref": "steps.filter.outputs.filtered_volumes"
+        },
+        "title": {
+          "ref": "inputs.title"
+        },
+        "max_embed_mb": {
+          "ref": "inputs.max_embed_mb"
+        }
+      }
+    }
+  },
+  "outputs": {
+    "bids_dir": {
+      "type": "neuro:bids-dataset",
+      "ref": "steps.tidy.outputs.bids_dir"
+    },
+    "filtered_volumes": {
+      "type": "core:array<neuro:volume>",
+      "ref": "steps.filter.outputs.filtered_volumes"
+    },
+    "qa_html": {
+      "type": "core:file",
+      "ref": "steps.qa.outputs.qa_html"
+    }
+  },
+  "extensions": {
+    "neuroflow/mcp": {
+      "title": "ReproIn DICOM to filtered QA page",
+      "maxWaitMs": 3600000
+    },
+    "neuroflow/usage": {
+      "useWhen": [
+        "A DICOM session follows ReproIn and you want a filtered, browsable QA page in one headless run."
+      ],
+      "avoidWhen": [
+        {
+          "when": "The BIDS dataset already exists: filter and publish it directly.",
+          "instead": "neuroflow.gallery/filter-qa"
+        }
+      ],
+      "preconditions": [
+        "HeuDiConv with dcm2niix (heudiconv on PATH or HEUDICONV set), and Python 3.10+ with nibabel and numpy.",
+        "Disk use and page size grow with the session. On a large or high-resolution session, if the user has not said, ask which volumes to keep (match) and how large the page may be (max_embed_mb) before running."
+      ],
+      "duration": {
+        "typicalSeconds": 900,
+        "basis": "One 0.5 mm T1w session with 8 anatomical and 24 functional series, all anatomical volumes smoothed."
+      },
+      "examples": [
+        {
+          "title": "Smooth and review only the magnitude T1w images",
+          "inputs": {
+            "dicom_dir": "<dicom_dir>",
+            "match": "*part-mag*"
+          }
+        }
+      ]
+    }
+  }
+}

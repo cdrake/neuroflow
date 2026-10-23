@@ -15,6 +15,12 @@
       "description": "Heading shown on the QA page.",
       "optional": true,
       "default": "NeuroFlow QA"
+    },
+    "max_embed_mb": {
+      "type": "core:number",
+      "description": "Largest volume, in MiB of image data, embedded at full resolution (at most 360); larger ones are embedded as a block-averaged preview at 1/2, 1/3, ... resolution that fits, and the page says so.",
+      "optional": true,
+      "default": 128
     }
   },
   "outputs": {
@@ -38,7 +44,10 @@
         "description": "Render a shareable QA page with NiiVue saveHTML.",
         "category": "Output",
         "stage": "publish",
-        "exposedFields": ["title"]
+        "exposedFields": [
+          "title",
+          "max_embed_mb"
+        ]
       }
     },
     "neuroflow/launch": {
@@ -48,7 +57,11 @@
       "completion": "exit",
       "interactive": false,
       "contract": "../../docs/neuroflow-session-contract.md",
-      "requirements": ["@niivue/niivue", "@niivue/nv-ext-save-html", "esbuild"],
+      "requirements": [
+        "@niivue/niivue",
+        "@niivue/nv-ext-save-html",
+        "esbuild"
+      ],
       "saveApi": "generateHTML / saveHTML (@niivue/nv-ext-save-html)",
       "description": "Reads $NEUROFLOW_SESSION/context.json, loads each of inputs.volumes into a headless NiiVue, and writes its scene with generateHTML into $NEUROFLOW_OUTPUT_DIR. The standalone NiiVue bundle the scenes embed is built with esbuild on first use and cached in node_modules/.cache/neuroflow. If the extension can't be used, it writes a page that loads NiiVue from esm.sh beside copies of the volumes, and says so on stderr."
     },
@@ -64,7 +77,8 @@
         }
       ],
       "preconditions": [
-        "Runs inside a NeuroFlow session."
+        "Runs inside a NeuroFlow session.",
+        "Each scene embeds its volume, so the page grows with the input. With many or high-resolution volumes, if the user has not said what they need, ask: fewer volumes, smaller previews (max_embed_mb), or full resolution."
       ],
       "effects": [
         "Writes index.html, plus one scene file per volume when there are several, to the output directory.",

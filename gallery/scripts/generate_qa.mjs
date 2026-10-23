@@ -29,6 +29,16 @@ import { fileURLToPath } from 'node:url'
 const TOOL_ID = 'neuroflow.gallery.tools/niivue-qa-page'
 const STEP = process.env.NEUROFLOW_STEP ?? 'qa'
 
+/**
+ * Default for inputs.max_embed_mb: the largest image embedded at full resolution.
+ * Larger ones are embedded as a block-averaged preview that fits. A scene carries
+ * the volume gzipped and base64-encoded in one string, and V8 strings stop at about
+ * 512 MiB, so the cap can't go past 360 MiB (a 0.5 mm whole-head float32 T1w is
+ * about 500 MB).
+ */
+const DEFAULT_EMBED_MB = 128
+const MAX_EMBED_MB = 360
+
 const nowIso = () => new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')
 
 function loadContext() {
@@ -171,10 +181,67 @@ ${items}
 }
 
 /**
+ * A float32 NIfTI-1 of `vol` averaged over blocks of `factor` voxels on each
+ * spatial axis, small enough for `maxBytes`, with the affine scaled to match.
+ * Returns null when the volume already fits.
+ */
+function previewNifti(vol, maxBytes) {
+  if (vol.img.byteLength <= maxBytes) return null
+  const [nx, ny, nz] = vol.hdr.dims.slice(1, 4).map((d) => Math.max(d, 1))
+  const frames = vol.hdr.dims.slice(4, 1 + Math.max(vol.hdr.dims[0], 3)).reduce((a, d) => a * Math.max(d, 1), 1)
+  let factor = 2
+  const size = (f) => Math.ceil(nx / f) * Math.ceil(ny / f) * Math.ceil(nz / f) * frames * 4
+  while (size(factor) > maxBytes) factor++
+  const [mx, my, mz] = [nx, ny, nz].map((d) => Math.ceil(d / factor))
+  const slope = vol.hdr.scl_slope || 1
+  const inter = vol.hdr.scl_inter || 0
+  const data = new Float32Array(mx * my * mz * frames)
+  const count = new Uint32Array(mx * my * mz)
+  for (let t = 0; t < frames; t++) {
+    const src = t * nx * ny * nz
+    const dst = t * mx * my * mz
+    if (t === 0) count.fill(0)
+    for (let z = 0; z < nz; z++) {
+      for (let y = 0; y < ny; y++) {
+        const row = src + (z * ny + y) * nx
+        const out = ((Math.floor(z / factor) * my) + Math.floor(y / factor)) * mx
+        for (let x = 0; x < nx; x++) {
+          const v = Math.floor(x / factor) + out
+          data[dst + v] += vol.img[row + x] * slope + inter
+          if (t === 0) count[v]++
+        }
+      }
+    }
+    for (let v = 0; v < count.length; v++) data[dst + v] /= count[v]
+  }
+  // Voxel centres move from the corner of each block to its middle.
+  const a = vol.hdr.affine
+  const srow = [0, 1, 2].map((r) => [
+    a[r][0] * factor, a[r][1] * factor, a[r][2] * factor,
+    a[r][3] + ((factor - 1) / 2) * (a[r][0] + a[r][1] + a[r][2]),
+  ])
+  const hdr = Buffer.alloc(352)
+  hdr.writeInt32LE(348, 0)
+  const ndim = frames > 1 ? 4 : 3
+  ;[ndim, mx, my, mz, frames, 1, 1, 1].forEach((v, i) => hdr.writeInt16LE(v, 40 + 2 * i))
+  hdr.writeInt16LE(16, 70) // datatype: float32
+  hdr.writeInt16LE(32, 72) // bitpix
+  const pix = vol.hdr.pixDims
+  ;[1, pix[1] * factor, pix[2] * factor, pix[3] * factor, pix[4] || 1].forEach((v, i) => hdr.writeFloatLE(v, 76 + 4 * i))
+  hdr.writeFloatLE(352, 108) // vox_offset
+  hdr.writeFloatLE(1, 112) // scl_slope
+  hdr.writeUInt8(vol.hdr.xyzt_units ?? 10, 123)
+  hdr.writeInt16LE(vol.hdr.sform_code || 2, 254)
+  srow.flat().forEach((v, i) => hdr.writeFloatLE(v, 280 + 4 * i))
+  hdr.write('n+1\0', 344, 'latin1')
+  return { buffer: Buffer.concat([hdr, Buffer.from(data.buffer)]), factor }
+}
+
+/**
  * Write the offline page with @niivue/nv-ext-save-html. Returns the scene files
  * written, or throws when the extension, NiiVue or esbuild can't be used.
  */
-async function writeExtensionPages(volumePaths, title, out) {
+async function writeExtensionPages(volumePaths, title, out, maxBytes) {
   const [{ default: NiiVue }, { generateHTML }] = await Promise.all([
     import('@niivue/niivue'),
     import('@niivue/nv-ext-save-html'),
@@ -184,14 +251,21 @@ async function writeExtensionPages(volumePaths, title, out) {
   const scenes = []
   for (const [i, p] of volumePaths.entries()) {
     const label = basename(p)
-    const nv = new NiiVue({})
+    let nv = new NiiVue({})
     await nv.loadVolumes([{ url: new File([readFileSync(p)], label), name: label }])
+    const preview = previewNifti(nv.volumes[0], maxBytes)
+    if (preview) {
+      console.error(`generate_qa: ${label} is too large to embed; showing a 1/${preview.factor} resolution preview`)
+      nv = new NiiVue({})
+      await nv.loadVolumes([{ url: new File([preview.buffer], label.replace(/\.nii(\.gz)?$/i, '.nii')), name: label }])
+    }
     const html = await generateHTML(nv, {
       niivueBundleSource: bundle.source,
       title: volumePaths.length === 1 ? title : `${title} · ${label}`,
     })
     writeFileSync(join(out, pages[i]), html)
-    scenes.push({ page: pages[i], label })
+    scenes.push({ page: pages[i], label: preview ? `${label} (1/${preview.factor} resolution preview)` : label,
+      previewFactor: preview?.factor })
   }
   if (volumePaths.length !== 1) writeFileSync(join(out, 'index.html'), indexHtml(title, scenes))
   return { scenes, niivue: bundle.version }
@@ -260,14 +334,18 @@ async function main() {
   const title = ctx.inputs?.title ?? 'NeuroFlow QA'
   const out = outputDir(ctx)
   const volumePaths = resolveVolumes(ctx)
+  const embedMb = Number(ctx.inputs?.max_embed_mb ?? DEFAULT_EMBED_MB)
+  if (!(embedMb > 0 && embedMb <= MAX_EMBED_MB)) throw new Error(`max_embed_mb must be above 0 and at most ${MAX_EMBED_MB}`)
   const missing = volumePaths.filter((p) => !existsSync(p))
   if (missing.length) throw new Error(`volume(s) not found: ${missing.join(', ')}`)
   if (!volumePaths.length) throw new Error('no volumes: set inputs.volumes (or inputs.volumesDir)')
 
   let entry
   try {
-    const { scenes, niivue } = await writeExtensionPages(volumePaths, title, out)
+    const { scenes, niivue } = await writeExtensionPages(volumePaths, title, out, embedMb * 1024 * 1024)
     entry = { mode: 'nv-ext-save-html', niivue, scenes: scenes.map((s) => s.page) }
+    const previews = scenes.filter((s) => s.previewFactor).map((s) => ({ scene: s.page, factor: s.previewFactor }))
+    if (previews.length) Object.assign(entry, { maxEmbedMb: embedMb, previews })
   } catch (err) {
     console.error(`generate_qa: save-html extension unavailable (${err.message ?? err}); writing the esm.sh page`)
     writeFallbackPage(volumePaths, title, out)

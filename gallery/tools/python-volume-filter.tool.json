@@ -4,7 +4,7 @@
   "kind": "tool",
   "id": "neuroflow.gallery.tools/python-volume-filter",
   "version": "0.1.0",
-  "description": "Headless Python script that modifies or filters the NIfTI volumes of a BIDS dataset (e.g. intensity threshold or Gaussian smoothing), and writes the filtered volumes to the session output directory. An optional NeuroVue correction patch is recorded with the run for traceability; it does not change the filter.",
+  "description": "Headless Python script that modifies or filters the anatomical NIfTI volumes of a BIDS dataset (all, or those a file-name glob picks) (e.g. intensity threshold or Gaussian smoothing), and writes the filtered volumes to the session output directory. An optional NeuroVue correction patch is recorded with the run for traceability; it does not change the filter.",
   "inputs": {
     "bids_dir": {
       "type": "neuro:bids-dataset",
@@ -32,6 +32,11 @@
       "description": "Operation magnitude (FWHM mm for smooth, intensity for threshold).",
       "optional": true,
       "default": 3
+    },
+    "match": {
+      "type": "core:string",
+      "description": "Optional glob on the file name that picks which anatomical volumes to filter (e.g. *part-mag* or *run-01*); all of them when unset.",
+      "optional": true
     }
   },
   "outputs": {
@@ -71,7 +76,7 @@
       "requirements": [
         "Python 3.10+ with nibabel and numpy (scipy optional, for faster smoothing); set NEUROFLOW_PYTHON to the environment"
       ],
-      "description": "python_tool.mjs checks the Python environment, then calls nf_filter_volumes.run(bids_dir, operation, amount, correction_patch), which writes the filtered volumes to $NEUROFLOW_OUTPUT_DIR/filtered and appends a provenance line."
+      "description": "python_tool.mjs checks the Python environment, then calls nf_filter_volumes.run(bids_dir, operation, amount, correction_patch, match), which writes the filtered volumes to $NEUROFLOW_OUTPUT_DIR/filtered and appends a provenance line."
     },
     "neuroflow/python": {
       "interpreter": {
@@ -100,7 +105,8 @@
           "{{bids_dir}}",
           "{{operation}}",
           "{{amount}}",
-          "{{correction_patch}}"
+          "{{correction_patch}}",
+          "{{match}}"
         ]
       },
       "outputs": {
@@ -118,12 +124,13 @@
       ],
       "preconditions": [
         "Python 3.10+ with nibabel and numpy (scipy optional, for faster smoothing); NEUROFLOW_PYTHON set to that environment.",
-        "bids_dir is a BIDS dataset with anatomical NIfTI volumes."
+        "bids_dir is a BIDS dataset with anatomical NIfTI volumes.",
+        "Output is float32, about twice an int16 input per volume. On a large session, if the user has not said which volumes they need, ask before running and pass match."
       ],
       "effects": [
-        "Writes the filtered volumes to <output dir>/filtered and appends a provenance line; the dataset is not changed.",
+        "Writes the filtered volumes (all anatomical volumes, or those match picks) to <output dir>/filtered and appends a provenance line; the dataset is not changed.",
         "amount is the FWHM in mm for smooth and an intensity for threshold.",
-      "A correction_patch is recorded in provenance and the result, tying the output to the review; it does not change the filter."
+        "A correction_patch is recorded in provenance and the result, tying the output to the review; it does not change the filter."
       ],
       "duration": {
         "typicalSeconds": 1,
@@ -143,6 +150,13 @@
           "inputs": {
             "bids_dir": "<bids_dir>",
             "operation": "zscore"
+          }
+        },
+        {
+          "title": "Smooth only the magnitude images",
+          "inputs": {
+            "bids_dir": "<bids_dir>",
+            "match": "*part-mag*"
           }
         }
       ],
