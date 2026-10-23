@@ -10,7 +10,7 @@
     "preview": "vite preview --host 127.0.0.1",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
-    "wasm:build": "wasm-pack build crates/neuroflow-wasm --target web --out-dir ../../src/wasm",
+    "wasm:build": "node scripts/wasm-build.mjs",
     "validate:gallery": "node gallery/validate.mjs",
     "test:gallery": "node --test \"gallery/scripts/*.test.mjs\"",
     "test:ui": "esbuild \"tests/ui/*.test.ts\" --bundle --platform=node --format=esm --outdir=target/ui-tests --log-level=warning && node --test \"target/ui-tests/*.test.js\"",
