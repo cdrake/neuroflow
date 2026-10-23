@@ -31,6 +31,10 @@ export function isTypeCompatible(sourceType: string, inputType: string): boolean
   if (sourceElement && inputElement) {
     return isTypeCompatible(sourceElement, inputElement)
   }
+  // A single value fills a one-element array input.
+  if (!sourceElement && inputElement) {
+    return isTypeCompatible(sourceType, inputElement)
+  }
 
   return false
 }

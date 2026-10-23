@@ -665,6 +665,7 @@ fn run_step(
             _ if decl.get("optional").and_then(Value::as_bool).unwrap_or(false) => continue,
             _ => return fail(rec, format!("required input {name} has no value")),
         };
+        let value = fill_array(decl, value);
         // Constants and upstream values are checked like caller input.
         match resolve_value(cfg, name, decl, &value, &value_types) {
             Ok(v) => {
@@ -872,10 +873,21 @@ fn normalize_output(cfg: &Config, decl: &Value, value: &Value, value_types: &[St
     }
 }
 
+/// A single value bound to an array input is a one-element array.
+fn fill_array(decl: &Value, value: Value) -> Value {
+    let t = decl.get("type").and_then(Value::as_str).unwrap_or("core:json");
+    if is_array_type(t) && !value.is_array() && !value.is_null() {
+        Value::Array(vec![value])
+    } else {
+        value
+    }
+}
+
 /// Check and normalize one value against its declaration. Artifact references
 /// become canonical absolute paths confined to the data roots or the sessions root.
 fn resolve_value(cfg: &Config, name: &str, decl: &Value, value: &Value, value_types: &[String]) -> Result<Value, String> {
     let t = decl.get("type").and_then(Value::as_str).unwrap_or("core:json");
+    let value = &fill_array(decl, value.clone());
     if is_artifact_type(t, value_types) {
         let resolve = |value: &Value| -> Result<String, String> {
             if let Some(uri) = value.as_str().filter(|v| v.starts_with("neuroflow://")) {
@@ -1475,6 +1487,15 @@ mod tests {
         fs::write(dir.join("more.txt"), "x").unwrap();
         assert_ne!(folder, fingerprint(&registry, &a, &inputs), "new file in an input folder changes the fingerprint");
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_single_value_fills_an_array_input() {
+        let list = json!({ "type": "core:array<neuro:volume>" });
+        assert_eq!(fill_array(&list, json!("/data/t1.nii.gz")), json!(["/data/t1.nii.gz"]));
+        assert_eq!(fill_array(&list, json!(["/a", "/b"])), json!(["/a", "/b"]));
+        assert_eq!(fill_array(&list, Value::Null), Value::Null);
+        assert_eq!(fill_array(&json!({ "type": "neuro:volume" }), json!("/a")), json!("/a"));
     }
 
     #[test]
