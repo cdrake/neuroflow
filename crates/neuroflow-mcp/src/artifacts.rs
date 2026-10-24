@@ -599,8 +599,50 @@ pub fn inspect_qualifiers(path: &Path) -> Result<Value, String> {
                 return Ok(json!({ "facts": { "formats": ["json"] }, "inspector": "json-parser-v1" }));
             }
         }
+        // A one-number table is also a JSON number and is reported as json above.
+        if first.is_some_and(|b| matches!(*b, b'-' | b'+' | b'.' | b'0'..=b'9')) {
+            if let Some(inspection) = inspect_gradient_table(path)? {
+                return Ok(inspection);
+            }
+        }
     }
     Ok(json!({ "facts": {}, "inspector": null, "reason": "no inspector recognizes this encoding" }))
+}
+
+const GRADIENT_TABLE_MAX: u64 = 4 * 1024 * 1024;
+
+/// FSL gradient tables are whitespace-separated numbers: a bval holds one
+/// non-negative b-value per volume, a bvec one direction per volume (three rows,
+/// or three columns) with components in [-1, 1]. A table that fits both layouts
+/// establishes neither, so a bval bound where a bvec is required still fails.
+fn inspect_gradient_table(path: &Path) -> Result<Option<Value>, String> {
+    let file = fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut text = String::new();
+    if file.take(GRADIENT_TABLE_MAX + 1).read_to_string(&mut text).is_err()
+        || text.len() as u64 > GRADIENT_TABLE_MAX
+    {
+        return Ok(None);
+    }
+    let rows: Option<Vec<Vec<f64>>> = text
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| line.split_whitespace().map(|v| v.parse::<f64>().ok().filter(|n| n.is_finite())).collect())
+        .collect();
+    let Some(rows) = rows.filter(|rows| !rows.is_empty()) else {
+        return Ok(None);
+    };
+    let values = || rows.iter().flatten();
+    let bval = (rows.len() == 1 || rows.iter().all(|row| row.len() == 1)) && values().all(|v| *v >= 0.0);
+    let bvec = values().all(|v| v.abs() <= 1.0 + 1e-6)
+        && ((rows.len() == 3 && rows.iter().all(|row| row.len() == rows[0].len()))
+            || rows.iter().all(|row| row.len() == 3));
+    Ok(match (bval, bvec) {
+        (true, false) => Some(json!({ "facts": { "formats": ["bval"] }, "inspector": "fsl-gradient-table-v1" })),
+        (false, true) => Some(json!({ "facts": { "formats": ["bvec"] }, "inspector": "fsl-gradient-table-v1" })),
+        (true, true) => Some(json!({ "facts": {}, "inspector": null,
+            "reason": "the table fits both the bval and the bvec layout" })),
+        (false, false) => None,
+    })
 }
 
 fn qform_affine(b: f64, c: f64, d: f64, offset: [f64; 3], pixdim: &[f64]) -> [[f64; 4]; 3] {
@@ -905,6 +947,33 @@ mod tests {
         assert_eq!(summary["labels"]["17"]["volumeMl"], 0.064); // 8 * 8 mm^3
         assert_eq!(summary["labels"]["53"]["volumeMl"], 0.016);
         assert_eq!(summary["intensity"]["nonzeroVoxels"], 10);
+        fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn inspects_fsl_gradient_tables() {
+        let dir = std::env::temp_dir().join(format!("neuroflow-gradients-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let inspect = |name: &str, text: &str| {
+            let path = dir.join(name);
+            fs::write(&path, text).unwrap();
+            inspect_qualifiers(&path).unwrap()
+        };
+        let bval = json!({ "formats": ["bval"] });
+        let bvec = json!({ "formats": ["bvec"] });
+        assert_eq!(inspect("row.bval", "0 1000 1000 2000\n")["facts"], bval);
+        assert_eq!(inspect("column.bval", "0\r\n1000\r\n1000\r\n\r\n")["facts"], bval);
+        assert_eq!(inspect("rows.bvec", "0 1 0 0.577\n0 0 1 0.577\n0 0 0 -0.577 \n")["facts"], bvec);
+        assert_eq!(inspect("columns.bvec", "0 0 0\n1 0 0\n0 1 0\n0 0 -1\n")["facts"], bvec);
+        assert_eq!(inspect("row.bvec", "+.5 -.5 .707\n")["facts"], bvec);
+        // b-values are never negative, and directions never exceed unit length.
+        assert_eq!(inspect("negative.bval", "0 -1000\n")["facts"], json!({}));
+        assert_eq!(inspect("long.bvec", "0 2 0\n0 0 2\n0 0 0\n")["facts"], json!({}));
+        let ambiguous = inspect("ambiguous.bval", "0\n1\n0\n");
+        assert_eq!(ambiguous["facts"], json!({}));
+        assert!(ambiguous["reason"].as_str().unwrap().contains("both"));
+        assert_eq!(inspect("text.bval", "0 1000 b0\n")["facts"], json!({}));
+        assert_eq!(inspect("ragged.bvec", "0 1 0\n0 0\n0 0 1\n0 1 0\n")["facts"], json!({}));
         fs::remove_dir_all(dir).ok();
     }
 
