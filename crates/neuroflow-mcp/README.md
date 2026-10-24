@@ -10,6 +10,24 @@ It implements the first slice of
 speaks MCP over stdio and is built on `neuroflow-core`, with no async runtime
 and no MCP SDK.
 
+## Install
+
+Each release from v0.2.1 on carries a prebuilt binary for linux x86-64
+(static musl), macOS arm64 and Windows x86-64, with a `SHA256SUMS` file.
+For example, on Linux:
+
+```bash
+tag=v0.2.1 target=x86_64-unknown-linux-musl
+gh release download "$tag" -R cdrake/neuroflow -p "neuroflow-mcp-$tag-$target.tar.gz" -p SHA256SUMS
+sha256sum --check --ignore-missing SHA256SUMS
+tar -xzf "neuroflow-mcp-$tag-$target.tar.gz"
+"neuroflow-mcp-$tag-$target/neuroflow-mcp" --help
+```
+
+The macOS archive is `aarch64-apple-darwin.tar.gz` (check it with
+`shasum -a 256 --check --ignore-missing SHA256SUMS`); the Windows one is
+`x86_64-pc-windows-msvc.zip`.
+
 ## Build
 
 ```bash
