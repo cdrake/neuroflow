@@ -16,7 +16,7 @@ pub const AXES: &[&str] = &["formats", "space", "resolution", "density", "labelS
 pub fn capabilities() -> Value {
     json!({
         "enforcement": "before-consumer-launch",
-        "formats": ["nii", "nii-gz", "json"],
+        "formats": ["nii", "nii-gz", "json", "bval", "bvec"],
         "resolution": { "formats": ["nii", "nii-gz"], "units": "explicit NIfTI spatial units" },
         "space": ["scanner frame scoped to one content hash", "registered producer provenance", "inputs.* inheritance"],
         "labelSystem": ["registered producer provenance", "inputs.* inheritance"],

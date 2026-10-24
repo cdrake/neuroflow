@@ -168,6 +168,30 @@ fn encoded_gzip_with_nii_suffix_is_rejected_before_launch() {
 }
 
 #[test]
+fn gradient_tables_launch_and_a_bval_bvec_swap_is_rejected() {
+    let f = Fixture::new();
+    let bval = f.root.join("dwi.bval");
+    fs::write(&bval, "0 1000 1000\n").unwrap();
+    let bvec = f.root.join("dwi.bvec");
+    fs::write(&bvec, "0 1 0\n0 0 1\n0 0 0\n").unwrap();
+    let gradients = |format: &str| json!({ "type": "neuro:gradient-table", "description": "Gradients.", "formats": [format] });
+    let output = json!({ "type": "neuro:gradient-table", "description": "Gradients." });
+    for (format, file) in [("bval", &bval), ("bvec", &bvec)] {
+        let registry = f.tool("copy", gradients(format), output.clone());
+        let run = f.run(&registry, "copy", json!(file), &format!("{format}-marker"));
+        assert_eq!(run.status, "completed", "{}", run.structured);
+    }
+    let registry = f.tool("copy", gradients("bvec"), output);
+    let run = f.run(&registry, "copy", json!(bval), "swap-marker");
+    assert_eq!(run.status, "failed");
+    assert!(!f.root.join("swap-marker").exists());
+    assert!(run.structured["error"]
+        .as_str()
+        .unwrap()
+        .contains("formats constraint violated"));
+}
+
+#[test]
 fn no_format_inspector_fails_closed_even_with_matching_annotation() {
     let f = Fixture::new();
     let file = f.root.join("image.mgz");
