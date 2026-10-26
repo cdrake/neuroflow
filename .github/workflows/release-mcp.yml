@@ -1,0 +1,95 @@
+# Builds neuroflow-mcp for each supported host and attaches the archives, with
+# SHA-256 checksums, to the release. Publishing a release runs it; run it by hand
+# with a tag to add binaries to an existing release. A pull request that changes
+# this workflow or the server builds and smoke-tests without uploading.
+name: release-mcp
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/release-mcp.yml
+      - crates/neuroflow-core/**
+      - crates/neuroflow-mcp/**
+      - Cargo.lock
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build and upload to (e.g. v0.2.1)
+        required: true
+
+env:
+  TAG: ${{ github.event.release.tag_name || inputs.tag || 'pr' }}
+  RUST_TOOLCHAIN: 1.99.0
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # musl gives one static binary for any x86-64 Linux, containers included.
+          - { os: ubuntu-24.04, target: x86_64-unknown-linux-musl, archive: tar.gz }
+          - { os: macos-14, target: aarch64-apple-darwin, archive: tar.gz }
+          # A static CRT, so the binary needs no Visual C++ redistributable.
+          - { os: windows-2022, target: x86_64-pc-windows-msvc, archive: zip, rustflags: -C target-feature=+crt-static }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+      - name: Install Rust ${{ env.RUST_TOOLCHAIN }}
+        shell: bash
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --target ${{ matrix.target }}
+          rustup default "$RUST_TOOLCHAIN"
+      - if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Build
+        shell: bash
+        env:
+          RUSTFLAGS: ${{ matrix.rustflags }}
+        run: cargo build --release --locked -p neuroflow-mcp --bin neuroflow-mcp --target ${{ matrix.target }}
+      - name: Smoke test
+        shell: bash
+        run: |
+          bin=target/${{ matrix.target }}/release/neuroflow-mcp
+          "$bin" --help
+          "$bin" --registry gallery --check
+      - name: Package
+        shell: bash
+        run: |
+          name="neuroflow-mcp-$TAG-${{ matrix.target }}"
+          mkdir -p "dist/$name"
+          cp target/${{ matrix.target }}/release/neuroflow-mcp* "dist/$name/"
+          rm -f "dist/$name"/*.d "dist/$name"/*.pdb
+          cp LICENSE-APACHE LICENSE-MIT crates/neuroflow-mcp/README.md "dist/$name/"
+          cd dist
+          if [ "${{ matrix.archive }}" = zip ]; then 7z a -bd "$name.zip" "$name" >/dev/null; else tar -czf "$name.tar.gz" "$name"; fi
+          rm -rf "$name"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  upload:
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksum and upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd dist
+          sha256sum neuroflow-mcp-* > SHA256SUMS
+          cat SHA256SUMS
+          gh release upload "$TAG" neuroflow-mcp-* SHA256SUMS --clobber -R "$GITHUB_REPOSITORY"
