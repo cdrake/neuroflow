@@ -8,7 +8,7 @@ use crate::schema::{element_type, is_array_type, is_artifact_type, is_directory_
 use crate::util::{new_run_id, now_rfc3339, to_local_id, within_any};
 use crate::Config;
 use serde_json::{json, Map, Value};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
@@ -74,41 +74,7 @@ pub fn wrap_tool(tool: &Doc) -> Value {
     })
 }
 
-/// Step ids in dependency order, using authorial order as the tie-breaker.
-pub fn step_order(workflow: &Value) -> Result<Vec<String>, String> {
-    let steps = workflow
-        .get("steps")
-        .and_then(Value::as_object)
-        .ok_or("workflow has no steps object")?;
-    let ids: Vec<String> = steps.keys().cloned().collect();
-    let mut deps: HashMap<&str, HashSet<String>> = HashMap::new();
-    for (id, step) in steps {
-        let mut set = HashSet::new();
-        for binding in step.get("inputs").and_then(Value::as_object).into_iter().flatten().map(|(_, b)| b) {
-            if let Some(reference) = binding.get("ref").and_then(Value::as_str) {
-                let parts: Vec<&str> = reference.split('.').collect();
-                if parts.len() == 4 && parts[0] == "steps" {
-                    set.insert(parts[1].to_string());
-                }
-            }
-        }
-        deps.insert(id, set);
-    }
-    let mut done: Vec<String> = Vec::new();
-    while done.len() < ids.len() {
-        let next = ids.iter().find(|id| {
-            !done.contains(id) && deps[id.as_str()].iter().all(|d| done.contains(d) || !ids.contains(d))
-        });
-        match next {
-            Some(id) => done.push(id.clone()),
-            None => {
-                let stuck: Vec<&str> = ids.iter().filter(|id| !done.contains(id)).map(String::as_str).collect();
-                return Err(format!("dependency cycle among steps: {}", stuck.join(", ")));
-            }
-        }
-    }
-    Ok(done)
-}
+pub use neuroflow_core::step_order;
 
 struct Paths {
     session: PathBuf,

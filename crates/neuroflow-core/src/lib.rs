@@ -2,7 +2,7 @@ pub mod qualifiers;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidationIssue {
@@ -431,6 +431,47 @@ fn append_qualifier_issues(
     }
 }
 
+/// Step ids in dependency order, using document order as the tie-breaker.
+///
+/// Document order is the authorial order when `serde_json` preserves it (as
+/// `neuroflow-mcp` does) and key order otherwise.
+pub fn step_order(workflow: &Value) -> Result<Vec<String>, String> {
+    let steps = workflow
+        .get("steps")
+        .and_then(Value::as_object)
+        .ok_or("workflow has no steps object")?;
+    let ids: Vec<String> = steps.keys().cloned().collect();
+    let mut deps: HashMap<&str, HashSet<String>> = HashMap::new();
+    for (id, step) in steps {
+        let mut set = HashSet::new();
+        for binding in step.get("inputs").and_then(Value::as_object).into_iter().flatten().map(|(_, b)| b) {
+            if let Some(reference) = binding.get("ref").and_then(Value::as_str) {
+                let parts: Vec<&str> = reference.split('.').collect();
+                if parts.len() == 4 && parts[0] == "steps" {
+                    set.insert(parts[1].to_string());
+                }
+            }
+        }
+        deps.insert(id, set);
+    }
+    let mut done: Vec<String> = Vec::new();
+    while done.len() < ids.len() {
+        let next = ids.iter().find(|id| {
+            !done.contains(id) && deps[id.as_str()].iter().all(|d| done.contains(d) || !ids.contains(d))
+        });
+        match next {
+            Some(id) => done.push(id.clone()),
+            None => {
+                let stuck: Vec<&str> = ids.iter().filter(|id| !done.contains(id)).map(String::as_str).collect();
+                return Err(format!("dependency cycle among steps: {}", stuck.join(", ")));
+            }
+        }
+    }
+    Ok(done)
+}
+
+/// Plan steps follow [`step_order`]; a workflow with a dependency cycle keeps
+/// document order, since it cannot run.
 pub fn plan_workflow_value(workflow: &Value) -> WorkflowPlan {
     let workflow_id = workflow
         .get("id")
@@ -438,12 +479,17 @@ pub fn plan_workflow_value(workflow: &Value) -> WorkflowPlan {
         .unwrap_or("unknown")
         .to_string();
 
+    let order = step_order(workflow).ok();
     let steps = workflow
         .get("steps")
         .and_then(Value::as_object)
         .map(|steps| {
-            steps
-                .iter()
+            let ordered: Vec<(&String, &Value)> = match &order {
+                Some(order) => order.iter().filter_map(|id| steps.get_key_value(id)).collect(),
+                None => steps.iter().collect(),
+            };
+            ordered
+                .into_iter()
                 .map(|(step_id, step)| {
                     let tool = step
                         .get("tool")
@@ -871,6 +917,35 @@ fn warning(path: impl Into<String>, message: impl Into<String>) -> ValidationIss
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn plans_steps_in_dependency_order() {
+        // Without preserve_order the steps object iterates by key, so key order
+        // alone would list correct before denoise.
+        let workflow = serde_json::json!({
+            "id": "test/dwi",
+            "steps": {
+                "noddi": { "tool": "t/noddi", "inputs": { "dwi": { "ref": "steps.correct.outputs.dwi" } } },
+                "correct": { "tool": "t/correct", "inputs": { "dwi": { "ref": "steps.gibbs.outputs.dwi" } } },
+                "gibbs": { "tool": "t/gibbs", "inputs": { "dwi": { "ref": "steps.denoise.outputs.dwi" } } },
+                "denoise": { "tool": "t/denoise", "inputs": { "dwi": { "ref": "inputs.dwi" } } }
+            }
+        });
+        let ids: Vec<String> = plan_workflow_value(&workflow).steps.into_iter().map(|step| step.id).collect();
+        assert_eq!(ids, ["denoise", "gibbs", "correct", "noddi"]);
+        assert_eq!(step_order(&workflow).unwrap(), ids);
+    }
+
+    #[test]
+    fn plans_a_cycle_in_document_order() {
+        let workflow = serde_json::json!({ "steps": {
+            "a": { "tool": "t/a", "inputs": { "x": { "ref": "steps.b.outputs.y" } } },
+            "b": { "tool": "t/b", "inputs": { "x": { "ref": "steps.a.outputs.y" } } }
+        }});
+        assert!(step_order(&workflow).unwrap_err().contains("cycle"));
+        let ids: Vec<String> = plan_workflow_value(&workflow).steps.into_iter().map(|step| step.id).collect();
+        assert_eq!(ids, ["a", "b"]);
+    }
 
     #[test]
     fn validates_minimal_workflow() {
