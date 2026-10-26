@@ -1,11 +1,11 @@
 //! MCP over stdio: JSON-RPC dispatch, the fixed binding tools, and the tools
 //! generated from registry documents (RFC 0009 sections 1 to 3).
 
-use crate::{artifacts, qualifiers};
 use crate::registry::{Kind, Registry};
 use crate::runtime::{self, step_order};
 use crate::schema::{element_type, input_schema, run_output_schema, value_types_of};
 use crate::Config;
+use crate::{artifacts, qualifiers};
 use neuroflow_core::qualifiers::Compatibility;
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
@@ -28,7 +28,13 @@ pub struct Server {
 
 impl Server {
     pub fn new(cfg: Config, registry: Registry) -> Self {
-        Server { cfg, registry, version: SUPPORTED_VERSIONS[0].to_string(), client: json!({}), completed: HashMap::new() }
+        Server {
+            cfg,
+            registry,
+            version: SUPPORTED_VERSIONS[0].to_string(),
+            client: json!({}),
+            completed: HashMap::new(),
+        }
     }
 
     /// Features added in 2025-06-18: titles, structuredContent, outputSchema, resource links.
@@ -46,7 +52,9 @@ impl Server {
             let msg: Value = match serde_json::from_str(&line) {
                 Ok(v) => v,
                 Err(e) => {
-                    send(&json!({ "jsonrpc": "2.0", "id": null, "error": { "code": -32700, "message": format!("parse error: {e}") } }));
+                    send(
+                        &json!({ "jsonrpc": "2.0", "id": null, "error": { "code": -32700, "message": format!("parse error: {e}") } }),
+                    );
                     continue;
                 }
             };
@@ -82,8 +90,12 @@ impl Server {
             "ping" => Ok(json!({})),
             "tools/list" => Ok(json!({ "tools": self.list_tools() })),
             "tools/call" => self.call_tool(&params),
-            "resources/list" => Ok(json!({ "resources": artifacts::list(&self.cfg, &self.registry) })),
-            "resources/templates/list" => Ok(json!({ "resourceTemplates": artifacts::templates() })),
+            "resources/list" => {
+                Ok(json!({ "resources": artifacts::list(&self.cfg, &self.registry) }))
+            }
+            "resources/templates/list" => {
+                Ok(json!({ "resourceTemplates": artifacts::templates() }))
+            }
             "resources/read" => {
                 let uri = params.get("uri").and_then(Value::as_str).unwrap_or("");
                 artifacts::read(&self.cfg, &self.registry, uri)
@@ -102,7 +114,9 @@ impl Server {
         };
         match result {
             Ok(result) => send(&json!({ "jsonrpc": "2.0", "id": id, "result": result })),
-            Err((code, message)) => send(&json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } })),
+            Err((code, message)) => send(
+                &json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } }),
+            ),
         }
     }
 
@@ -125,7 +139,10 @@ impl Server {
     }
 
     fn initialize(&mut self, params: &Value) -> Value {
-        let requested = params.get("protocolVersion").and_then(Value::as_str).unwrap_or("");
+        let requested = params
+            .get("protocolVersion")
+            .and_then(Value::as_str)
+            .unwrap_or("");
         self.version = if SUPPORTED_VERSIONS.contains(&requested) {
             requested.to_string()
         } else {
@@ -134,7 +151,12 @@ impl Server {
         if let Some(info) = params.get("clientInfo") {
             self.client = info.clone();
         }
-        let runnable = self.registry.docs.iter().filter(|d| d.mcp_name.is_some()).count();
+        let runnable = self
+            .registry
+            .docs
+            .iter()
+            .filter(|d| d.mcp_name.is_some())
+            .count();
         json!({
             "protocolVersion": self.version,
             "capabilities": self.capabilities(),
@@ -236,9 +258,17 @@ impl Server {
             if let Some(stage) = doc.stage() {
                 description.push_str(&format!(" Stage: {stage}."));
             }
-            description.push_str(&format!(" NeuroFlow {} {}@{}.", doc.kind.as_str(), doc.id, doc.version));
+            description.push_str(&format!(
+                " NeuroFlow {} {}@{}.",
+                doc.kind.as_str(),
+                doc.id,
+                doc.version
+            ));
             let value_types = value_types_of(&doc.value);
-            let mut schema = input_schema(doc.value.get("inputs").and_then(Value::as_object), &value_types);
+            let mut schema = input_schema(
+                doc.value.get("inputs").and_then(Value::as_object),
+                &value_types,
+            );
             schema["properties"]["rerun"] = rerun_schema();
             let mut tool = json!({
                 "name": name,
@@ -255,7 +285,14 @@ impl Server {
         tools
     }
 
-    fn fixed_tool(&self, name: &str, title: &str, description: &str, schema: Value, read_only: bool) -> Value {
+    fn fixed_tool(
+        &self,
+        name: &str,
+        title: &str,
+        description: &str,
+        schema: Value,
+        read_only: bool,
+    ) -> Value {
         let mut t = json!({
             "name": name,
             "description": description,
@@ -273,23 +310,34 @@ impl Server {
         let emits_fixes = |tool: &Value| {
             tool.pointer("/events/emits")
                 .and_then(Value::as_object)
-                .is_some_and(|m| m.values().any(|c| c.get("type").and_then(Value::as_str) == Some("core:fix-proposal")))
+                .is_some_and(|m| {
+                    m.values()
+                        .any(|c| c.get("type").and_then(Value::as_str) == Some("core:fix-proposal"))
+                })
         };
         let destructive = match doc.kind {
             Kind::Tool => emits_fixes(&doc.value),
-            Kind::Workflow => doc.value.get("steps").and_then(Value::as_object).is_some_and(|steps| {
-                steps.values().any(|s| {
-                    s.get("fixLoop").is_some()
-                        || s.get("tool")
-                            .and_then(Value::as_str)
-                            .and_then(|t| self.registry.tool(t))
-                            .is_some_and(|t| emits_fixes(&t.value))
-                })
-            }),
+            Kind::Workflow => doc
+                .value
+                .get("steps")
+                .and_then(Value::as_object)
+                .is_some_and(|steps| {
+                    steps.values().any(|s| {
+                        s.get("fixLoop").is_some()
+                            || s.get("tool")
+                                .and_then(Value::as_str)
+                                .and_then(|t| self.registry.tool(t))
+                                .is_some_and(|t| emits_fixes(&t.value))
+                    })
+                }),
         };
         // Idempotent within a session: a repeated call with identical inputs replays the completed run.
         let mut a = json!({ "readOnlyHint": false, "destructiveHint": destructive, "idempotentHint": true, "openWorldHint": false });
-        if let Some(over) = doc.value.pointer("/extensions/neuroflow~1mcp/annotations").and_then(Value::as_object) {
+        if let Some(over) = doc
+            .value
+            .pointer("/extensions/neuroflow~1mcp/annotations")
+            .and_then(Value::as_object)
+        {
             for (k, v) in over {
                 a[k] = v.clone();
             }
@@ -305,7 +353,10 @@ impl Server {
         let args = params.get("arguments").cloned().unwrap_or(json!({}));
         let mut args = args.as_object().cloned().unwrap_or_default();
         let token = params.pointer("/_meta/progressToken").cloned();
-        let rerun = args.remove("rerun").and_then(|v| v.as_bool()).unwrap_or(false);
+        let rerun = args
+            .remove("rerun")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         match name {
             "neuroflow_list" => Ok(self.ok_json(self.list(&args))),
             "neuroflow_describe" => {
@@ -325,18 +376,36 @@ impl Server {
                     Err(e) => Ok(tool_error(e)),
                     Ok(resolved) => {
                         let p = std::path::Path::new(&resolved);
-                        let t = args.get("type").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| {
-                            if p.is_dir() {
-                                if p.join("dataset_description.json").is_file() { "neuro:bids-dataset" } else { "core:directory" }
-                            } else {
-                                let lower = resolved.to_ascii_lowercase();
-                                if lower.ends_with(".nii") || lower.ends_with(".nii.gz") { "neuro:volume" }
-                                else if lower.ends_with(".tsv") || lower.ends_with(".csv") { "core:tabular" }
-                                else if lower.ends_with(".json") { "core:json" }
-                                else { "core:file" }
-                            }.to_string()
-                        });
-                        Ok(self.ok_json(artifacts::summarize(&resolved, &t, self.cfg.summary_max_bytes)))
+                        let t = args
+                            .get("type")
+                            .and_then(Value::as_str)
+                            .map(str::to_string)
+                            .unwrap_or_else(|| {
+                                if p.is_dir() {
+                                    if p.join("dataset_description.json").is_file() {
+                                        "neuro:bids-dataset"
+                                    } else {
+                                        "core:directory"
+                                    }
+                                } else {
+                                    let lower = resolved.to_ascii_lowercase();
+                                    if lower.ends_with(".nii") || lower.ends_with(".nii.gz") {
+                                        "neuro:volume"
+                                    } else if lower.ends_with(".tsv") || lower.ends_with(".csv") {
+                                        "core:tabular"
+                                    } else if lower.ends_with(".json") {
+                                        "core:json"
+                                    } else {
+                                        "core:file"
+                                    }
+                                }
+                                .to_string()
+                            });
+                        Ok(self.ok_json(artifacts::summarize(
+                            &resolved,
+                            &t,
+                            self.cfg.summary_max_bytes,
+                        )))
                     }
                 }
             }
@@ -379,7 +448,11 @@ impl Server {
                     }
                     return Ok(r);
                 }
-                let inputs = args.get("inputs").and_then(Value::as_object).cloned().unwrap_or_default();
+                let inputs = args
+                    .get("inputs")
+                    .and_then(Value::as_object)
+                    .cloned()
+                    .unwrap_or_default();
                 Ok(self.execute(&wf, &inputs, token, rerun))
             }
             "neuroflow_export" => {
@@ -402,10 +475,18 @@ impl Server {
         }
     }
 
-    fn execute(&mut self, wf: &Value, inputs: &Map<String, Value>, token: Option<Value>, rerun: bool) -> Value {
+    fn execute(
+        &mut self,
+        wf: &Value,
+        inputs: &Map<String, Value>,
+        token: Option<Value>,
+        rerun: bool,
+    ) -> Value {
         // Same work already done in this session: answer with that run. Input
         // resolution errors fall through to run_workflow, which reports them.
-        let key = runtime::resolve_inputs(&self.cfg, wf, inputs).ok().map(|i| runtime::fingerprint(&self.registry, wf, &i));
+        let key = runtime::resolve_inputs(&self.cfg, wf, inputs)
+            .ok()
+            .map(|i| runtime::fingerprint(&self.registry, wf, &i));
         if let Some(key) = &key {
             if let Some((run_id, result)) = self.completed.get(key) {
                 if !rerun {
@@ -417,9 +498,15 @@ impl Server {
             }
         }
         let result = self.execute_now(wf, inputs, token);
-        if let (Some(key), Some(run_id)) = (key, result.pointer("/structuredContent/runId").and_then(Value::as_str)) {
+        if let (Some(key), Some(run_id)) = (
+            key,
+            result
+                .pointer("/structuredContent/runId")
+                .and_then(Value::as_str),
+        ) {
             if result.pointer("/structuredContent/status") == Some(&json!("completed")) {
-                self.completed.insert(key, (run_id.to_string(), result.clone()));
+                self.completed
+                    .insert(key, (run_id.to_string(), result.clone()));
             }
         }
         result
@@ -427,20 +514,34 @@ impl Server {
 
     /// The earlier run's result, restated, provided its session is still on disk.
     fn replay(&self, run_id: &str, result: &Value) -> Option<Value> {
-        let record = std::fs::read_to_string(self.cfg.sessions_root.join(run_id).join("run.json")).ok()?;
+        let record =
+            std::fs::read_to_string(self.cfg.sessions_root.join(run_id).join("run.json")).ok()?;
         let record: Value = serde_json::from_str(&record).ok()?;
         if record.get("status") != Some(&json!("completed")) {
             return None;
         }
         for step in record["steps"].as_object()?.values() {
-            if !qualifiers::unchanged(&step["inputEvidence"]) || !qualifiers::unchanged(&step["outputEvidence"]) {
+            if !qualifiers::unchanged(&step["inputEvidence"])
+                || !qualifiers::unchanged(&step["outputEvidence"])
+            {
                 return None;
             }
         }
-        let ended = record.get("endedAt").and_then(Value::as_str).unwrap_or("earlier");
+        let ended = record
+            .get("endedAt")
+            .and_then(Value::as_str)
+            .unwrap_or("earlier");
         let mut replay = result.clone();
-        if let Some(text) = result.pointer("/content/0/text").and_then(Value::as_str).map(str::to_string) {
-            let rest = text.strip_prefix(&format!("Run {run_id} completed:")).unwrap_or(&text).trim_start().to_string();
+        if let Some(text) = result
+            .pointer("/content/0/text")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+        {
+            let rest = text
+                .strip_prefix(&format!("Run {run_id} completed:"))
+                .unwrap_or(&text)
+                .trim_start()
+                .to_string();
             replay["content"][0]["text"] = json!(format!(
                 "Reused run {run_id}: this workflow already ran with identical inputs in this session \
                  (completed {ended}), so nothing was executed or written again. Pass \"rerun\": true to run it anew. {rest}"
@@ -455,11 +556,20 @@ impl Server {
     fn execute_now(&self, wf: &Value, inputs: &Map<String, Value>, token: Option<Value>) -> Value {
         let mut progress = |done: f64, total: f64, message: &str| {
             if let Some(token) = &token {
-                send(&json!({ "jsonrpc": "2.0", "method": "notifications/progress",
-                    "params": { "progressToken": token, "progress": done, "total": total, "message": message } }));
+                send(
+                    &json!({ "jsonrpc": "2.0", "method": "notifications/progress",
+                    "params": { "progressToken": token, "progress": done, "total": total, "message": message } }),
+                );
             }
         };
-        match runtime::run_workflow(&self.cfg, &self.registry, wf, inputs, &self.client, &mut progress) {
+        match runtime::run_workflow(
+            &self.cfg,
+            &self.registry,
+            wf,
+            inputs,
+            &self.client,
+            &mut progress,
+        ) {
             Err(e) => tool_error(format!("Run rejected before any step started: {e}")),
             Ok(outcome) => {
                 let mut content = vec![json!({ "type": "text", "text": outcome.summary })];
@@ -489,7 +599,10 @@ impl Server {
         match (args.get("workflow"), args.get("id").and_then(Value::as_str)) {
             (Some(wf), None) if wf.is_object() => Ok(wf.clone()),
             (None, Some(id)) => {
-                let doc = self.registry.resolve(id).ok_or_else(|| format!("unknown document {id:?}"))?;
+                let doc = self
+                    .registry
+                    .resolve(id)
+                    .ok_or_else(|| format!("unknown document {id:?}"))?;
                 Ok(match doc.kind {
                     Kind::Workflow => doc.value.clone(),
                     Kind::Tool => runtime::wrap_tool(doc),
@@ -564,7 +677,8 @@ impl Server {
         let accepts = s("acceptsType");
         let produces = s("producesType");
         let compatible = |from: &str, to: &str| {
-            neuroflow_core::is_type_compatible(from, to) || neuroflow_core::is_type_compatible(from, element_type(to))
+            neuroflow_core::is_type_compatible(from, to)
+                || neuroflow_core::is_type_compatible(from, element_type(to))
                 || neuroflow_core::is_type_compatible(element_type(from), element_type(to))
         };
         let types_of = |doc: &Value, key: &str| -> Map<String, Value> {
@@ -604,14 +718,25 @@ impl Server {
         if params.get("name").and_then(Value::as_str) != Some("neuroflow_author_workflow") {
             return Err((-32602, "unknown prompt".into()));
         }
-        let goal = params.pointer("/arguments/goal").and_then(Value::as_str).unwrap_or("");
+        let goal = params
+            .pointer("/arguments/goal")
+            .and_then(Value::as_str)
+            .unwrap_or("");
         let mut catalog = String::new();
         for d in self.registry.docs.iter().filter(|d| d.kind == Kind::Tool) {
             let fmt = |key: &str| {
-                d.value.get(key).and_then(Value::as_object).into_iter().flatten()
+                d.value
+                    .get(key)
+                    .and_then(Value::as_object)
+                    .into_iter()
+                    .flatten()
                     .map(|(n, decl)| {
                         let t = decl.get("type").and_then(Value::as_str).unwrap_or("?");
-                        let opt = if crate::schema::is_required(decl) { "" } else { "?" };
+                        let opt = if crate::schema::is_required(decl) {
+                            ""
+                        } else {
+                            "?"
+                        };
                         format!("{n}{opt}: {t}")
                     })
                     .collect::<Vec<_>>()
@@ -621,7 +746,11 @@ impl Server {
                 "- {} @{} ({}): inputs [{}] -> outputs [{}]\n",
                 d.id,
                 d.version,
-                if d.runnable.is_ok() { "runnable" } else { "not runnable here" },
+                if d.runnable.is_ok() {
+                    "runnable"
+                } else {
+                    "not runnable here"
+                },
                 fmt("inputs"),
                 fmt("outputs")
             ));
@@ -649,11 +778,17 @@ fn validate_tool(doc: &Value) -> Vec<Value> {
     let mut out: Vec<Value> = neuroflow_core::qualifiers::validate_document_qualifiers(doc).iter().map(|issue|
         json!({ "severity": issue.severity, "pointer": issue.path.as_ref().map(|p| format!("/{}", p.replace('.', "/"))), "message": issue.message })
     ).collect();
-    let mut err = |pointer: &str, message: &str| out.push(json!({ "severity": "error", "pointer": pointer, "message": message }));
+    let mut err = |pointer: &str, message: &str| {
+        out.push(json!({ "severity": "error", "pointer": pointer, "message": message }))
+    };
     if !neuroflow_core::is_supported_spec_version(doc.get("neuroflow").and_then(Value::as_str)) {
         err("/neuroflow", "neuroflow must be \"0.1.0\" or \"0.1.1\".");
     }
-    if !doc.get("id").and_then(Value::as_str).is_some_and(|id| id.contains('/')) {
+    if !doc
+        .get("id")
+        .and_then(Value::as_str)
+        .is_some_and(|id| id.contains('/'))
+    {
         err("/id", "id must be namespace-qualified (contain '/').");
     }
     for key in ["inputs", "outputs"] {
@@ -661,8 +796,15 @@ fn validate_tool(doc: &Value) -> Vec<Value> {
             None => err(&format!("/{key}"), &format!("{key} must be an object.")),
             Some(map) => {
                 for (name, decl) in map {
-                    if decl.get("type").and_then(Value::as_str).is_none_or(|t| !t.contains(':')) {
-                        err(&format!("/{key}/{name}/type"), "type must be a namespace-qualified type string.");
+                    if decl
+                        .get("type")
+                        .and_then(Value::as_str)
+                        .is_none_or(|t| !t.contains(':'))
+                    {
+                        err(
+                            &format!("/{key}/{name}/type"),
+                            "type must be a namespace-qualified type string.",
+                        );
                     }
                 }
             }
@@ -705,7 +847,9 @@ mod tests {
     #[test]
     fn validation_distinguishes_conditional_blocked_and_invalid_workflows() {
         let scratch = Scratch(std::env::temp_dir().join(format!(
-            "neuroflow-validation-{}-{}", std::process::id(), crate::util::new_run_id()
+            "neuroflow-validation-{}-{}",
+            std::process::id(),
+            crate::util::new_run_id()
         )));
         fs::create_dir_all(&scratch.0).unwrap();
         let root = scratch.0.canonicalize().unwrap();
@@ -717,12 +861,17 @@ mod tests {
         });
         fs::write(root.join("tool.json"), tool.to_string()).unwrap();
         let cfg = Config {
-            registry_dirs: vec![root.clone()], spec_dir: None, data_roots: vec![root.clone()],
+            registry_dirs: vec![root.clone()],
+            spec_dir: None,
+            data_roots: vec![root.clone()],
             sessions_root: root.join("runs"),
             interpreters: HashMap::from([("python3".into(), std::env::current_exe().unwrap())]),
-            step_timeout: None, summary_max_bytes: 1024, interactive: false,
+            step_timeout: None,
+            summary_max_bytes: 1024,
+            interactive: false,
         };
-        let registry = Registry::load(&cfg.registry_dirs, &cfg.interpreters, cfg.interactive).unwrap();
+        let registry =
+            Registry::load(&cfg.registry_dirs, &cfg.interpreters, cfg.interactive).unwrap();
         let server = Server::new(cfg, registry);
         let workflow = json!({
             "neuroflow": "0.1.1", "kind": "workflow", "id": "test/validation", "version": "1.0.0",
@@ -735,7 +884,10 @@ mod tests {
         assert_eq!(conditional["valid"], true);
         assert_eq!(conditional["conditional"], true);
         assert_eq!(conditional["runnable"], true);
-        assert_eq!(conditional["diagnostics"][0]["outcome"], "requires-runtime-check");
+        assert_eq!(
+            conditional["diagnostics"][0]["outcome"],
+            "requires-runtime-check"
+        );
 
         let mut incompatible = workflow.clone();
         incompatible["inputs"]["image"]["formats"] = json!(["mgz"]);
@@ -755,8 +907,14 @@ mod tests {
         let mut misleading = workflow;
         misleading["steps"]["check"]["tool"] = json!("test/requires a runtime check");
         let rejected = server.validate(&misleading);
-        assert!(rejected["diagnostics"].as_array().unwrap().iter()
-            .any(|issue| issue["message"].as_str().unwrap().contains("requires a runtime check")));
+        assert!(rejected["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|issue| issue["message"]
+                .as_str()
+                .unwrap()
+                .contains("requires a runtime check")));
         assert_eq!(rejected["conditional"], false);
         assert_eq!(rejected["runnable"], false);
     }

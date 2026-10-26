@@ -76,7 +76,11 @@ fn file_hash(path: &Path) -> Result<String, String> {
 /// Without change time, a tool can preserve size and mtime after editing the
 /// bytes. Rehash on platforms without that signal or without an mtime.
 /// A prior run's record is always rehashed.
-fn stamped_hash(path: &Path, stamp: &Value, known: &HashMap<String, Value>) -> Result<String, String> {
+fn stamped_hash(
+    path: &Path,
+    stamp: &Value,
+    known: &HashMap<String, Value>,
+) -> Result<String, String> {
     match known.get(path.to_string_lossy().as_ref()) {
         Some(seen)
             if stamp.get("unix").is_some()
@@ -104,11 +108,22 @@ files are skipped";
 /// hashes the empty manifest. A name that is not UTF-8 is an error, since its
 /// manifest line would not be reproducible.
 pub fn tree_hash(dir: &Path, known: &HashMap<String, Value>) -> Result<String, String> {
-    fn walk(dir: &Path, rel: &str, out: &mut Vec<(String, std::path::PathBuf)>) -> Result<(), String> {
+    fn walk(
+        dir: &Path,
+        rel: &str,
+        out: &mut Vec<(String, std::path::PathBuf)>,
+    ) -> Result<(), String> {
         for entry in fs::read_dir(dir).map_err(|e| format!("{}: {e}", dir.display()))? {
             let entry = entry.map_err(|e| e.to_string())?;
-            let name = entry.file_name().into_string().map_err(|n| format!("non-UTF-8 name {n:?}"))?;
-            let rel = if rel.is_empty() { name } else { format!("{rel}/{name}") };
+            let name = entry
+                .file_name()
+                .into_string()
+                .map_err(|n| format!("non-UTF-8 name {n:?}"))?;
+            let rel = if rel.is_empty() {
+                name
+            } else {
+                format!("{rel}/{name}")
+            };
             let kind = entry.file_type().map_err(|e| e.to_string())?;
             if kind.is_dir() {
                 walk(&entry.path(), &rel, out)?;
@@ -161,13 +176,15 @@ pub fn inspect(
     // refuses the launch; an unconstrained consumer proceeds with a `reason`.
     let mut provenance = Value::Null;
     let prior = match raw.as_str() {
-        Some(uri) if uri.starts_with("neuroflow://") => match artifacts::qualifier_evidence(cfg, uri) {
-            Ok(evidence) => evidence,
-            Err(reason) => {
-                provenance = json!({ "reason": reason });
-                Value::Null
+        Some(uri) if uri.starts_with("neuroflow://") => {
+            match artifacts::qualifier_evidence(cfg, uri) {
+                Ok(evidence) => evidence,
+                Err(reason) => {
+                    provenance = json!({ "reason": reason });
+                    Value::Null
+                }
             }
-        },
+        }
         _ => known.get(&key).cloned().unwrap_or(Value::Null),
     };
     if provenance.is_null() {
@@ -462,7 +479,9 @@ mod tests {
             }
             let result = inspect(&cfg, &value, &value, &known);
             assert!(
-                result.as_ref().is_err_and(|error| error.contains("changed since")),
+                result
+                    .as_ref()
+                    .is_err_and(|error| error.contains("changed since")),
                 "{mutation} mutation reused trusted evidence: {result:?}"
             );
         }
@@ -502,13 +521,25 @@ mod tests {
             assert_eq!(tree_hash(&dir, &none).unwrap(), hash, "links are skipped");
         }
         fs::create_dir(dir.join("hollow")).unwrap();
-        assert_eq!(tree_hash(&dir, &none).unwrap(), hash, "empty folders add nothing");
+        assert_eq!(
+            tree_hash(&dir, &none).unwrap(),
+            hash,
+            "empty folders add nothing"
+        );
 
         fs::write(dir.join("sub/a.txt"), "A").unwrap();
-        assert_ne!(tree_hash(&dir, &none).unwrap(), hash, "one changed byte changes the hash");
+        assert_ne!(
+            tree_hash(&dir, &none).unwrap(),
+            hash,
+            "one changed byte changes the hash"
+        );
         fs::write(dir.join("sub/a.txt"), "a").unwrap();
         fs::rename(dir.join("sub/a.txt"), dir.join("sub/c.txt")).unwrap();
-        assert_ne!(tree_hash(&dir, &none).unwrap(), hash, "a rename changes the hash");
+        assert_ne!(
+            tree_hash(&dir, &none).unwrap(),
+            hash,
+            "a rename changes the hash"
+        );
         fs::remove_dir_all(root).unwrap();
     }
 }

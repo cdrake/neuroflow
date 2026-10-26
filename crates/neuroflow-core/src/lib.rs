@@ -444,7 +444,13 @@ pub fn step_order(workflow: &Value) -> Result<Vec<String>, String> {
     let mut deps: HashMap<&str, HashSet<String>> = HashMap::new();
     for (id, step) in steps {
         let mut set = HashSet::new();
-        for binding in step.get("inputs").and_then(Value::as_object).into_iter().flatten().map(|(_, b)| b) {
+        for binding in step
+            .get("inputs")
+            .and_then(Value::as_object)
+            .into_iter()
+            .flatten()
+            .map(|(_, b)| b)
+        {
             if let Some(reference) = binding.get("ref").and_then(Value::as_str) {
                 let parts: Vec<&str> = reference.split('.').collect();
                 if parts.len() == 4 && parts[0] == "steps" {
@@ -457,13 +463,23 @@ pub fn step_order(workflow: &Value) -> Result<Vec<String>, String> {
     let mut done: Vec<String> = Vec::new();
     while done.len() < ids.len() {
         let next = ids.iter().find(|id| {
-            !done.contains(id) && deps[id.as_str()].iter().all(|d| done.contains(d) || !ids.contains(d))
+            !done.contains(id)
+                && deps[id.as_str()]
+                    .iter()
+                    .all(|d| done.contains(d) || !ids.contains(d))
         });
         match next {
             Some(id) => done.push(id.clone()),
             None => {
-                let stuck: Vec<&str> = ids.iter().filter(|id| !done.contains(id)).map(String::as_str).collect();
-                return Err(format!("dependency cycle among steps: {}", stuck.join(", ")));
+                let stuck: Vec<&str> = ids
+                    .iter()
+                    .filter(|id| !done.contains(id))
+                    .map(String::as_str)
+                    .collect();
+                return Err(format!(
+                    "dependency cycle among steps: {}",
+                    stuck.join(", ")
+                ));
             }
         }
     }
@@ -485,7 +501,10 @@ pub fn plan_workflow_value(workflow: &Value) -> WorkflowPlan {
         .and_then(Value::as_object)
         .map(|steps| {
             let ordered: Vec<(&String, &Value)> = match &order {
-                Some(order) => order.iter().filter_map(|id| steps.get_key_value(id)).collect(),
+                Some(order) => order
+                    .iter()
+                    .filter_map(|id| steps.get_key_value(id))
+                    .collect(),
                 None => steps.iter().collect(),
             };
             ordered
@@ -931,7 +950,11 @@ mod tests {
                 "denoise": { "tool": "t/denoise", "inputs": { "dwi": { "ref": "inputs.dwi" } } }
             }
         });
-        let ids: Vec<String> = plan_workflow_value(&workflow).steps.into_iter().map(|step| step.id).collect();
+        let ids: Vec<String> = plan_workflow_value(&workflow)
+            .steps
+            .into_iter()
+            .map(|step| step.id)
+            .collect();
         assert_eq!(ids, ["denoise", "gibbs", "correct", "noddi"]);
         assert_eq!(step_order(&workflow).unwrap(), ids);
     }
@@ -943,7 +966,11 @@ mod tests {
             "b": { "tool": "t/b", "inputs": { "x": { "ref": "steps.a.outputs.y" } } }
         }});
         assert!(step_order(&workflow).unwrap_err().contains("cycle"));
-        let ids: Vec<String> = plan_workflow_value(&workflow).steps.into_iter().map(|step| step.id).collect();
+        let ids: Vec<String> = plan_workflow_value(&workflow)
+            .steps
+            .into_iter()
+            .map(|step| step.id)
+            .collect();
         assert_eq!(ids, ["a", "b"]);
     }
 
@@ -1115,10 +1142,19 @@ mod tests {
             "core:array<neuro:volume>"
         ));
         assert!(!is_type_compatible("neuro:volume", "neuro:mask"));
-        assert!(is_type_compatible("neuro:volume", "core:array<neuro:volume>"));
+        assert!(is_type_compatible(
+            "neuro:volume",
+            "core:array<neuro:volume>"
+        ));
         assert!(is_type_compatible("neuro:mask", "core:array<neuro:volume>"));
-        assert!(!is_type_compatible("neuro:volume", "core:array<neuro:mask>"));
-        assert!(!is_type_compatible("core:array<neuro:volume>", "neuro:volume"));
+        assert!(!is_type_compatible(
+            "neuro:volume",
+            "core:array<neuro:mask>"
+        ));
+        assert!(!is_type_compatible(
+            "core:array<neuro:volume>",
+            "neuro:volume"
+        ));
     }
 
     #[test]

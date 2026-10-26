@@ -43,9 +43,15 @@ pub struct Launch {
 /// that start a second interpreter (the Python adapter launches with node and
 /// then needs a python3) read these instead of searching PATH, which a GUI
 /// MCP client may have trimmed.
-pub fn interpreter_env(interpreters: &HashMap<String, PathBuf>, launch: &Launch) -> Vec<(String, PathBuf)> {
+pub fn interpreter_env(
+    interpreters: &HashMap<String, PathBuf>,
+    launch: &Launch,
+) -> Vec<(String, PathBuf)> {
     let var = |name: &str| format!("NEUROFLOW_INTERPRETER_{}", name.to_uppercase());
-    let mut env: Vec<(String, PathBuf)> = interpreters.iter().map(|(n, p)| (var(n), p.clone())).collect();
+    let mut env: Vec<(String, PathBuf)> = interpreters
+        .iter()
+        .map(|(n, p)| (var(n), p.clone()))
+        .collect();
     env.sort();
     if !interpreters.contains_key(&launch.name) {
         env.push((var(&launch.name), launch.interpreter.clone()));
@@ -82,7 +88,10 @@ impl Doc {
     }
 
     pub fn description(&self) -> &str {
-        self.value.get("description").and_then(Value::as_str).unwrap_or("")
+        self.value
+            .get("description")
+            .and_then(Value::as_str)
+            .unwrap_or("")
     }
 
     fn mcp_ext(&self) -> Option<&Value> {
@@ -98,7 +107,11 @@ pub struct Registry {
 }
 
 impl Registry {
-    pub fn load(dirs: &[PathBuf], interpreters: &HashMap<String, PathBuf>, interactive: bool) -> Result<Self, String> {
+    pub fn load(
+        dirs: &[PathBuf],
+        interpreters: &HashMap<String, PathBuf>,
+        interactive: bool,
+    ) -> Result<Self, String> {
         let mut docs: Vec<Doc> = Vec::new();
         let mut warnings = Vec::new();
         let mut by_id: HashMap<String, usize> = HashMap::new();
@@ -111,7 +124,9 @@ impl Registry {
             collect_json(&root, &mut files);
             files.sort();
             for file in files {
-                let Ok(text) = std::fs::read_to_string(&file) else { continue };
+                let Ok(text) = std::fs::read_to_string(&file) else {
+                    continue;
+                };
                 let Ok(value) = serde_json::from_str::<Value>(&text) else {
                     warnings.push(format!("skipped {}: not valid JSON", file.display()));
                     continue;
@@ -190,7 +205,11 @@ impl Registry {
             if !expose || doc.runnable.is_err() {
                 continue;
             }
-            let name = match doc.mcp_ext().and_then(|e| e.get("name")).and_then(Value::as_str) {
+            let name = match doc
+                .mcp_ext()
+                .and_then(|e| e.get("name"))
+                .and_then(Value::as_str)
+            {
                 Some(explicit) => explicit.to_string(),
                 None => derive_name(&doc.id),
             };
@@ -267,13 +286,19 @@ impl Registry {
                 return Err(format!("step {step_id}: {reason}"));
             }
             if step.get("condition").is_some() {
-                return Err(format!("step {step_id}: step conditions are not supported by this server yet"));
+                return Err(format!(
+                    "step {step_id}: step conditions are not supported by this server yet"
+                ));
             }
             if step.get("fixLoop").is_some() {
-                return Err(format!("step {step_id}: fix loops are not supported by this server yet"));
+                return Err(format!(
+                    "step {step_id}: fix loops are not supported by this server yet"
+                ));
             }
             if step.get("awaitApproval").and_then(Value::as_str) == Some("required") {
-                return Err(format!("step {step_id}: approvals are not supported by this server yet"));
+                return Err(format!(
+                    "step {step_id}: approvals are not supported by this server yet"
+                ));
             }
         }
         Ok(())
@@ -296,7 +321,11 @@ fn default_checkout(registry_root: &Path, repo: &str) -> Option<PathBuf> {
 /// Resolve a tool's `neuroflow/launch` into an executable interpreter and script.
 /// `interactive` says whether the host can wait on a window (see `Config::interactive`);
 /// without it, `uiApp` tools are rejected before anything is looked up.
-pub fn launch_of(doc: &Doc, interpreters: &HashMap<String, PathBuf>, interactive: bool) -> Result<Launch, String> {
+pub fn launch_of(
+    doc: &Doc,
+    interpreters: &HashMap<String, PathBuf>,
+    interactive: bool,
+) -> Result<Launch, String> {
     let launch = doc
         .value
         .pointer("/extensions/neuroflow~1launch")
@@ -308,9 +337,16 @@ pub fn launch_of(doc: &Doc, interpreters: &HashMap<String, PathBuf>, interactive
             if !interactive {
                 return Err("interactive uiApp tools need a host that can wait on a window (the desktop builder); this MCP server cannot".into());
             }
-            let app = launch.get("app").and_then(Value::as_str).ok_or("uiApp has no app name")?;
-            let command = launch.get("command").and_then(Value::as_str).ok_or("uiApp has no command")?;
-            let executable = find_on_path(command).ok_or_else(|| format!("{command} was not found on PATH"))?;
+            let app = launch
+                .get("app")
+                .and_then(Value::as_str)
+                .ok_or("uiApp has no app name")?;
+            let command = launch
+                .get("command")
+                .and_then(Value::as_str)
+                .ok_or("uiApp has no command")?;
+            let executable =
+                find_on_path(command).ok_or_else(|| format!("{command} was not found on PATH"))?;
             // An explicit environment override is safest for non-standard checkouts;
             // otherwise the app's repo is expected next to the NeuroFlow checkout.
             let key = format!("NEUROFLOW_UI_APP_{}", app.to_uppercase().replace('-', "_"));
@@ -320,19 +356,44 @@ pub fn launch_of(doc: &Doc, interpreters: &HashMap<String, PathBuf>, interactive
                 .filter(|path| path.is_dir())
                 .or_else(|| repo.and_then(|repo| default_checkout(&doc.root, repo)))
                 .ok_or_else(|| {
-                    let hint = repo.map(|repo| format!(" (looked for a {repo} directory next to the NeuroFlow checkout)")).unwrap_or_default();
+                    let hint = repo
+                        .map(|repo| {
+                            format!(
+                                " (looked for a {repo} directory next to the NeuroFlow checkout)"
+                            )
+                        })
+                        .unwrap_or_default();
                     format!("{app} checkout not found{hint}; set {key} to its directory")
                 })?;
-            let args = launch.get("args").and_then(Value::as_array).into_iter().flatten()
-                .filter_map(Value::as_str).map(str::to_string).collect();
-            return Ok(Launch { name: command.into(), interpreter: executable, script: None, args, cwd: Some(cwd) });
+            let args = launch
+                .get("args")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect();
+            return Ok(Launch {
+                name: command.into(),
+                interpreter: executable,
+                script: None,
+                args,
+                cwd: Some(cwd),
+            });
         }
-        other => return Err(format!("launch kind {other:?} is not supported by this server yet")),
+        other => {
+            return Err(format!(
+                "launch kind {other:?} is not supported by this server yet"
+            ))
+        }
     }
     if launch.get("interactive").and_then(Value::as_bool) == Some(true) {
         return Err("interactive scripts are not supported over MCP".into());
     }
-    let interpreter_name = launch.get("interpreter").and_then(Value::as_str).unwrap_or("");
+    let interpreter_name = launch
+        .get("interpreter")
+        .and_then(Value::as_str)
+        .unwrap_or("");
     if !ALLOWED_INTERPRETERS.contains(&interpreter_name) {
         return Err(format!(
             "interpreter {interpreter_name:?} is not allowed (allowed: {})",
@@ -351,10 +412,12 @@ pub fn launch_of(doc: &Doc, interpreters: &HashMap<String, PathBuf>, interactive
         .and_then(Value::as_str)
         .ok_or("neuroflow/launch has no script")?;
     let base = doc.source.parent().unwrap_or(Path::new("."));
-    let script = base
-        .join(script_rel)
-        .canonicalize()
-        .map_err(|_| format!("script {script_rel} not found next to {}", doc.source.display()))?;
+    let script = base.join(script_rel).canonicalize().map_err(|_| {
+        format!(
+            "script {script_rel} not found next to {}",
+            doc.source.display()
+        )
+    })?;
     if !script.starts_with(&doc.root) {
         return Err(format!(
             "script {} is outside the registry directory {}",
@@ -362,7 +425,13 @@ pub fn launch_of(doc: &Doc, interpreters: &HashMap<String, PathBuf>, interactive
             doc.root.display()
         ));
     }
-    Ok(Launch { name: interpreter_name.to_string(), interpreter, script: Some(script), args: vec![], cwd: None })
+    Ok(Launch {
+        name: interpreter_name.to_string(),
+        interpreter,
+        script: Some(script),
+        args: vec![],
+        cwd: None,
+    })
 }
 
 /// RFC 0009 section 1.1: replace `/` with `.`, drop characters outside `[A-Za-z0-9_.-]`.
@@ -377,14 +446,24 @@ fn title_of(value: &Value, id: &str) -> String {
     value
         .pointer("/extensions/neuroflow~1mcp/title")
         .and_then(Value::as_str)
-        .or_else(|| value.pointer("/extensions/niivue~1ui/block/label").and_then(Value::as_str))
-        .or_else(|| value.pointer("/extensions/niivue~1ui/block/0/label").and_then(Value::as_str))
+        .or_else(|| {
+            value
+                .pointer("/extensions/niivue~1ui/block/label")
+                .and_then(Value::as_str)
+        })
+        .or_else(|| {
+            value
+                .pointer("/extensions/niivue~1ui/block/0/label")
+                .and_then(Value::as_str)
+        })
         .unwrap_or(id)
         .to_string()
 }
 
 fn collect_json(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     for entry in entries.flatten() {
         let path = entry.path();
         let name = entry.file_name().to_string_lossy().to_string();
@@ -410,7 +489,10 @@ mod tests {
             derive_name("neuroflow.gallery.tools/python-volume-filter"),
             "neuroflow.gallery.tools.python-volume-filter"
         );
-        assert_eq!(derive_name("niivue.desktop/dicom-to-bids"), "niivue.desktop.dicom-to-bids");
+        assert_eq!(
+            derive_name("niivue.desktop/dicom-to-bids"),
+            "niivue.desktop.dicom-to-bids"
+        );
     }
 
     fn ui_app_doc() -> Doc {
@@ -422,9 +504,15 @@ mod tests {
             } }
         });
         Doc {
-            kind: Kind::Tool, id: "test/viewer".into(), version: "1.0.0".into(), value,
-            source: PathBuf::from("/nonexistent/tools/viewer.json"), root: PathBuf::from("/nonexistent"),
-            title: "Viewer".into(), runnable: Ok(()), mcp_name: None,
+            kind: Kind::Tool,
+            id: "test/viewer".into(),
+            version: "1.0.0".into(),
+            value,
+            source: PathBuf::from("/nonexistent/tools/viewer.json"),
+            root: PathBuf::from("/nonexistent"),
+            title: "Viewer".into(),
+            runnable: Ok(()),
+            mcp_name: None,
         }
     }
 
@@ -438,8 +526,16 @@ mod tests {
         fs::create_dir_all(dir.join("neurovue")).unwrap();
         // Nothing of that name inside the repo must be mistaken for the checkout.
         assert!(!neuroflow.join("neurovue").exists());
-        assert_eq!(default_checkout(&gallery, "neurovue"), Some(dir.join("neurovue")), "gallery registry");
-        assert_eq!(default_checkout(&neuroflow, "neurovue"), Some(dir.join("neurovue")), "repo root registry");
+        assert_eq!(
+            default_checkout(&gallery, "neurovue"),
+            Some(dir.join("neurovue")),
+            "gallery registry"
+        );
+        assert_eq!(
+            default_checkout(&neuroflow, "neurovue"),
+            Some(dir.join("neurovue")),
+            "repo root registry"
+        );
         // Not "bidsui": the BIDSvue app keeps a WebKit cache at $TMPDIR/bidsui, which the walk reaches.
         let absent = format!("no-such-app-{}", std::process::id());
         assert_eq!(default_checkout(&gallery, &absent), None, "missing sibling");

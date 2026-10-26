@@ -105,7 +105,10 @@ fn scalar_schema(t: &str, value_types: &[String]) -> Value {
 
 /// JSON Schema for one NeuroFlow type declaration.
 pub fn declaration_schema(decl: &Value, value_types: &[String]) -> Value {
-    let t = decl.get("type").and_then(Value::as_str).unwrap_or("core:json");
+    let t = decl
+        .get("type")
+        .and_then(Value::as_str)
+        .unwrap_or("core:json");
     let mut schema = match neuroflow_core::array_element_type(t) {
         Some(inner) => json!({ "type": "array", "items": scalar_schema(inner, value_types) }),
         None => scalar_schema(t, value_types),
@@ -127,12 +130,20 @@ pub fn declaration_schema(decl: &Value, value_types: &[String]) -> Value {
         obj.remove("description");
     }
     if !description.is_empty() {
-        obj.insert("description".into(), Value::String(description.trim().to_string()));
+        obj.insert(
+            "description".into(),
+            Value::String(description.trim().to_string()),
+        );
     }
     if let Some(label) = decl.get("label") {
         obj.insert("title".into(), label.clone());
     }
-    for (from, to) in [("default", "default"), ("enum", "enum"), ("min", "minimum"), ("max", "maximum")] {
+    for (from, to) in [
+        ("default", "default"),
+        ("enum", "enum"),
+        ("min", "minimum"),
+        ("max", "maximum"),
+    ] {
         if let Some(v) = decl.get(from) {
             obj.insert(to.into(), v.clone());
         }
@@ -142,7 +153,11 @@ pub fn declaration_schema(decl: &Value, value_types: &[String]) -> Value {
 }
 
 pub fn is_required(decl: &Value) -> bool {
-    !decl.get("optional").and_then(Value::as_bool).unwrap_or(false) && decl.get("default").is_none()
+    !decl
+        .get("optional")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+        && decl.get("default").is_none()
 }
 
 /// `inputSchema` for a tool or workflow from its declared `inputs`.
@@ -216,8 +231,14 @@ mod tests {
         let schema = input_schema(inputs.as_object(), &[]);
         assert_eq!(schema["required"], json!(["bids_dir"]));
         assert_eq!(schema["properties"]["bids_dir"]["type"], "string");
-        assert_eq!(schema["properties"]["bids_dir"]["x-neuroflow-type"], "neuro:bids-dataset");
-        assert_eq!(schema["properties"]["operation"]["enum"], json!(["smooth", "zscore"]));
+        assert_eq!(
+            schema["properties"]["bids_dir"]["x-neuroflow-type"],
+            "neuro:bids-dataset"
+        );
+        assert_eq!(
+            schema["properties"]["operation"]["enum"],
+            json!(["smooth", "zscore"])
+        );
         assert_eq!(schema["properties"]["amount"]["minimum"], 0);
     }
 }

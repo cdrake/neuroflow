@@ -27,7 +27,13 @@ pub fn media_type(path: &str) -> &'static str {
         _ if p.ends_with(".tsv") => "text/tab-separated-values",
         _ if p.ends_with(".csv") => "text/csv",
         _ if p.ends_with(".html") || p.ends_with(".htm") => "text/html",
-        _ if p.ends_with(".txt") || p.ends_with(".log") || p.ends_with(".stdout") || p.ends_with(".stderr") => "text/plain",
+        _ if p.ends_with(".txt")
+            || p.ends_with(".log")
+            || p.ends_with(".stdout")
+            || p.ends_with(".stderr") =>
+        {
+            "text/plain"
+        }
         _ if p.ends_with(".md") => "text/markdown",
         _ if p.ends_with(".png") => "image/png",
         _ if p.ends_with(".jpg") || p.ends_with(".jpeg") => "image/jpeg",
@@ -52,26 +58,42 @@ pub fn descriptor(path: &str, t: &str, uri: &str) -> Value {
 }
 
 enum Target {
-    Artifact { run: String, step: String, output: String, index: Option<usize>, raw: bool },
+    Artifact {
+        run: String,
+        step: String,
+        output: String,
+        index: Option<usize>,
+        raw: bool,
+    },
     Provenance(String),
     Record(String),
-    Log { run: String, step: String, stream: String },
-    Catalog { id: String },
+    Log {
+        run: String,
+        step: String,
+        stream: String,
+    },
+    Catalog {
+        id: String,
+    },
     Schema(String),
 }
 
 fn parse(uri: &str) -> Result<Target, String> {
-    let rest = uri.strip_prefix("neuroflow://").ok_or("not a neuroflow:// URI")?;
+    let rest = uri
+        .strip_prefix("neuroflow://")
+        .ok_or("not a neuroflow:// URI")?;
     let parts: Vec<&str> = rest.split('/').collect();
     let bad = || format!("unrecognized neuroflow URI {uri}");
     match parts.as_slice() {
         ["runs", run, "provenance"] => Ok(Target::Provenance(run.to_string())),
         ["runs", run, "record"] => Ok(Target::Record(run.to_string())),
-        ["runs", run, "logs", step, stream] if matches!(*stream, "stdout" | "stderr") => Ok(Target::Log {
-            run: run.to_string(),
-            step: step.to_string(),
-            stream: stream.to_string(),
-        }),
+        ["runs", run, "logs", step, stream] if matches!(*stream, "stdout" | "stderr") => {
+            Ok(Target::Log {
+                run: run.to_string(),
+                step: step.to_string(),
+                stream: stream.to_string(),
+            })
+        }
         ["runs", run, "artifacts", step, output, tail @ ..] => {
             let (index, raw) = match tail {
                 [] => (None, false),
@@ -80,7 +102,13 @@ fn parse(uri: &str) -> Result<Target, String> {
                 [i, "raw"] => (Some(i.parse().map_err(|_| bad())?), true),
                 _ => return Err(bad()),
             };
-            Ok(Target::Artifact { run: run.to_string(), step: step.to_string(), output: output.to_string(), index, raw })
+            Ok(Target::Artifact {
+                run: run.to_string(),
+                step: step.to_string(),
+                output: output.to_string(),
+                index,
+                raw,
+            })
         }
         ["catalog", "tools" | "workflows", id] => Ok(Target::Catalog { id: pct_decode(id) }),
         ["schemas", ..] => Ok(Target::Schema(parts[1..].join("/"))),
@@ -106,12 +134,19 @@ fn run_dir(cfg: &Config, run: &str) -> Result<PathBuf, String> {
 }
 
 fn load_record(cfg: &Config, run: &str) -> Result<Value, String> {
-    let text = fs::read_to_string(run_dir(cfg, run)?.join("run.json")).map_err(|e| e.to_string())?;
+    let text =
+        fs::read_to_string(run_dir(cfg, run)?.join("run.json")).map_err(|e| e.to_string())?;
     serde_json::from_str(&text).map_err(|e| e.to_string())
 }
 
 /// (path, NeuroFlow type) of an artifact URI.
-fn artifact_path(cfg: &Config, run: &str, step: &str, output: &str, index: Option<usize>) -> Result<(String, String), String> {
+fn artifact_path(
+    cfg: &Config,
+    run: &str,
+    step: &str,
+    output: &str,
+    index: Option<usize>,
+) -> Result<(String, String), String> {
     let record = load_record(cfg, run)?;
     let value = record
         .pointer(&format!("/steps/{step}/outputs/{output}"))
@@ -120,11 +155,18 @@ fn artifact_path(cfg: &Config, run: &str, step: &str, output: &str, index: Optio
         .pointer(&format!("/steps/{step}/types/{output}"))
         .and_then(Value::as_str)
         .unwrap_or("core:file");
-    let element = neuroflow_core::array_element_type(t).unwrap_or(t).to_string();
+    let element = neuroflow_core::array_element_type(t)
+        .unwrap_or(t)
+        .to_string();
     let path = match (value, index) {
-        (Value::Array(items), Some(i)) => items.get(i).and_then(Value::as_str).ok_or_else(|| format!("index {i} out of range"))?,
+        (Value::Array(items), Some(i)) => items
+            .get(i)
+            .and_then(Value::as_str)
+            .ok_or_else(|| format!("index {i} out of range"))?,
         (Value::String(p), None | Some(0)) => p.as_str(),
-        (Value::Array(_), None) => return Err("this output is a list; add /<index> to the URI".into()),
+        (Value::Array(_), None) => {
+            return Err("this output is a list; add /<index> to the URI".into())
+        }
         _ => return Err(format!("{step}.{output} is a value, not an artifact")),
     };
     Ok((path.to_string(), element))
@@ -132,17 +174,26 @@ fn artifact_path(cfg: &Config, run: &str, step: &str, output: &str, index: Optio
 
 pub fn artifact_type(cfg: &Config, uri: &str) -> Result<String, String> {
     match parse(uri)? {
-        Target::Artifact { run, step, output, index, raw: false } =>
-            artifact_path(cfg, &run, &step, &output, index).map(|(_, t)| t),
+        Target::Artifact {
+            run,
+            step,
+            output,
+            index,
+            raw: false,
+        } => artifact_path(cfg, &run, &step, &output, index).map(|(_, t)| t),
         _ => Err(format!("{uri} is not an artifact URI")),
     }
 }
 
 pub fn resolve_artifact_uri(cfg: &Config, uri: &str) -> Result<PathBuf, String> {
     match parse(uri)? {
-        Target::Artifact { run, step, output, index, raw: false } => {
-            artifact_path(cfg, &run, &step, &output, index).map(|(p, _)| PathBuf::from(p))
-        }
+        Target::Artifact {
+            run,
+            step,
+            output,
+            index,
+            raw: false,
+        } => artifact_path(cfg, &run, &step, &output, index).map(|(p, _)| PathBuf::from(p)),
         _ => Err(format!("{uri} is not an artifact URI")),
     }
 }
@@ -151,14 +202,23 @@ pub fn resolve_artifact_uri(cfg: &Config, uri: &str) -> Result<PathBuf, String> 
 /// by the execution gate. A caller cannot inject this through tool arguments.
 pub fn qualifier_evidence(cfg: &Config, uri: &str) -> Result<Value, String> {
     match parse(uri)? {
-        Target::Artifact { run, step, output, index, raw: false } => {
+        Target::Artifact {
+            run,
+            step,
+            output,
+            index,
+            raw: false,
+        } => {
             let record = load_record(cfg, &run)?;
             if record["status"] != "completed" || record["steps"][&step]["status"] != "completed" {
                 return Err("qualifier evidence requires a completed producer run".into());
             }
             let evidence = &record["steps"][&step]["outputEvidence"][&output];
             match (evidence, index) {
-                (Value::Array(items), Some(i)) => items.get(i).cloned().ok_or_else(|| "missing artifact evidence index".into()),
+                (Value::Array(items), Some(i)) => items
+                    .get(i)
+                    .cloned()
+                    .ok_or_else(|| "missing artifact evidence index".into()),
                 (Value::Object(_), None | Some(0)) => Ok(evidence.clone()),
                 (Value::Null, _) => Ok(Value::Null),
                 _ => Err("artifact qualifier evidence has the wrong shape".into()),
@@ -170,32 +230,49 @@ pub fn qualifier_evidence(cfg: &Config, uri: &str) -> Result<Value, String> {
 
 /// `resources/read` contents for a `neuroflow://` URI.
 pub fn read(cfg: &Config, registry: &Registry, uri: &str) -> Result<Vec<Value>, String> {
-    let text = |mime: &str, body: String| vec![json!({ "uri": uri, "mimeType": mime, "text": body })];
+    let text =
+        |mime: &str, body: String| vec![json!({ "uri": uri, "mimeType": mime, "text": body })];
     let pretty = |v: &Value| serde_json::to_string_pretty(v).unwrap_or_default();
     match parse(uri)? {
         Target::Provenance(run) => {
-            let body = fs::read_to_string(run_dir(cfg, &run)?.join("run.provenance.json")).map_err(|e| e.to_string())?;
+            let body = fs::read_to_string(run_dir(cfg, &run)?.join("run.provenance.json"))
+                .map_err(|e| e.to_string())?;
             Ok(text("application/json", body))
         }
         Target::Record(run) => Ok(text("application/json", pretty(&load_record(cfg, &run)?))),
         Target::Log { run, step, stream } => {
-            let path = run_dir(cfg, &run)?.join("logs").join(format!("{}.{stream}", safe_segment(&step)?));
-            let body = fs::read_to_string(&path).map_err(|_| format!("no {stream} log for step {step}"))?;
+            let path = run_dir(cfg, &run)?
+                .join("logs")
+                .join(format!("{}.{stream}", safe_segment(&step)?));
+            let body = fs::read_to_string(&path)
+                .map_err(|_| format!("no {stream} log for step {step}"))?;
             Ok(text("text/plain", tail(&body, 64 * 1024)))
         }
         Target::Catalog { id } => {
-            let doc = registry.get(&id).ok_or_else(|| format!("unknown document {id}"))?;
+            let doc = registry
+                .get(&id)
+                .ok_or_else(|| format!("unknown document {id}"))?;
             Ok(text("application/json", pretty(&doc.value)))
         }
         Target::Schema(rel) => {
-            let spec = cfg.spec_dir.as_ref().ok_or("server was started without --spec")?;
+            let spec = cfg
+                .spec_dir
+                .as_ref()
+                .ok_or("server was started without --spec")?;
             for seg in rel.split('/') {
                 safe_segment(seg)?;
             }
-            let body = fs::read_to_string(spec.join("schemas").join(&rel)).map_err(|_| format!("unknown schema {rel}"))?;
+            let body = fs::read_to_string(spec.join("schemas").join(&rel))
+                .map_err(|_| format!("unknown schema {rel}"))?;
             Ok(text("application/schema+json", body))
         }
-        Target::Artifact { run, step, output, index, raw } => {
+        Target::Artifact {
+            run,
+            step,
+            output,
+            index,
+            raw,
+        } => {
             let (path, t) = artifact_path(cfg, &run, &step, &output, index)?;
             if raw {
                 return read_raw(uri, &path);
@@ -203,12 +280,18 @@ pub fn read(cfg: &Config, registry: &Registry, uri: &str) -> Result<Vec<Value>, 
             let mut s = summarize(&path, &t, cfg.summary_max_bytes);
             if let Ok(evidence) = qualifier_evidence(cfg, uri) {
                 if !evidence.is_null() {
-                    if !crate::qualifiers::unchanged(&evidence) { return Err("artifact changed since its qualifier evidence was recorded".into()); }
+                    if !crate::qualifiers::unchanged(&evidence) {
+                        return Err(
+                            "artifact changed since its qualifier evidence was recorded".into()
+                        );
+                    }
                     s["qualifierEvidence"] = evidence;
                 }
             }
             s["uri"] = json!(uri);
-            Ok(vec![json!({ "uri": uri, "mimeType": "application/vnd.neuroflow.artifact-summary+json", "text": pretty(&s) })])
+            Ok(vec![
+                json!({ "uri": uri, "mimeType": "application/vnd.neuroflow.artifact-summary+json", "text": pretty(&s) }),
+            ])
         }
     }
 }
@@ -217,9 +300,15 @@ fn read_raw(uri: &str, path: &str) -> Result<Vec<Value>, String> {
     let media = media_type(path);
     let meta = fs::metadata(path).map_err(|e| e.to_string())?;
     if meta.is_dir() {
-        return Err("raw reads are not available for directories; read the summary URI instead".into());
+        return Err(
+            "raw reads are not available for directories; read the summary URI instead".into(),
+        );
     }
-    let limit = if is_text(media) { RAW_TEXT_MAX } else { RAW_BINARY_MAX };
+    let limit = if is_text(media) {
+        RAW_TEXT_MAX
+    } else {
+        RAW_BINARY_MAX
+    };
     if meta.len() > limit {
         return Err(format!(
             "{} bytes exceeds the raw read limit of {limit} bytes; read the summary URI (without /raw) instead",
@@ -228,9 +317,13 @@ fn read_raw(uri: &str, path: &str) -> Result<Vec<Value>, String> {
     }
     let bytes = fs::read(path).map_err(|e| e.to_string())?;
     if is_text(media) {
-        Ok(vec![json!({ "uri": uri, "mimeType": media, "text": String::from_utf8_lossy(&bytes) })])
+        Ok(vec![
+            json!({ "uri": uri, "mimeType": media, "text": String::from_utf8_lossy(&bytes) }),
+        ])
     } else {
-        Ok(vec![json!({ "uri": uri, "mimeType": media, "blob": base64(&bytes) })])
+        Ok(vec![
+            json!({ "uri": uri, "mimeType": media, "blob": base64(&bytes) }),
+        ])
     }
 }
 
@@ -298,9 +391,14 @@ fn read_prefix(p: &Path, n: usize) -> String {
 }
 
 fn table_summary(p: &Path, sep: char) -> Value {
-    let Ok(text) = fs::read_to_string(p) else { return json!({ "error": "unreadable" }) };
+    let Ok(text) = fs::read_to_string(p) else {
+        return json!({ "error": "unreadable" });
+    };
     let mut lines = text.lines().filter(|l| !l.trim().is_empty());
-    let columns: Vec<&str> = lines.next().map(|h| h.split(sep).collect()).unwrap_or_default();
+    let columns: Vec<&str> = lines
+        .next()
+        .map(|h| h.split(sep).collect())
+        .unwrap_or_default();
     let rows: Vec<Vec<&str>> = lines.map(|l| l.split(sep).collect()).collect();
     json!({
         "columns": columns,
@@ -316,7 +414,11 @@ fn summarize_dir(p: &Path) -> Value {
         .flatten()
         .map(|e| {
             let name = e.file_name().to_string_lossy().into_owned();
-            if e.path().is_dir() { format!("{name}/") } else { name }
+            if e.path().is_dir() {
+                format!("{name}/")
+            } else {
+                name
+            }
         })
         .filter(|n| !n.starts_with('.'))
         .collect();
@@ -327,11 +429,16 @@ fn summarize_dir(p: &Path) -> Value {
     walk(p, 0, &mut |path| {
         files += 1;
         bytes += fs::metadata(path).map(|m| m.len()).unwrap_or(0);
-        let name = path.file_name().map(|n| n.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_ascii_lowercase())
+            .unwrap_or_default();
         let ext = if name.ends_with(".nii.gz") {
             ".nii.gz".to_string()
         } else {
-            path.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_else(|| "(none)".into())
+            path.extension()
+                .map(|e| format!(".{}", e.to_string_lossy()))
+                .unwrap_or_else(|| "(none)".into())
         };
         *ext_counts.entry(ext).or_default() += 1;
     });
@@ -345,7 +452,9 @@ fn summarize_dir(p: &Path) -> Value {
     let description = p.join("dataset_description.json");
     if description.is_file() {
         let mut bids = json!({});
-        if let Ok(Ok(v)) = fs::read_to_string(&description).map(|t| serde_json::from_str::<Value>(&t)) {
+        if let Ok(Ok(v)) =
+            fs::read_to_string(&description).map(|t| serde_json::from_str::<Value>(&t))
+        {
             bids["datasetDescription"] = v;
         }
         let subjects: Vec<&String> = entries.iter().filter(|e| e.starts_with("sub-")).collect();
@@ -359,7 +468,9 @@ fn summarize_dir(p: &Path) -> Value {
                     sessions += 1;
                     for dt in fs::read_dir(entry.path()).into_iter().flatten().flatten() {
                         if dt.path().is_dir() {
-                            *datatypes.entry(dt.file_name().to_string_lossy().into_owned()).or_default() += 1;
+                            *datatypes
+                                .entry(dt.file_name().to_string_lossy().into_owned())
+                                .or_default() += 1;
                         }
                     }
                 } else if entry.path().is_dir() {
@@ -367,7 +478,10 @@ fn summarize_dir(p: &Path) -> Value {
                 }
             }
         }
-        bids["subjects"] = json!(subjects.iter().map(|s| s.trim_end_matches('/')).collect::<Vec<_>>());
+        bids["subjects"] = json!(subjects
+            .iter()
+            .map(|s| s.trim_end_matches('/'))
+            .collect::<Vec<_>>());
         bids["sessionCount"] = json!(sessions);
         bids["datatypes"] = json!(datatypes);
         s["bids"] = bids;
@@ -403,23 +517,43 @@ struct Reader<'a> {
 impl Reader<'_> {
     fn i16(&self, o: usize) -> i16 {
         let a = [self.b[o], self.b[o + 1]];
-        if self.le { i16::from_le_bytes(a) } else { i16::from_be_bytes(a) }
+        if self.le {
+            i16::from_le_bytes(a)
+        } else {
+            i16::from_be_bytes(a)
+        }
     }
     fn i32(&self, o: usize) -> i32 {
         let a: [u8; 4] = self.b[o..o + 4].try_into().unwrap();
-        if self.le { i32::from_le_bytes(a) } else { i32::from_be_bytes(a) }
+        if self.le {
+            i32::from_le_bytes(a)
+        } else {
+            i32::from_be_bytes(a)
+        }
     }
     fn i64(&self, o: usize) -> i64 {
         let a: [u8; 8] = self.b[o..o + 8].try_into().unwrap();
-        if self.le { i64::from_le_bytes(a) } else { i64::from_be_bytes(a) }
+        if self.le {
+            i64::from_le_bytes(a)
+        } else {
+            i64::from_be_bytes(a)
+        }
     }
     fn f32(&self, o: usize) -> f64 {
         let a: [u8; 4] = self.b[o..o + 4].try_into().unwrap();
-        f64::from(if self.le { f32::from_le_bytes(a) } else { f32::from_be_bytes(a) })
+        f64::from(if self.le {
+            f32::from_le_bytes(a)
+        } else {
+            f32::from_be_bytes(a)
+        })
     }
     fn f64(&self, o: usize) -> f64 {
         let a: [u8; 8] = self.b[o..o + 8].try_into().unwrap();
-        if self.le { f64::from_le_bytes(a) } else { f64::from_be_bytes(a) }
+        if self.le {
+            f64::from_le_bytes(a)
+        } else {
+            f64::from_be_bytes(a)
+        }
     }
 }
 
@@ -476,11 +610,20 @@ fn parse_header(b: &[u8]) -> Result<Header, String> {
                 [r.f32(312), r.f32(316), r.f32(320), r.f32(324)],
             ])
         } else if qform_code > 0 {
-            Some(qform_affine(r.f32(256), r.f32(260), r.f32(264), [r.f32(268), r.f32(272), r.f32(276)], &pixdim))
+            Some(qform_affine(
+                r.f32(256),
+                r.f32(260),
+                r.f32(264),
+                [r.f32(268), r.f32(272), r.f32(276)],
+                &pixdim,
+            ))
         } else {
             None
         };
-        let descrip = String::from_utf8_lossy(&b[148..228]).trim_end_matches('\0').trim().to_string();
+        let descrip = String::from_utf8_lossy(&b[148..228])
+            .trim_end_matches('\0')
+            .trim()
+            .to_string();
         Ok(Header {
             version,
             dims,
@@ -512,11 +655,20 @@ fn parse_header(b: &[u8]) -> Result<Header, String> {
                 [r.f64(464), r.f64(472), r.f64(480), r.f64(488)],
             ])
         } else if qform_code > 0 {
-            Some(qform_affine(r.f64(352), r.f64(360), r.f64(368), [r.f64(376), r.f64(384), r.f64(392)], &pixdim))
+            Some(qform_affine(
+                r.f64(352),
+                r.f64(360),
+                r.f64(368),
+                [r.f64(376), r.f64(384), r.f64(392)],
+                &pixdim,
+            ))
         } else {
             None
         };
-        let descrip = String::from_utf8_lossy(&b[240..320]).trim_end_matches('\0').trim().to_string();
+        let descrip = String::from_utf8_lossy(&b[240..320])
+            .trim_end_matches('\0')
+            .trim()
+            .to_string();
         Ok(Header {
             version,
             dims,
@@ -543,15 +695,33 @@ pub fn inspect_qualifiers(path: &Path) -> Result<Value, String> {
     let count = file.read(&mut prefix).map_err(|e| e.to_string())?;
     let gzip = count == 2 && prefix == [0x1f, 0x8b];
     let file = fs::File::open(path).map_err(|e| e.to_string())?;
-    let mut reader: Box<dyn Read> = if gzip { Box::new(GzDecoder::new(file)) } else { Box::new(file) };
+    let mut reader: Box<dyn Read> = if gzip {
+        Box::new(GzDecoder::new(file))
+    } else {
+        Box::new(file)
+    };
     let mut bytes = Vec::new();
-    reader.by_ref().take(540).read_to_end(&mut bytes).map_err(|e| e.to_string())?;
+    reader
+        .by_ref()
+        .take(540)
+        .read_to_end(&mut bytes)
+        .map_err(|e| e.to_string())?;
     let nifti1 = bytes.get(344..348) == Some(b"n+1\0");
     let nifti2 = bytes.get(4..12) == Some(b"n+2\0\r\n\x1a\n");
     if nifti1 || nifti2 {
         let h = parse_header(&bytes)?;
-        if nifti2 && (3000..3100).contains(&Reader { b: &bytes, le: h.le }.i32(504)) {
-            return Ok(json!({ "facts": {}, "inspector": null, "reason": "CIFTI requires a CIFTI reader; its NIfTI container does not establish nii compatibility" }));
+        if nifti2
+            && (3000..3100).contains(
+                &Reader {
+                    b: &bytes,
+                    le: h.le,
+                }
+                .i32(504),
+            )
+        {
+            return Ok(
+                json!({ "facts": {}, "inspector": null, "reason": "CIFTI requires a CIFTI reader; its NIfTI container does not establish nii compatibility" }),
+            );
         }
         if (h.version == 1) != nifti1 || h.dims.is_empty() || h.dims.iter().any(|d| *d <= 0) {
             return Err("invalid NIfTI header dimensions or magic".into());
@@ -572,19 +742,44 @@ pub fn inspect_qualifiers(path: &Path) -> Result<Value, String> {
         // Codes 2 and 4 do not identify a subject or a particular template.
         // Two competing transforms must agree before establishing a scanner frame.
         let scanner_codes = (h.qform_code == 1 || h.sform_code == 1)
-            && matches!(h.qform_code, 0 | 1) && matches!(h.sform_code, 0 | 1);
+            && matches!(h.qform_code, 0 | 1)
+            && matches!(h.sform_code, 0 | 1);
         let mut consistent = true;
         if h.qform_code == 1 && h.sform_code == 1 {
-            let r = Reader { b: &bytes, le: h.le };
-            let q = if h.version == 1 {
-                qform_affine(r.f32(256), r.f32(260), r.f32(264), [r.f32(268), r.f32(272), r.f32(276)], &h.pixdim)
-            } else {
-                qform_affine(r.f64(352), r.f64(360), r.f64(368), [r.f64(376), r.f64(384), r.f64(392)], &h.pixdim)
+            let r = Reader {
+                b: &bytes,
+                le: h.le,
             };
-            consistent = h.affine.as_ref().is_some_and(|s| q.iter().flatten().zip(s.iter().flatten())
-                .all(|(a, b)| a.is_finite() && b.is_finite() && (a - b).abs() < 0.001));
+            let q = if h.version == 1 {
+                qform_affine(
+                    r.f32(256),
+                    r.f32(260),
+                    r.f32(264),
+                    [r.f32(268), r.f32(272), r.f32(276)],
+                    &h.pixdim,
+                )
+            } else {
+                qform_affine(
+                    r.f64(352),
+                    r.f64(360),
+                    r.f64(368),
+                    [r.f64(376), r.f64(384), r.f64(392)],
+                    &h.pixdim,
+                )
+            };
+            consistent = h.affine.as_ref().is_some_and(|s| {
+                q.iter()
+                    .flatten()
+                    .zip(s.iter().flatten())
+                    .all(|(a, b)| a.is_finite() && b.is_finite() && (a - b).abs() < 0.001)
+            });
         }
-        if scanner_codes && consistent && h.affine.as_ref().is_some_and(|m| m.iter().flatten().all(|v| v.is_finite())) {
+        if scanner_codes
+            && consistent
+            && h.affine
+                .as_ref()
+                .is_some_and(|m| m.iter().flatten().all(|v| v.is_finite()))
+        {
             facts["space"] = json!("individual");
         }
         return Ok(json!({ "facts": facts, "inspector": "nifti-header-v1",
@@ -593,10 +788,17 @@ pub fn inspect_qualifiers(path: &Path) -> Result<Value, String> {
     }
     if !gzip {
         let first = bytes.iter().find(|b| !b.is_ascii_whitespace());
-        if first.is_some_and(|b| matches!(*b, b'{' | b'[' | b'"' | b'-' | b'0'..=b'9' | b't' | b'f' | b'n')) {
+        if first.is_some_and(|b| {
+            matches!(
+                *b,
+                b'{' | b'[' | b'"' | b'-' | b'0'..=b'9' | b't' | b'f' | b'n'
+            )
+        }) {
             let file = fs::File::open(path).map_err(|e| e.to_string())?;
             if serde_json::from_reader::<_, Value>(file).is_ok() {
-                return Ok(json!({ "facts": { "formats": ["json"] }, "inspector": "json-parser-v1" }));
+                return Ok(
+                    json!({ "facts": { "formats": ["json"] }, "inspector": "json-parser-v1" }),
+                );
             }
         }
         // A one-number table is also a JSON number and is reported as json above.
@@ -618,7 +820,10 @@ const GRADIENT_TABLE_MAX: u64 = 4 * 1024 * 1024;
 fn inspect_gradient_table(path: &Path) -> Result<Option<Value>, String> {
     let file = fs::File::open(path).map_err(|e| e.to_string())?;
     let mut text = String::new();
-    if file.take(GRADIENT_TABLE_MAX + 1).read_to_string(&mut text).is_err()
+    if file
+        .take(GRADIENT_TABLE_MAX + 1)
+        .read_to_string(&mut text)
+        .is_err()
         || text.len() as u64 > GRADIENT_TABLE_MAX
     {
         return Ok(None);
@@ -626,19 +831,28 @@ fn inspect_gradient_table(path: &Path) -> Result<Option<Value>, String> {
     let rows: Option<Vec<Vec<f64>>> = text
         .lines()
         .filter(|line| !line.trim().is_empty())
-        .map(|line| line.split_whitespace().map(|v| v.parse::<f64>().ok().filter(|n| n.is_finite())).collect())
+        .map(|line| {
+            line.split_whitespace()
+                .map(|v| v.parse::<f64>().ok().filter(|n| n.is_finite()))
+                .collect()
+        })
         .collect();
     let Some(rows) = rows.filter(|rows| !rows.is_empty()) else {
         return Ok(None);
     };
     let values = || rows.iter().flatten();
-    let bval = (rows.len() == 1 || rows.iter().all(|row| row.len() == 1)) && values().all(|v| *v >= 0.0);
+    let bval =
+        (rows.len() == 1 || rows.iter().all(|row| row.len() == 1)) && values().all(|v| *v >= 0.0);
     let bvec = values().all(|v| v.abs() <= 1.0 + 1e-6)
         && ((rows.len() == 3 && rows.iter().all(|row| row.len() == rows[0].len()))
             || rows.iter().all(|row| row.len() == 3));
     Ok(match (bval, bvec) {
-        (true, false) => Some(json!({ "facts": { "formats": ["bval"] }, "inspector": "fsl-gradient-table-v1" })),
-        (false, true) => Some(json!({ "facts": { "formats": ["bvec"] }, "inspector": "fsl-gradient-table-v1" })),
+        (true, false) => {
+            Some(json!({ "facts": { "formats": ["bval"] }, "inspector": "fsl-gradient-table-v1" }))
+        }
+        (false, true) => {
+            Some(json!({ "facts": { "formats": ["bvec"] }, "inspector": "fsl-gradient-table-v1" }))
+        }
         (true, true) => Some(json!({ "facts": {}, "inspector": null,
             "reason": "the table fits both the bval and the bvec layout" })),
         (false, false) => None,
@@ -650,9 +864,21 @@ fn qform_affine(b: f64, c: f64, d: f64, offset: [f64; 3], pixdim: &[f64]) -> [[f
     let qfac = if pixdim[0] < 0.0 { -1.0 } else { 1.0 };
     let (dx, dy, dz) = (pixdim[1], pixdim[2], pixdim[3] * qfac);
     let rot = [
-        [a * a + b * b - c * c - d * d, 2.0 * (b * c - a * d), 2.0 * (b * d + a * c)],
-        [2.0 * (b * c + a * d), a * a + c * c - b * b - d * d, 2.0 * (c * d - a * b)],
-        [2.0 * (b * d - a * c), 2.0 * (c * d + a * b), a * a + d * d - c * c - b * b],
+        [
+            a * a + b * b - c * c - d * d,
+            2.0 * (b * c - a * d),
+            2.0 * (b * d + a * c),
+        ],
+        [
+            2.0 * (b * c + a * d),
+            a * a + c * c - b * b - d * d,
+            2.0 * (c * d - a * b),
+        ],
+        [
+            2.0 * (b * d - a * c),
+            2.0 * (c * d + a * b),
+            a * a + d * d - c * c - b * b,
+        ],
     ];
     let mut m = [[0.0; 4]; 3];
     for i in 0..3 {
@@ -783,9 +1009,14 @@ fn nifti_summary(p: &Path, t: &str, max_bytes: u64) -> Result<Value, String> {
             1280 => r.i64(o) as u64 as f64,
             _ => f64::NAN,
         };
-        if scale { raw * h.slope + h.inter } else { raw }
+        if scale {
+            raw * h.slope + h.inter
+        } else {
+            raw
+        }
     };
-    let (mut min, mut max, mut sum, mut nonzero, mut finite) = (f64::INFINITY, f64::NEG_INFINITY, 0.0, 0u64, 0u64);
+    let (mut min, mut max, mut sum, mut nonzero, mut finite) =
+        (f64::INFINITY, f64::NEG_INFINITY, 0.0, 0u64, 0u64);
     let label_like = matches!(t, "neuro:label-map" | "neuro:mask");
     let mut labels: BTreeMap<i64, u64> = BTreeMap::new();
     let mut too_many_labels = false;
@@ -819,7 +1050,12 @@ fn nifti_summary(p: &Path, t: &str, max_bytes: u64) -> Result<Value, String> {
         let table: Map<String, Value> = labels
             .iter()
             .filter(|(k, _)| **k != 0)
-            .map(|(k, n)| (k.to_string(), json!({ "voxels": n, "volumeMl": round(*n as f64 * voxel_ml, 3) })))
+            .map(|(k, n)| {
+                (
+                    k.to_string(),
+                    json!({ "voxels": n, "volumeMl": round(*n as f64 * voxel_ml, 3) }),
+                )
+            })
             .collect();
         s["labels"] = Value::Object(table);
     }
@@ -852,10 +1088,16 @@ pub fn list(cfg: &Config, registry: &Registry) -> Vec<Value> {
         }
     }
     for doc in &registry.docs {
-        let kind = if doc.kind == crate::registry::Kind::Tool { "tools" } else { "workflows" };
-        out.push(json!({ "uri": format!("neuroflow://catalog/{kind}/{}", pct_encode(&doc.id)),
+        let kind = if doc.kind == crate::registry::Kind::Tool {
+            "tools"
+        } else {
+            "workflows"
+        };
+        out.push(
+            json!({ "uri": format!("neuroflow://catalog/{kind}/{}", pct_encode(&doc.id)),
             "name": doc.id, "title": doc.title, "mimeType": "application/json",
-            "description": format!("NeuroFlow {} document", doc.kind.as_str()) }));
+            "description": format!("NeuroFlow {} document", doc.kind.as_str()) }),
+        );
     }
     // Recent runs.
     let mut runs: Vec<(std::time::SystemTime, String)> = fs::read_dir(&cfg.sessions_root)
@@ -863,7 +1105,14 @@ pub fn list(cfg: &Config, registry: &Registry) -> Vec<Value> {
         .flatten()
         .flatten()
         .filter(|e| e.path().join("run.provenance.json").is_file())
-        .map(|e| (e.metadata().and_then(|m| m.modified()).unwrap_or(std::time::UNIX_EPOCH), e.file_name().to_string_lossy().into_owned()))
+        .map(|e| {
+            (
+                e.metadata()
+                    .and_then(|m| m.modified())
+                    .unwrap_or(std::time::UNIX_EPOCH),
+                e.file_name().to_string_lossy().into_owned(),
+            )
+        })
         .collect();
     runs.sort_by(|a, b| b.0.cmp(&a.0));
     for (_, run) in runs.into_iter().take(20) {
@@ -892,9 +1141,17 @@ mod tests {
 
     #[test]
     fn axcodes_for_ras_and_las() {
-        let ras = [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]];
+        let ras = [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+        ];
         assert_eq!(axcodes(&ras), "RAS");
-        let las = [[-1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]];
+        let las = [
+            [-1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+        ];
         assert_eq!(axcodes(&las), "LAS");
     }
 
@@ -915,7 +1172,7 @@ mod tests {
         h[108..112].copy_from_slice(&352f32.to_le_bytes());
         h[123] = 2; // mm
         h[254..256].copy_from_slice(&1i16.to_le_bytes()); // sform_code
-        // sform: LAS (x flipped)
+                                                          // sform: LAS (x flipped)
         for (o, v) in [(280, -voxel), (300, voxel), (320, voxel)] {
             h[o..o + 4].copy_from_slice(&v.to_le_bytes());
         }
@@ -962,18 +1219,33 @@ mod tests {
         let bval = json!({ "formats": ["bval"] });
         let bvec = json!({ "formats": ["bvec"] });
         assert_eq!(inspect("row.bval", "0 1000 1000 2000\n")["facts"], bval);
-        assert_eq!(inspect("column.bval", "0\r\n1000\r\n1000\r\n\r\n")["facts"], bval);
-        assert_eq!(inspect("rows.bvec", "0 1 0 0.577\n0 0 1 0.577\n0 0 0 -0.577 \n")["facts"], bvec);
-        assert_eq!(inspect("columns.bvec", "0 0 0\n1 0 0\n0 1 0\n0 0 -1\n")["facts"], bvec);
+        assert_eq!(
+            inspect("column.bval", "0\r\n1000\r\n1000\r\n\r\n")["facts"],
+            bval
+        );
+        assert_eq!(
+            inspect("rows.bvec", "0 1 0 0.577\n0 0 1 0.577\n0 0 0 -0.577 \n")["facts"],
+            bvec
+        );
+        assert_eq!(
+            inspect("columns.bvec", "0 0 0\n1 0 0\n0 1 0\n0 0 -1\n")["facts"],
+            bvec
+        );
         assert_eq!(inspect("row.bvec", "+.5 -.5 .707\n")["facts"], bvec);
         // b-values are never negative, and directions never exceed unit length.
         assert_eq!(inspect("negative.bval", "0 -1000\n")["facts"], json!({}));
-        assert_eq!(inspect("long.bvec", "0 2 0\n0 0 2\n0 0 0\n")["facts"], json!({}));
+        assert_eq!(
+            inspect("long.bvec", "0 2 0\n0 0 2\n0 0 0\n")["facts"],
+            json!({})
+        );
         let ambiguous = inspect("ambiguous.bval", "0\n1\n0\n");
         assert_eq!(ambiguous["facts"], json!({}));
         assert!(ambiguous["reason"].as_str().unwrap().contains("both"));
         assert_eq!(inspect("text.bval", "0 1000 b0\n")["facts"], json!({}));
-        assert_eq!(inspect("ragged.bvec", "0 1 0\n0 0\n0 0 1\n0 1 0\n")["facts"], json!({}));
+        assert_eq!(
+            inspect("ragged.bvec", "0 1 0\n0 0\n0 0 1\n0 1 0\n")["facts"],
+            json!({})
+        );
         fs::remove_dir_all(dir).ok();
     }
 
@@ -981,13 +1253,23 @@ mod tests {
     fn parses_artifact_uris() {
         assert!(matches!(
             parse("neuroflow://runs/r1/artifacts/filter/filtered_volumes/2").unwrap(),
-            Target::Artifact { index: Some(2), raw: false, .. }
+            Target::Artifact {
+                index: Some(2),
+                raw: false,
+                ..
+            }
         ));
         assert!(matches!(
             parse("neuroflow://runs/r1/artifacts/qa/qa_html/raw").unwrap(),
-            Target::Artifact { index: None, raw: true, .. }
+            Target::Artifact {
+                index: None,
+                raw: true,
+                ..
+            }
         ));
-        assert!(matches!(parse("neuroflow://runs/../provenance").unwrap(), Target::Provenance(ref r) if r == ".."));
+        assert!(
+            matches!(parse("neuroflow://runs/../provenance").unwrap(), Target::Provenance(ref r) if r == "..")
+        );
         assert!(safe_segment("..").is_err());
     }
 }

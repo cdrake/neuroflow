@@ -1,0 +1,28 @@
+# Fails a pull request or push to main whose Rust code rustfmt would change.
+# Run `cargo fmt --all` with the pinned toolchain to fix it.
+name: fmt
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/fmt.yml
+      - "**/*.rs"
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/fmt.yml
+      - "**/*.rs"
+
+env:
+  RUST_TOOLCHAIN: 1.99.0
+
+jobs:
+  rustfmt:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust ${{ env.RUST_TOOLCHAIN }}
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component rustfmt
+          rustup default "$RUST_TOOLCHAIN"
+      - run: cargo fmt --all --check

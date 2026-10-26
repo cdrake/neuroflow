@@ -97,7 +97,12 @@ with open(pathlib.Path(os.environ['NEUROFLOW_SESSION'])/'provenance.jsonl', 'a')
             document.to_string(),
         )
         .unwrap();
-        Registry::load(&self.cfg.registry_dirs, &self.cfg.interpreters, self.cfg.interactive).unwrap()
+        Registry::load(
+            &self.cfg.registry_dirs,
+            &self.cfg.interpreters,
+            self.cfg.interactive,
+        )
+        .unwrap()
     }
     fn run(
         &self,
@@ -164,7 +169,11 @@ fn encoded_gzip_with_nii_suffix_is_rejected_before_launch() {
         .flat_map(|binding| binding["checks"].as_array().unwrap().clone())
         .any(|c| c["source"] == json!(["nii-gz"])));
     // Evidence is stored once per binding, not once per axis.
-    assert!(checks.as_array().unwrap().iter().all(|b| b["evidence"].is_object()));
+    assert!(checks
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|b| b["evidence"].is_object()));
 }
 
 #[test]
@@ -249,22 +258,43 @@ fn provenance_checksums_files_and_the_workflow_and_folds_the_trail() {
     assert_eq!(run.status, "completed", "{}", run.structured);
     let session = f.cfg.sessions_root.join(&run.run_id);
     let provenance: Value =
-        serde_json::from_str(&fs::read_to_string(session.join("run.provenance.json")).unwrap()).unwrap();
+        serde_json::from_str(&fs::read_to_string(session.join("run.provenance.json")).unwrap())
+            .unwrap();
 
-    assert_eq!(provenance["workflow"]["checksum"],
-        json!({ "algorithm": "sha256", "value": sha256(&session.join("workflow.json")) }));
-    let files: Vec<&Value> = provenance["entities"].as_array().unwrap().iter().filter(|e| e["path"].is_string()).collect();
-    assert_eq!(files.len(), 2, "the input and the copy: {}", provenance["entities"]);
+    assert_eq!(
+        provenance["workflow"]["checksum"],
+        json!({ "algorithm": "sha256", "value": sha256(&session.join("workflow.json")) })
+    );
+    let files: Vec<&Value> = provenance["entities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|e| e["path"].is_string())
+        .collect();
+    assert_eq!(
+        files.len(),
+        2,
+        "the input and the copy: {}",
+        provenance["entities"]
+    );
     for entity in files {
         let path = Path::new(entity["path"].as_str().unwrap());
-        assert_eq!(entity["checksum"], json!({ "algorithm": "sha256", "value": sha256(path) }));
+        assert_eq!(
+            entity["checksum"],
+            json!({ "algorithm": "sha256", "value": sha256(path) })
+        );
     }
 
     let trail = &provenance["extensions"]["neuroflow/session-trail"];
     assert_eq!(provenance["activities"][0]["stepId"], "copy");
     assert_eq!(trail["activities"]["act-1"][0]["engine"], "python3");
     assert_eq!(trail["unparsed"], 0);
-    let reported: Vec<&Value> = provenance["agents"].as_array().unwrap().iter().filter(|a| a["name"] == "copy.py").collect();
+    let reported: Vec<&Value> = provenance["agents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|a| a["name"] == "copy.py")
+        .collect();
     assert_eq!(reported.len(), 1);
     assert_eq!(reported[0]["version"], "1.0.0");
 }
@@ -280,7 +310,8 @@ fn export_packages_a_run_as_verified_bids_derivatives() {
     assert_eq!(run.status, "completed", "{}", run.structured);
     let session = f.cfg.sessions_root.join(&run.run_id);
     let provenance: Value =
-        serde_json::from_str(&fs::read_to_string(session.join("run.provenance.json")).unwrap()).unwrap();
+        serde_json::from_str(&fs::read_to_string(session.join("run.provenance.json")).unwrap())
+            .unwrap();
 
     let exported = crate::export::export_run(&f.cfg.sessions_root, &run.run_id).unwrap();
     let package = session.join("derivatives");
@@ -295,22 +326,45 @@ fn export_packages_a_run_as_verified_bids_derivatives() {
         .unwrap();
     assert_eq!(entity["checksum"]["value"], json!(sha256(&copy)));
     let listed: Vec<&Value> = exported["files"].as_array().unwrap().iter().collect();
-    assert!(listed.iter().any(|e| e["path"] == "image/image.bin" && e["verified"] == true), "{exported}");
-    assert!(listed.iter().any(|e| e["path"] == "code/workflow.json" && e["verified"] == true), "{exported}");
-    assert_eq!(fs::read(package.join("code/workflow.json")).unwrap(), fs::read(session.join("workflow.json")).unwrap());
+    assert!(
+        listed
+            .iter()
+            .any(|e| e["path"] == "image/image.bin" && e["verified"] == true),
+        "{exported}"
+    );
+    assert!(
+        listed
+            .iter()
+            .any(|e| e["path"] == "code/workflow.json" && e["verified"] == true),
+        "{exported}"
+    );
+    assert_eq!(
+        fs::read(package.join("code/workflow.json")).unwrap(),
+        fs::read(session.join("workflow.json")).unwrap()
+    );
     assert_eq!(
         fs::read(package.join(format!("{}_prov.json", run.run_id))).unwrap(),
         fs::read(session.join("run.provenance.json")).unwrap()
     );
 
-    let description: Value =
-        serde_json::from_str(&fs::read_to_string(package.join("dataset_description.json")).unwrap()).unwrap();
+    let description: Value = serde_json::from_str(
+        &fs::read_to_string(package.join("dataset_description.json")).unwrap(),
+    )
+    .unwrap();
     assert_eq!(description["DatasetType"], "derivative");
     assert_eq!(description["BIDSVersion"], crate::export::BIDS_VERSION);
     let generated = description["GeneratedBy"].as_array().unwrap();
     assert_eq!(generated[0]["Name"], provenance["workflow"]["id"]);
-    assert!(generated[0]["Description"].as_str().unwrap().contains(&sha256(&session.join("workflow.json"))));
-    assert!(generated.iter().any(|g| g["Name"] == "copy.py" && g["Version"] == "1.0.0"), "{description}");
+    assert!(generated[0]["Description"]
+        .as_str()
+        .unwrap()
+        .contains(&sha256(&session.join("workflow.json"))));
+    assert!(
+        generated
+            .iter()
+            .any(|g| g["Name"] == "copy.py" && g["Version"] == "1.0.0"),
+        "{description}"
+    );
 
     // A second export replaces the first.
     fs::write(package.join("stray.txt"), "old").unwrap();
@@ -357,17 +411,30 @@ fn export_verifies_folder_outputs_and_writes_embedded_values() {
 
     let exported = crate::export::export_run(&f.cfg.sessions_root, "run-synthetic").unwrap();
     let package = session.join("derivatives");
-    assert_eq!(fs::read(package.join("dataset/bids/sub-01/anat/T1w.nii")).unwrap(), b"volume");
+    assert_eq!(
+        fs::read(package.join("dataset/bids/sub-01/anat/T1w.nii")).unwrap(),
+        b"volume"
+    );
     let files = exported["files"].as_array().unwrap();
-    assert!(files.iter().any(|e| e["path"] == "dataset/bids" && e["verified"] == true), "{exported}");
-    let stats: Value = serde_json::from_str(&fs::read_to_string(package.join("stats/stats.json")).unwrap()).unwrap();
+    assert!(
+        files
+            .iter()
+            .any(|e| e["path"] == "dataset/bids" && e["verified"] == true),
+        "{exported}"
+    );
+    let stats: Value =
+        serde_json::from_str(&fs::read_to_string(package.join("stats/stats.json")).unwrap())
+            .unwrap();
     assert_eq!(stats, json!({ "count": 3 }));
 
     fs::write(folder.join("sub-01/anat/T1w.nii"), "volumf").unwrap();
     let err = crate::export::export_run(&f.cfg.sessions_root, "run-synthetic").unwrap_err();
     assert!(err.contains("dataset changed since the run"), "{err}");
     // The earlier export is left as it was, and no staging folder remains.
-    assert_eq!(fs::read(package.join("dataset/bids/sub-01/anat/T1w.nii")).unwrap(), b"volume");
+    assert_eq!(
+        fs::read(package.join("dataset/bids/sub-01/anat/T1w.nii")).unwrap(),
+        b"volume"
+    );
     assert!(!session.join("derivatives.partial").exists());
     fs::remove_dir_all(&package).unwrap();
 
@@ -383,12 +450,21 @@ fn export_verifies_folder_outputs_and_writes_embedded_values() {
 fn export_refuses_a_run_that_did_not_complete() {
     let f = Fixture::new();
     let file = f.image("image.nii", false, 0, 1);
-    let registry = f.tool("copy", declaration(json!({ "resolution": 2 })), declaration(json!({})));
+    let registry = f.tool(
+        "copy",
+        declaration(json!({ "resolution": 2 })),
+        declaration(json!({})),
+    );
     let run = f.run(&registry, "copy", json!(file), "marker");
     assert_eq!(run.status, "failed");
     let err = crate::export::export_run(&f.cfg.sessions_root, &run.run_id).unwrap_err();
     assert!(err.contains("only completed runs"), "{err}");
-    assert!(!f.cfg.sessions_root.join(&run.run_id).join("derivatives").exists());
+    assert!(!f
+        .cfg
+        .sessions_root
+        .join(&run.run_id)
+        .join("derivatives")
+        .exists());
 }
 
 #[test]
@@ -768,13 +844,23 @@ fn unqualified_consumer_accepts_bytes_the_reader_rejects() {
     assert_eq!(run.status, "completed", "{}", run.structured);
     assert!(f.root.join("marker").exists());
     let evidence = &f.record(&run)["steps"]["copy"]["inputEvidence"]["image"];
-    assert!(evidence["inspection"]["reason"].as_str().unwrap().contains("invalid NIfTI header"));
+    assert!(evidence["inspection"]["reason"]
+        .as_str()
+        .unwrap()
+        .contains("invalid NIfTI header"));
     // The same bytes still fail closed for a consumer that constrains an axis.
-    let registry = f.tool("strict", declaration(json!({ "formats": ["nifti"] })), declaration(json!({})));
+    let registry = f.tool(
+        "strict",
+        declaration(json!({ "formats": ["nifti"] })),
+        declaration(json!({})),
+    );
     let strict = f.run(&registry, "strict", json!(file), "strict-marker");
     assert_eq!(strict.status, "failed");
     assert!(!f.root.join("strict-marker").exists());
-    assert!(strict.structured["error"].as_str().unwrap().contains("invalid NIfTI header"));
+    assert!(strict.structured["error"]
+        .as_str()
+        .unwrap()
+        .contains("invalid NIfTI header"));
 }
 
 #[test]
@@ -798,17 +884,30 @@ fn unqualified_consumer_accepts_an_artifact_from_a_failed_run() {
         },
         "outputs": { "image": { "type": "neuro:volume", "ref": "steps.second.outputs.image" } }
     });
-    let partial = runtime::run_workflow(&f.cfg, &registry, &workflow,
-        json!({ "image": file }).as_object().unwrap(), &json!({}), &mut |_, _, _| {}).unwrap();
+    let partial = runtime::run_workflow(
+        &f.cfg,
+        &registry,
+        &workflow,
+        json!({ "image": file }).as_object().unwrap(),
+        &json!({}),
+        &mut |_, _, _| {},
+    )
+    .unwrap();
     assert_eq!(partial.status, "failed");
     assert!(f.root.join("first-marker").exists());
-    let uri = json!(format!("neuroflow://runs/{}/artifacts/first/image", partial.run_id));
+    let uri = json!(format!(
+        "neuroflow://runs/{}/artifacts/first/image",
+        partial.run_id
+    ));
     let registry = f.tool("consume", declaration(json!({})), declaration(json!({})));
     let run = f.run(&registry, "consume", uri.clone(), "consumer-marker");
     assert_eq!(run.status, "completed", "{}", run.structured);
     assert!(f.root.join("consumer-marker").exists());
     let evidence = &f.record(&run)["steps"]["consume"]["inputEvidence"]["image"];
-    assert!(evidence["provenance"]["reason"].as_str().unwrap().contains("completed producer run"));
+    assert!(evidence["provenance"]["reason"]
+        .as_str()
+        .unwrap()
+        .contains("completed producer run"));
     assert!(evidence["producer"].is_null());
     // Without trusted provenance a semantic requirement is still unresolved.
     let strict = declaration(json!({ "space": "fsaverage@7.4.1" }));
@@ -841,8 +940,15 @@ fn null_context_default_waits_for_its_mapping() {
         },
         "outputs": { "image": { "type": "neuro:volume", "ref": "steps.second.outputs.image" } }
     });
-    let run = runtime::run_workflow(&f.cfg, &registry, &workflow,
-        json!({ "image": file }).as_object().unwrap(), &json!({}), &mut |_, _, _| {}).unwrap();
+    let run = runtime::run_workflow(
+        &f.cfg,
+        &registry,
+        &workflow,
+        json!({ "image": file }).as_object().unwrap(),
+        &json!({}),
+        &mut |_, _, _| {},
+    )
+    .unwrap();
     assert_eq!(run.status, "completed", "{}", run.structured);
     assert!(f.root.join("first-marker").exists());
     assert!(f.root.join("second-marker").exists());
@@ -871,9 +977,10 @@ fn integer_output_delivery_normalizes_whole_numbers_and_rejects_fractions() {
         let script = f.root.join("registry/copy.py");
         fs::write(
             &script,
-            fs::read_to_string(&script)
-                .unwrap()
-                .replace("{'image': 'image.bin'}", &format!("{{'image': {delivered}}}")),
+            fs::read_to_string(&script).unwrap().replace(
+                "{'image': 'image.bin'}",
+                &format!("{{'image': {delivered}}}"),
+            ),
         )
         .unwrap();
         let registry = f.tool(
@@ -891,7 +998,10 @@ fn integer_output_delivery_normalizes_whole_numbers_and_rejects_fractions() {
             );
         } else {
             assert_eq!(run.status, "failed");
-            assert!(run.structured["error"].as_str().unwrap().contains("expected core:integer"));
+            assert!(run.structured["error"]
+                .as_str()
+                .unwrap()
+                .contains("expected core:integer"));
         }
     }
 }
@@ -911,7 +1021,8 @@ fn hash_is_reused_within_a_run_and_recomputed_across_runs() {
     } else {
         assert!(again.unwrap_err().contains("changed since"));
     }
-    let fresh = crate::qualifiers::inspect(&f.cfg, &json!(file), &json!(file), &HashMap::new()).unwrap();
+    let fresh =
+        crate::qualifiers::inspect(&f.cfg, &json!(file), &json!(file), &HashMap::new()).unwrap();
     assert_eq!(fresh["sha256"], first["sha256"]);
     assert_ne!(fresh["sha256"], "cached");
 }
@@ -928,8 +1039,12 @@ fn configured_interpreters_are_exported_to_every_step() {
     let registry = f.tool("copy", declaration(json!({})), declaration(json!({})));
     let run = f.run(&registry, "copy", json!(file), "marker");
     assert_eq!(run.status, "completed", "{}", run.structured);
-    let env: Value = serde_json::from_str(&fs::read_to_string(f.root.join("marker.env")).unwrap()).unwrap();
-    assert_eq!(env["NEUROFLOW_INTERPRETER_PYTHON3"], json!(python3.to_str().unwrap()));
+    let env: Value =
+        serde_json::from_str(&fs::read_to_string(f.root.join("marker.env")).unwrap()).unwrap();
+    assert_eq!(
+        env["NEUROFLOW_INTERPRETER_PYTHON3"],
+        json!(python3.to_str().unwrap())
+    );
     assert_eq!(env["NEUROFLOW_INTERPRETER_NODE"], json!("/opt/fake/node"));
     assert_eq!(env.as_object().unwrap().len(), 2, "{env}");
 }
@@ -942,8 +1057,17 @@ fn a_launch_interpreter_found_on_path_is_exported_under_its_name() {
     let registry = f.tool("copy", declaration(json!({})), declaration(json!({})));
     let run = f.run(&registry, "copy", json!(file), "marker");
     assert_eq!(run.status, "completed", "{}", run.structured);
-    let env: Value = serde_json::from_str(&fs::read_to_string(f.root.join("marker.env")).unwrap()).unwrap();
-    let exported = PathBuf::from(env["NEUROFLOW_INTERPRETER_PYTHON3"].as_str().expect("python3 exported"));
-    assert!(exported.is_absolute() && exported.exists(), "{}", exported.display());
+    let env: Value =
+        serde_json::from_str(&fs::read_to_string(f.root.join("marker.env")).unwrap()).unwrap();
+    let exported = PathBuf::from(
+        env["NEUROFLOW_INTERPRETER_PYTHON3"]
+            .as_str()
+            .expect("python3 exported"),
+    );
+    assert!(
+        exported.is_absolute() && exported.exists(),
+        "{}",
+        exported.display()
+    );
     assert_eq!(env.as_object().unwrap().len(), 1, "{env}");
 }
