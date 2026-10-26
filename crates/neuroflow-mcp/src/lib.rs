@@ -4,9 +4,9 @@
 
 pub mod artifacts;
 pub mod export;
-pub mod qualifiers;
 #[cfg(test)]
 mod qualifier_tests;
+pub mod qualifiers;
 pub mod registry;
 pub mod runtime;
 pub mod schema;

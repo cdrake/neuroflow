@@ -89,11 +89,15 @@ fn cancellations() -> &'static Mutex<HashMap<String, Arc<AtomicBool>>> {
 }
 
 fn home() -> PathBuf {
-    std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(std::env::temp_dir)
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir)
 }
 
 fn gallery_dir() -> PathBuf {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("gallery");
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("gallery");
     dir.canonicalize().unwrap_or(dir)
 }
 
@@ -102,7 +106,11 @@ pub fn default_settings() -> HostSettings {
     HostSettings {
         registry_dirs: vec![gallery_dir().to_string_lossy().into_owned()],
         data_roots: vec![home().to_string_lossy().into_owned()],
-        sessions_root: home().join(".neuroflow").join("runs").to_string_lossy().into_owned(),
+        sessions_root: home()
+            .join(".neuroflow")
+            .join("runs")
+            .to_string_lossy()
+            .into_owned(),
         interpreters: HashMap::new(),
     }
 }
@@ -119,11 +127,15 @@ fn build_config(settings: &HostSettings) -> Result<Config, String> {
         return Err("at least one registry folder is required".into());
     }
     let sessions = expand(&settings.sessions_root);
-    std::fs::create_dir_all(&sessions).map_err(|e| format!("cannot create sessions folder {}: {e}", sessions.display()))?;
+    std::fs::create_dir_all(&sessions)
+        .map_err(|e| format!("cannot create sessions folder {}: {e}", sessions.display()))?;
     let mut data_roots = Vec::new();
     for root in &settings.data_roots {
         let p = expand(root);
-        data_roots.push(p.canonicalize().map_err(|e| format!("data root {}: {e}", p.display()))?);
+        data_roots.push(
+            p.canonicalize()
+                .map_err(|e| format!("data root {}: {e}", p.display()))?,
+        );
     }
     let mut interpreters = HashMap::new();
     for (name, path) in &settings.interpreters {
@@ -132,7 +144,10 @@ fn build_config(settings: &HostSettings) -> Result<Config, String> {
         }
         let p = expand(path);
         if !p.is_file() {
-            return Err(format!("interpreter {name} is set to {}, which does not exist", p.display()));
+            return Err(format!(
+                "interpreter {name} is set to {}, which does not exist",
+                p.display()
+            ));
         }
         interpreters.insert(name.clone(), p);
     }
@@ -154,8 +169,15 @@ fn load_registry(cfg: &Config) -> Result<Registry, String> {
 
 fn version_of(path: &Path, args: &[&str]) -> Option<String> {
     let out = Command::new(path).args(args).output().ok()?;
-    let text = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
-    text.lines().next().map(|l| l.trim().to_string()).filter(|l| !l.is_empty())
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    text.lines()
+        .next()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
 }
 
 /// Locate the environment checker: next to the registry's adapters, or the repo's copy.
@@ -163,7 +185,9 @@ fn checker_script(cfg: &Config) -> Option<PathBuf> {
     cfg.registry_dirs
         .iter()
         .map(|d| d.join("scripts").join("check_tool.mjs"))
-        .chain(std::iter::once(gallery_dir().join("scripts").join("check_tool.mjs")))
+        .chain(std::iter::once(
+            gallery_dir().join("scripts").join("check_tool.mjs"),
+        ))
         .find(|p| p.is_file())
 }
 
@@ -176,8 +200,15 @@ pub fn check_environment(settings: HostSettings) -> Result<EnvironmentReport, St
     // Interpreters the launch extensions name, resolved the way the runtime resolves them.
     let mut required: HashMap<String, Vec<String>> = HashMap::new();
     for doc in registry.docs.iter().filter(|d| d.kind == Kind::Tool) {
-        if let Some(name) = doc.value.pointer("/extensions/neuroflow~1launch/interpreter").and_then(Value::as_str) {
-            required.entry(name.to_string()).or_default().push(doc.id.clone());
+        if let Some(name) = doc
+            .value
+            .pointer("/extensions/neuroflow~1launch/interpreter")
+            .and_then(Value::as_str)
+        {
+            required
+                .entry(name.to_string())
+                .or_default()
+                .push(doc.id.clone());
         }
     }
     let mut names: Vec<String> = required.keys().cloned().collect();
@@ -192,7 +223,9 @@ pub fn check_environment(settings: HostSettings) -> Result<EnvironmentReport, St
         .map(|name| {
             let path = cfg.interpreters.get(name).cloned().or_else(|| {
                 if name == "python3" {
-                    std::env::var_os("NEUROFLOW_PYTHON").map(PathBuf::from).filter(|p| p.is_file())
+                    std::env::var_os("NEUROFLOW_PYTHON")
+                        .map(PathBuf::from)
+                        .filter(|p| p.is_file())
                 } else {
                     None
                 }
@@ -208,8 +241,16 @@ pub fn check_environment(settings: HostSettings) -> Result<EnvironmentReport, St
         .collect();
 
     // Per-tool probes through check_tool.mjs, one node process for every tool.
-    let node = interpreters.iter().find(|i| i.name == "node").and_then(|i| i.path.clone()).map(PathBuf::from);
-    let tool_docs: Vec<_> = registry.docs.iter().filter(|d| d.kind == Kind::Tool).collect();
+    let node = interpreters
+        .iter()
+        .find(|i| i.name == "node")
+        .and_then(|i| i.path.clone())
+        .map(PathBuf::from);
+    let tool_docs: Vec<_> = registry
+        .docs
+        .iter()
+        .filter(|d| d.kind == Kind::Tool)
+        .collect();
     let mut probed: HashMap<String, Value> = HashMap::new();
     match (node, checker_script(&cfg)) {
         (Some(node), Some(script)) if !tool_docs.is_empty() => {
@@ -252,12 +293,18 @@ pub fn check_environment(settings: HostSettings) -> Result<EnvironmentReport, St
             let mut status = ToolStatus {
                 id: doc.id.clone(),
                 adapter: probe.and_then(|p| str_of(p, "adapter")),
-                status: probe.and_then(|p| str_of(p, "status")).unwrap_or_else(|| "needsSetup".into()),
-                detail: probe.and_then(|p| str_of(p, "detail")).unwrap_or_else(|| "not probed: node is needed to run the environment check".into()),
+                status: probe
+                    .and_then(|p| str_of(p, "status"))
+                    .unwrap_or_else(|| "needsSetup".into()),
+                detail: probe.and_then(|p| str_of(p, "detail")).unwrap_or_else(|| {
+                    "not probed: node is needed to run the environment check".into()
+                }),
                 fix: probe.and_then(|p| str_of(p, "fix")),
                 executable: probe.and_then(|p| str_of(p, "executable")),
                 version: probe.and_then(|p| str_of(p, "version")),
-                packages: probe.and_then(|p| p.get("packages").cloned()).filter(|p| !p.is_null()),
+                packages: probe
+                    .and_then(|p| p.get("packages").cloned())
+                    .filter(|p| !p.is_null()),
                 source: doc.source.to_string_lossy().into_owned(),
             };
             // The runtime's own gate wins over a ready or interactive probe (missing
@@ -284,14 +331,25 @@ pub fn check_environment(settings: HostSettings) -> Result<EnvironmentReport, St
         .docs
         .iter()
         .filter(|d| d.kind == Kind::Workflow)
-        .map(|d| WorkflowStatus { id: d.id.clone(), runnable: registry.workflow_runnable(&d.value).err() })
+        .map(|d| WorkflowStatus {
+            id: d.id.clone(),
+            runnable: registry.workflow_runnable(&d.value).err(),
+        })
         .collect();
 
     Ok(EnvironmentReport {
         checked_at: neuroflow_mcp::util::now_rfc3339(),
-        registry_dirs: cfg.registry_dirs.iter().map(|d| d.to_string_lossy().into_owned()).collect(),
+        registry_dirs: cfg
+            .registry_dirs
+            .iter()
+            .map(|d| d.to_string_lossy().into_owned())
+            .collect(),
         sessions_root: cfg.sessions_root.to_string_lossy().into_owned(),
-        data_roots: cfg.data_roots.iter().map(|d| d.to_string_lossy().into_owned()).collect(),
+        data_roots: cfg
+            .data_roots
+            .iter()
+            .map(|d| d.to_string_lossy().into_owned())
+            .collect(),
         interpreters,
         tools,
         workflows,
@@ -307,9 +365,16 @@ fn ui_app_fix(doc: &neuroflow_mcp::registry::Doc) -> Option<String> {
         return None;
     }
     let app = launch.get("app").and_then(Value::as_str).unwrap_or("app");
-    let command = launch.get("command").and_then(Value::as_str).unwrap_or("its command");
+    let command = launch
+        .get("command")
+        .and_then(Value::as_str)
+        .unwrap_or("its command");
     let repo = launch.get("repo").and_then(Value::as_str).unwrap_or(app);
-    let branch = launch.get("branch").and_then(Value::as_str).map(|b| format!(" (branch {b})")).unwrap_or_default();
+    let branch = launch
+        .get("branch")
+        .and_then(Value::as_str)
+        .map(|b| format!(" (branch {b})"))
+        .unwrap_or_default();
     let key = format!("NEUROFLOW_UI_APP_{}", app.to_uppercase().replace('-', "_"));
     Some(format!(
         "install {command} so it is on PATH, and clone {repo}{branch} next to the NeuroFlow checkout or set {key} to the checkout directory"
@@ -331,19 +396,29 @@ pub fn registry_documents(settings: HostSettings) -> Result<RegistryDocuments, S
 
 /// Why this workflow cannot run here, or None when it can. Cheap: no probes.
 #[tauri::command]
-pub fn workflow_runnable(settings: HostSettings, workflow: Value) -> Result<Option<String>, String> {
+pub fn workflow_runnable(
+    settings: HostSettings,
+    workflow: Value,
+) -> Result<Option<String>, String> {
     let cfg = build_config(&settings)?;
     let registry = load_registry(&cfg)?;
     Ok(registry.workflow_runnable(&workflow).err())
 }
 
 #[tauri::command]
-pub fn start_run(app: AppHandle, settings: HostSettings, workflow: Value, inputs: Map<String, Value>) -> Result<String, String> {
+pub fn start_run(
+    app: AppHandle,
+    settings: HostSettings,
+    workflow: Value,
+    inputs: Map<String, Value>,
+) -> Result<String, String> {
     let cfg = build_config(&settings)?;
     let registry = load_registry(&cfg)?;
     let ticket = format!("run-{}", TICKETS.fetch_add(1, Ordering::SeqCst));
     let cancellation = Arc::new(AtomicBool::new(false));
-    cancellations().lock().map_err(|_| "run cancellation registry is unavailable")?
+    cancellations()
+        .lock()
+        .map_err(|_| "run cancellation registry is unavailable")?
         .insert(ticket.clone(), cancellation.clone());
     let emitter = app.clone();
     let ticket_out = ticket.clone();
@@ -392,7 +467,9 @@ pub fn start_run(app: AppHandle, settings: HostSettings, workflow: Value, inputs
 /// the final word, and a Cancel click racing it must not fail.
 #[tauri::command]
 pub fn cancel_run(ticket: String) -> Result<(), String> {
-    let runs = cancellations().lock().map_err(|_| "run cancellation registry is unavailable")?;
+    let runs = cancellations()
+        .lock()
+        .map_err(|_| "run cancellation registry is unavailable")?;
     if let Some(flag) = runs.get(&ticket) {
         flag.store(true, Ordering::SeqCst);
     }
@@ -403,16 +480,35 @@ pub fn cancel_run(ticket: String) -> Result<(), String> {
 #[tauri::command]
 pub fn open_path(settings: HostSettings, path: String) -> Result<(), String> {
     let cfg = build_config(&settings)?;
-    let target = PathBuf::from(&path).canonicalize().map_err(|e| format!("{path}: {e}"))?;
-    if !target.starts_with(&cfg.sessions_root) && !cfg.data_roots.iter().any(|r| target.starts_with(r)) {
-        return Err(format!("{} is outside the sessions folder and data roots", target.display()));
+    let target = PathBuf::from(&path)
+        .canonicalize()
+        .map_err(|e| format!("{path}: {e}"))?;
+    if !target.starts_with(&cfg.sessions_root)
+        && !cfg.data_roots.iter().any(|r| target.starts_with(r))
+    {
+        return Err(format!(
+            "{} is outside the sessions folder and data roots",
+            target.display()
+        ));
     }
     let status = if cfg!(target_os = "macos") {
-        Command::new("open").arg(if target.is_dir() { "" } else { "-R" }).arg(&target).status()
+        Command::new("open")
+            .arg(if target.is_dir() { "" } else { "-R" })
+            .arg(&target)
+            .status()
     } else if cfg!(target_os = "windows") {
         Command::new("explorer").arg(&target).status()
     } else {
-        Command::new("xdg-open").arg(if target.is_dir() { target.clone() } else { target.parent().map(Path::to_path_buf).unwrap_or(target.clone()) }).status()
+        Command::new("xdg-open")
+            .arg(if target.is_dir() {
+                target.clone()
+            } else {
+                target
+                    .parent()
+                    .map(Path::to_path_buf)
+                    .unwrap_or(target.clone())
+            })
+            .status()
     };
     status.map_err(|e| format!("cannot open {}: {e}", target.display()))?;
     Ok(())
@@ -420,11 +516,20 @@ pub fn open_path(settings: HostSettings, path: String) -> Result<(), String> {
 
 /// The last `max_bytes` of a session file (a step's stderr, for the failure box).
 #[tauri::command]
-pub fn read_session_tail(settings: HostSettings, path: String, max_bytes: Option<u64>) -> Result<String, String> {
+pub fn read_session_tail(
+    settings: HostSettings,
+    path: String,
+    max_bytes: Option<u64>,
+) -> Result<String, String> {
     let cfg = build_config(&settings)?;
-    let target = PathBuf::from(&path).canonicalize().map_err(|e| format!("{path}: {e}"))?;
+    let target = PathBuf::from(&path)
+        .canonicalize()
+        .map_err(|e| format!("{path}: {e}"))?;
     if !target.starts_with(&cfg.sessions_root) {
-        return Err(format!("{} is outside the sessions folder", target.display()));
+        return Err(format!(
+            "{} is outside the sessions folder",
+            target.display()
+        ));
     }
     let bytes = std::fs::read(&target).map_err(|e| format!("{}: {e}", target.display()))?;
     let max = max_bytes.unwrap_or(16 * 1024) as usize;

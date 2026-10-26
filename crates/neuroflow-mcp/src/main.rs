@@ -39,7 +39,10 @@ fn main() {
 
     let mut it = args.into_iter();
     while let Some(arg) = it.next() {
-        let mut value = |flag: &str| it.next().unwrap_or_else(|| fail(&format!("{flag} needs a value")));
+        let mut value = |flag: &str| {
+            it.next()
+                .unwrap_or_else(|| fail(&format!("{flag} needs a value")))
+        };
         match arg.as_str() {
             "--registry" => registry_dirs.push(PathBuf::from(value("--registry"))),
             "--data-root" => data_roots.push(PathBuf::from(value("--data-root"))),
@@ -47,18 +50,27 @@ fn main() {
             "--spec" => spec_dir = Some(PathBuf::from(value("--spec"))),
             "--interpreter" => {
                 let v = value("--interpreter");
-                let (name, path) = v.split_once('=').unwrap_or_else(|| fail("--interpreter expects NAME=PATH"));
+                let (name, path) = v
+                    .split_once('=')
+                    .unwrap_or_else(|| fail("--interpreter expects NAME=PATH"));
                 if !registry::ALLOWED_INTERPRETERS.contains(&name) {
-                    fail(&format!("interpreter {name} is not allowed ({})", registry::ALLOWED_INTERPRETERS.join(", ")));
+                    fail(&format!(
+                        "interpreter {name} is not allowed ({})",
+                        registry::ALLOWED_INTERPRETERS.join(", ")
+                    ));
                 }
                 interpreters.insert(name.to_string(), PathBuf::from(path));
             }
             "--step-timeout" => {
-                let secs: u64 = value("--step-timeout").parse().unwrap_or_else(|_| fail("--step-timeout expects seconds"));
+                let secs: u64 = value("--step-timeout")
+                    .parse()
+                    .unwrap_or_else(|_| fail("--step-timeout expects seconds"));
                 step_timeout = Some(Duration::from_secs(secs));
             }
             "--summary-max-mb" => {
-                let mb: u64 = value("--summary-max-mb").parse().unwrap_or_else(|_| fail("--summary-max-mb expects a number"));
+                let mb: u64 = value("--summary-max-mb")
+                    .parse()
+                    .unwrap_or_else(|_| fail("--summary-max-mb expects a number"));
                 summary_max_bytes = mb * 1024 * 1024;
             }
             "--check" => check = true,
@@ -70,7 +82,9 @@ fn main() {
         }
     }
     if registry_dirs.is_empty() {
-        fail(&format!("at least one --registry directory is required\n\n{USAGE}"));
+        fail(&format!(
+            "at least one --registry directory is required\n\n{USAGE}"
+        ));
     }
 
     let sessions = sessions.unwrap_or_else(|| {
@@ -80,13 +94,20 @@ fn main() {
             .join(".neuroflow")
             .join("runs")
     });
-    std::fs::create_dir_all(&sessions).unwrap_or_else(|e| fail(&format!("cannot create {}: {e}", sessions.display())));
+    std::fs::create_dir_all(&sessions)
+        .unwrap_or_else(|e| fail(&format!("cannot create {}: {e}", sessions.display())));
     let sessions_root = sessions.canonicalize().unwrap_or(sessions);
     let data_roots = data_roots
         .into_iter()
-        .map(|d| d.canonicalize().unwrap_or_else(|e| fail(&format!("--data-root {}: {e}", d.display()))))
+        .map(|d| {
+            d.canonicalize()
+                .unwrap_or_else(|e| fail(&format!("--data-root {}: {e}", d.display())))
+        })
         .collect();
-    let spec_dir = spec_dir.map(|d: PathBuf| d.canonicalize().unwrap_or_else(|e| fail(&format!("--spec {}: {e}", d.display()))));
+    let spec_dir = spec_dir.map(|d: PathBuf| {
+        d.canonicalize()
+            .unwrap_or_else(|e| fail(&format!("--spec {}: {e}", d.display())))
+    });
 
     let cfg = Config {
         registry_dirs,
@@ -98,7 +119,8 @@ fn main() {
         summary_max_bytes,
         interactive: false,
     };
-    let registry = registry::Registry::load(&cfg.registry_dirs, &cfg.interpreters, cfg.interactive).unwrap_or_else(|e| fail(&e));
+    let registry = registry::Registry::load(&cfg.registry_dirs, &cfg.interpreters, cfg.interactive)
+        .unwrap_or_else(|e| fail(&e));
     for w in &registry.warnings {
         eprintln!("neuroflow-mcp: {w}");
     }
@@ -110,9 +132,19 @@ fn main() {
         }
         for doc in &registry.docs {
             match (&doc.mcp_name, &doc.runnable) {
-                (Some(name), _) => println!("exposed   {:<9} {name}  ({})", doc.kind.as_str(), doc.id),
-                (None, Err(reason)) => println!("listed    {:<9} {}  (not runnable: {reason})", doc.kind.as_str(), doc.id),
-                (None, Ok(())) => println!("listed    {:<9} {}  (not exposed)", doc.kind.as_str(), doc.id),
+                (Some(name), _) => {
+                    println!("exposed   {:<9} {name}  ({})", doc.kind.as_str(), doc.id)
+                }
+                (None, Err(reason)) => println!(
+                    "listed    {:<9} {}  (not runnable: {reason})",
+                    doc.kind.as_str(),
+                    doc.id
+                ),
+                (None, Ok(())) => println!(
+                    "listed    {:<9} {}  (not exposed)",
+                    doc.kind.as_str(),
+                    doc.id
+                ),
             }
         }
         return;
@@ -122,7 +154,11 @@ fn main() {
         "neuroflow-mcp {}: {} documents, {} exposed; sessions in {}",
         env!("CARGO_PKG_VERSION"),
         registry.docs.len(),
-        registry.docs.iter().filter(|d| d.mcp_name.is_some()).count(),
+        registry
+            .docs
+            .iter()
+            .filter(|d| d.mcp_name.is_some())
+            .count(),
         cfg.sessions_root.display()
     );
     server::Server::new(cfg, registry).serve();

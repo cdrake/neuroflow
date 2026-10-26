@@ -126,8 +126,7 @@ fn validate_adapter_id(label: &str, value: &str) -> Result<(), String> {
 }
 
 fn is_adapter_id_char(value: char) -> bool {
-    value.is_ascii_alphanumeric()
-        || matches!(value, '.' | '-' | '_' | '/' | ':')
+    value.is_ascii_alphanumeric() || matches!(value, '.' | '-' | '_' | '/' | ':')
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -187,8 +186,7 @@ mod tests {
 
     #[test]
     fn dcm2niix_help_adapter_executes_when_available() {
-        if find_on_path("dcm2niix").is_none() && std::env::var_os("NEUROFLOW_DCM2NIIX").is_none()
-        {
+        if find_on_path("dcm2niix").is_none() && std::env::var_os("NEUROFLOW_DCM2NIIX").is_none() {
             eprintln!("skipping dcm2niix adapter test because dcm2niix is not installed");
             return;
         }
