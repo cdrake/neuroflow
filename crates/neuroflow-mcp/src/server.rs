@@ -10,10 +10,16 @@ use neuroflow_core::qualifiers::Compatibility;
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
 use std::io::{BufRead, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc, Mutex};
 
 /// Protocol revisions this server implements, newest first. 2026-07-28
 /// (stateless requests, MRTR, tasks extension) is not implemented yet.
 const SUPPORTED_VERSIONS: &[&str] = &["2025-11-25", "2025-06-18", "2025-03-26"];
+
+/// Cancellation flags of the requests read but not yet answered, keyed by the
+/// request id's JSON text (so `1` and `"1"` stay distinct).
+type Pending = Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>;
 
 pub struct Server {
     cfg: Config,
@@ -24,6 +30,11 @@ pub struct Server {
     /// a repeated call with identical workflow and inputs is answered from here
     /// instead of executing (and writing its outputs) a second time.
     completed: HashMap<String, (String, Value)>,
+    /// Requests in flight. The stdin reader registers each one as it arrives and
+    /// raises its flag on `notifications/cancelled`, while this thread is busy.
+    pending: Pending,
+    /// The flag of the request being handled now.
+    active: Arc<AtomicBool>,
 }
 
 impl Server {
@@ -34,6 +45,8 @@ impl Server {
             version: SUPPORTED_VERSIONS[0].to_string(),
             client: json!({}),
             completed: HashMap::new(),
+            pending: Arc::default(),
+            active: Arc::default(),
         }
     }
 
@@ -42,14 +55,29 @@ impl Server {
         self.version.as_str() >= "2025-06-18"
     }
 
+    /// Reads stdin on its own thread so a `notifications/cancelled` can reach a
+    /// run while this thread executes it. Messages are still handled in order.
     pub fn serve(&mut self) {
-        let stdin = std::io::stdin();
-        for line in stdin.lock().lines() {
-            let Ok(line) = line else { break };
-            if line.trim().is_empty() {
-                continue;
+        let (tx, rx) = mpsc::channel();
+        let pending = self.pending.clone();
+        std::thread::spawn(move || {
+            let stdin = std::io::stdin();
+            for line in stdin.lock().lines() {
+                let Ok(line) = line else { break };
+                if line.trim().is_empty() {
+                    continue;
+                }
+                let msg = serde_json::from_str::<Value>(&line);
+                if let Ok(msg) = &msg {
+                    route(msg, &pending);
+                }
+                if tx.send(msg).is_err() {
+                    break;
+                }
             }
-            let msg: Value = match serde_json::from_str(&line) {
+        });
+        for msg in rx {
+            let msg = match msg {
                 Ok(v) => v,
                 Err(e) => {
                     send(
@@ -75,6 +103,18 @@ impl Server {
         };
         if method.is_empty() {
             return; // a response to something we never send
+        }
+        let key = id.to_string();
+        let flag = self.pending.lock().unwrap().get(&key).cloned();
+        self.active = flag.unwrap_or_default();
+        let cancelled = |server: &Self| {
+            server.pending.lock().unwrap().remove(&key);
+            server.active.load(Ordering::SeqCst)
+        };
+        // Cancelled while still queued: never start it, and per MCP send no response.
+        if self.active.load(Ordering::SeqCst) {
+            cancelled(self);
+            return;
         }
         let params = msg.get("params").cloned().unwrap_or(json!({}));
         if let Some(info) = params.pointer("/_meta/io.modelcontextprotocol~1clientInfo") {
@@ -112,6 +152,9 @@ impl Server {
             "logging/setLevel" => Ok(json!({})),
             _ => Err((-32601, format!("method not found: {method}"))),
         };
+        if cancelled(self) {
+            return; // the run was stopped and recorded as cancelled; MCP wants no response
+        }
         match result {
             Ok(result) => send(&json!({ "jsonrpc": "2.0", "id": id, "result": result })),
             Err((code, message)) => send(
@@ -130,7 +173,7 @@ impl Server {
                     "neuroflow": "0.1.2",
                     "supportedNeuroflowVersions": ["0.1.0", "0.1.1", "0.1.2"],
                     "binding": "0009",
-                    "features": ["summaries", "type-qualifier-enforcement"],
+                    "features": ["summaries", "type-qualifier-enforcement", "cancellation"],
                     "qualifierInspectors": qualifiers::capabilities(),
                     "agentApprovals": false
                 }
@@ -562,13 +605,14 @@ impl Server {
                 );
             }
         };
-        match runtime::run_workflow(
+        match runtime::run_workflow_with_cancel(
             &self.cfg,
             &self.registry,
             wf,
             inputs,
             &self.client,
             &mut progress,
+            &self.active,
         ) {
             Err(e) => tool_error(format!("Run rejected before any step started: {e}")),
             Ok(outcome) => {
@@ -829,6 +873,31 @@ fn server_info() -> Value {
     json!({ "name": "neuroflow-mcp", "title": "NeuroFlow", "version": env!("CARGO_PKG_VERSION") })
 }
 
+/// Reader-side bookkeeping for one parsed line (a message or a batch): register
+/// every request, and raise the flag of the one a `notifications/cancelled` names.
+fn route(msg: &Value, pending: &Mutex<HashMap<String, Arc<AtomicBool>>>) {
+    let messages = match msg.as_array() {
+        Some(batch) => batch.iter().collect(),
+        None => vec![msg],
+    };
+    let mut pending = pending.lock().unwrap();
+    for m in messages {
+        let method = m.get("method").and_then(Value::as_str).unwrap_or("");
+        match m.get("id") {
+            Some(id) if !method.is_empty() => {
+                pending.entry(id.to_string()).or_default();
+            }
+            None if method == "notifications/cancelled" => {
+                let target = m.pointer("/params/requestId").map(Value::to_string);
+                if let Some(flag) = target.and_then(|t| pending.get(&t)) {
+                    flag.store(true, Ordering::SeqCst);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 fn send(v: &Value) {
     let mut out = std::io::stdout().lock();
     let _ = writeln!(out, "{}", serde_json::to_string(v).unwrap_or_default());
@@ -920,5 +989,59 @@ mod tests {
                 .contains("requires a runtime check")));
         assert_eq!(rejected["conditional"], false);
         assert_eq!(rejected["runnable"], false);
+    }
+
+    fn flags(ids: &[Value]) -> (Pending, Vec<Arc<AtomicBool>>) {
+        let pending: Pending = Arc::default();
+        for id in ids {
+            route(
+                &json!({ "jsonrpc": "2.0", "id": id, "method": "tools/call" }),
+                &pending,
+            );
+        }
+        let flags = ids
+            .iter()
+            .map(|id| pending.lock().unwrap()[&id.to_string()].clone())
+            .collect();
+        (pending, flags)
+    }
+
+    fn cancel(id: Value) -> Value {
+        json!({ "jsonrpc": "2.0", "method": "notifications/cancelled", "params": { "requestId": id, "reason": "user" } })
+    }
+
+    #[test]
+    fn a_cancel_raises_only_the_named_requests_flag() {
+        let (pending, flags) = flags(&[json!(1), json!("1"), json!(2)]);
+        route(&cancel(json!("1")), &pending);
+        let raised: Vec<bool> = flags.iter().map(|f| f.load(Ordering::SeqCst)).collect();
+        assert_eq!(raised, [false, true, false]);
+    }
+
+    #[test]
+    fn a_cancel_for_an_unknown_request_is_ignored() {
+        let (pending, flags) = flags(&[json!(7)]);
+        route(&cancel(json!(8)), &pending);
+        assert!(!flags[0].load(Ordering::SeqCst));
+        assert_eq!(pending.lock().unwrap().len(), 1);
+        let empty: Pending = Arc::default();
+        route(&cancel(json!(1)), &empty);
+        assert!(empty.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn requests_and_cancels_inside_a_batch_are_routed() {
+        let pending: Pending = Arc::default();
+        route(
+            &json!([
+                { "jsonrpc": "2.0", "id": 3, "method": "tools/call" },
+                { "jsonrpc": "2.0", "method": "notifications/progress", "params": {} },
+                { "jsonrpc": "2.0", "id": 4, "result": {} }
+            ]),
+            &pending,
+        );
+        assert_eq!(pending.lock().unwrap().keys().collect::<Vec<_>>(), ["3"]);
+        route(&json!([cancel(json!(3))]), &pending);
+        assert!(pending.lock().unwrap()["3"].load(Ordering::SeqCst));
     }
 }

@@ -180,6 +180,23 @@ registry so an agent can compose a pipeline.
    replayed, and a changed input file or a deleted session invalidates the
    entry. The run tools carry `idempotentHint: true` for this reason.
 
+### Cancelling a run
+
+A client stops a run with the standard MCP `notifications/cancelled`, naming
+the `tools/call` request that started it. Stdin is read on its own thread, so
+the notification arrives while the run is executing. The server then:
+
+- terminates the running step's whole process tree (SIGTERM to its process
+  group, SIGKILL after two seconds; on Windows only the direct child is
+  stopped) and starts no further steps;
+- writes `run.json` and `run.provenance.json` with status `cancelled`;
+- sends no response to the cancelled request, as MCP specifies;
+- keeps serving later requests in the same process.
+
+A request cancelled before it started is dropped without running. A
+cancelled run is never replayed by a later identical call. The capability
+`features` list includes `cancellation`.
+
 ## Qualifier enforcement (RFC 0010)
 
 The MCP executor validates 0.1.1 declarations and checks constrained inputs
@@ -262,7 +279,8 @@ checked per element, and provenance survives both workflow and URI chaining.
 Not yet implemented, relative to RFC 0009:
 
 - **Runs are synchronous.** A call returns when the run finishes, with
-  progress notifications in the meantime. There are no tasks yet, and no
+  progress notifications in the meantime, and can be stopped with
+  `notifications/cancelled`. There are no tasks yet, and no
   `neuroflow_status` or `neuroflow_cancel`.
 - **Fix proposals and `core:await-approval`.** Workflows that use
   `awaitApproval: "required"` or `fixLoop` are listed but not runnable.
