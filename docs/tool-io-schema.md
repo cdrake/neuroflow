@@ -114,6 +114,28 @@ Supported input channels are:
 - `filesystem`
 - `serviceRequest`
 
+## Array Item Counts
+
+An array input may bound how many items it takes with `minItems` and
+`maxItems` (non-negative integers, either or both):
+
+```json
+{
+  "type": "core:array<neuro:volume>",
+  "description": "Two images with opposite phase-encoding directions.",
+  "minItems": 2,
+  "maxItems": 2
+}
+```
+
+The validator counts what each binding supplies. A single value bound to the
+input counts as one item, and an array constant counts its elements; a count
+outside the bounds is an error. A reference to an array, such as an array
+workflow input or an array step output, has no length until run time, so the
+validator only warns, and the runtime rejects a value with the wrong number of
+items before the step starts. The bounds also appear as `minItems`/`maxItems`
+in the MCP input schema. Both fields are ignored on non-array types.
+
 ## Safe Pipes
 
 A pipe is safe only when all of these are true:

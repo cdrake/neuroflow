@@ -1131,6 +1131,22 @@ fn fill_array(decl: &Value, value: Value) -> Value {
     }
 }
 
+/// Reject an array whose length is outside the declaration's `minItems`/`maxItems`.
+fn check_item_count(decl: &Value, value: &Value) -> Result<(), String> {
+    let (Some((min, max)), Some(items)) = (neuroflow_core::item_bounds(decl), value.as_array())
+    else {
+        return Ok(());
+    };
+    let count = items.len() as u64;
+    if min.is_some_and(|min| count < min) || max.is_some_and(|max| count > max) {
+        return Err(format!(
+            "expected {}, got {count}",
+            neuroflow_core::describe_item_bounds(min, max)
+        ));
+    }
+    Ok(())
+}
+
 /// Check and normalize one value against its declaration. Artifact references
 /// become canonical absolute paths confined to the data roots or the sessions root.
 fn resolve_value(
@@ -1145,6 +1161,7 @@ fn resolve_value(
         .and_then(Value::as_str)
         .unwrap_or("core:json");
     let value = &fill_array(decl, value.clone());
+    check_item_count(decl, value)?;
     if is_artifact_type(t, value_types) {
         let resolve = |value: &Value| -> Result<String, String> {
             if let Some(uri) = value.as_str().filter(|v| v.starts_with("neuroflow://")) {
@@ -1935,6 +1952,20 @@ mod tests {
         assert_eq!(
             fill_array(&json!({ "type": "neuro:volume" }), json!("/a")),
             json!("/a")
+        );
+    }
+
+    #[test]
+    fn checks_the_item_count_of_an_array_input() {
+        let pair = json!({ "type": "core:array<core:string>", "minItems": 2, "maxItems": 2 });
+        assert!(check_item_count(&pair, &json!(["a", "b"])).is_ok());
+        assert_eq!(
+            check_item_count(&pair, &json!(["a"])),
+            Err("expected exactly 2 items, got 1".to_string())
+        );
+        assert!(check_item_count(&pair, &json!(["a", "b", "c"])).is_err());
+        assert!(
+            check_item_count(&json!({ "type": "core:array<core:string>" }), &json!([])).is_ok()
         );
     }
 
