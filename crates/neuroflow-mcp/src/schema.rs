@@ -143,6 +143,8 @@ pub fn declaration_schema(decl: &Value, value_types: &[String]) -> Value {
         ("enum", "enum"),
         ("min", "minimum"),
         ("max", "maximum"),
+        ("minItems", "minItems"),
+        ("maxItems", "maxItems"),
     ] {
         if let Some(v) = decl.get(from) {
             obj.insert(to.into(), v.clone());
@@ -226,7 +228,8 @@ mod tests {
         let inputs = json!({
             "bids_dir": { "type": "neuro:bids-dataset", "description": "Dataset." },
             "operation": { "type": "core:string", "optional": true, "default": "smooth", "enum": ["smooth", "zscore"] },
-            "amount": { "type": "core:number", "optional": true, "default": 3, "min": 0 }
+            "amount": { "type": "core:number", "optional": true, "default": 3, "min": 0 },
+            "images": { "type": "core:array<core:string>", "optional": true, "minItems": 1, "maxItems": 3 }
         });
         let schema = input_schema(inputs.as_object(), &[]);
         assert_eq!(schema["required"], json!(["bids_dir"]));
@@ -240,5 +243,7 @@ mod tests {
             json!(["smooth", "zscore"])
         );
         assert_eq!(schema["properties"]["amount"]["minimum"], 0);
+        assert_eq!(schema["properties"]["images"]["minItems"], 1);
+        assert_eq!(schema["properties"]["images"]["maxItems"], 3);
     }
 }

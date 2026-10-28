@@ -89,6 +89,9 @@ export interface ParameterDef extends TypeQualifiers {
   enum?: unknown[]
   min?: number
   max?: number
+  /** Item-count bounds; only meaningful on a core:array<...> type. */
+  minItems?: number
+  maxItems?: number
   availableFrom?: ToolOutputAvailability[]
   consumesAs?: ToolInputConsumption[]
   extensions?: Record<string, unknown>

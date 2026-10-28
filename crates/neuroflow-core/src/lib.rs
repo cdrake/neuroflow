@@ -82,7 +82,7 @@ pub fn validate_workflow_value_with_tools(
     if !is_supported_spec_version(root.get("neuroflow").and_then(Value::as_str)) {
         issues.push(error(
             "neuroflow",
-            "Workflow must target NeuroFlow spec version 0.1.0 or 0.1.1.",
+            "Workflow must target NeuroFlow spec version 0.1.0, 0.1.1 or 0.1.2.",
         ));
     }
 
@@ -243,6 +243,15 @@ pub fn validate_workflow_value_with_tools(
                         None,
                         None,
                     );
+                    let count = match &binding_obj["constant"] {
+                        Value::Array(items) => Some(items.len()),
+                        _ => Some(1),
+                    };
+                    if let Some(issue) =
+                        item_count_issue(input_name, input_def, count, &binding_path)
+                    {
+                        issues.push(issue);
+                    }
                 }
             }
 
@@ -299,6 +308,18 @@ pub fn validate_workflow_value_with_tools(
                             resolved.space_identity.as_deref(),
                             resolved.space_identity.as_deref(),
                         );
+                        if let Some(source_type) =
+                            resolve_ref_type(reference, root, steps, &tool_registry)
+                        {
+                            // A single value counts as one item; an array's length is
+                            // only known at run time.
+                            let count = array_element_type(&source_type).is_none().then_some(1);
+                            if let Some(issue) =
+                                item_count_issue(input_name, input_def, count, &binding_path)
+                            {
+                                issues.push(issue);
+                            }
+                        }
                         if required_input(input_def) {
                             if let Some(issue) = optional_step_output(
                                 reference,
@@ -764,6 +785,55 @@ fn optional_step_output(
     ))
 }
 
+/// `minItems`/`maxItems` of an array input, when it declares either.
+pub fn item_bounds(input_def: &Value) -> Option<(Option<u64>, Option<u64>)> {
+    array_element_type(input_def.get("type").and_then(Value::as_str)?)?;
+    let min = input_def.get("minItems").and_then(Value::as_u64);
+    let max = input_def.get("maxItems").and_then(Value::as_u64);
+    (min.is_some() || max.is_some()).then_some((min, max))
+}
+
+/// The item count an array input accepts, e.g. "at least 2 items".
+pub fn describe_item_bounds(min: Option<u64>, max: Option<u64>) -> String {
+    let items = |n: u64| format!("{n} item{}", if n == 1 { "" } else { "s" });
+    match (min, max) {
+        (Some(min), Some(max)) if min == max => format!("exactly {}", items(min)),
+        (Some(min), Some(max)) => format!("between {min} and {}", items(max)),
+        (Some(min), None) => format!("at least {}", items(min)),
+        (None, Some(max)) => format!("at most {}", items(max)),
+        (None, None) => "any number of items".to_string(),
+    }
+}
+
+/// Check the number of items bound to an array input against its
+/// `minItems`/`maxItems`. `count` is `None` when the binding is an array whose
+/// length is only known at run time, which is a warning rather than an error.
+fn item_count_issue(
+    input_name: &str,
+    input_def: &Value,
+    count: Option<usize>,
+    path: &str,
+) -> Option<ValidationIssue> {
+    let (min, max) = item_bounds(input_def)?;
+    let bounds = describe_item_bounds(min, max);
+    let Some(count) = count else {
+        return Some(warning(
+            path.to_string(),
+            format!(
+                "Input {input_name} takes {bounds}; the array's length is checked at run time."
+            ),
+        ));
+    };
+    let count = count as u64;
+    if min.is_some_and(|min| count < min) || max.is_some_and(|max| count > max) {
+        return Some(error(
+            path.to_string(),
+            format!("Input {input_name} takes {bounds}, but the binding supplies {count}."),
+        ));
+    }
+    None
+}
+
 fn similar_tools_hint(tool_ref: &str, tools: &HashMap<String, ToolContract<'_>>) -> String {
     let needle = tool_ref
         .rsplit('/')
@@ -891,7 +961,8 @@ fn coercible_to(source_type: &str, input_type: &str) -> bool {
 
 /// Specification versions this runtime reads. `0.1.1` is `0.1.0` plus the
 /// RFC 0010 type qualifiers; a document declares it when it carries any.
-pub const SUPPORTED_SPEC_VERSIONS: &[&str] = &["0.1.0", "0.1.1"];
+/// `0.1.2` adds `minItems`/`maxItems` on array declarations.
+pub const SUPPORTED_SPEC_VERSIONS: &[&str] = &["0.1.0", "0.1.1", "0.1.2"];
 
 /// Whether a document's `neuroflow` envelope value is one this runtime reads.
 pub fn is_supported_spec_version(value: Option<&str>) -> bool {
@@ -1229,6 +1300,90 @@ mod tests {
         tools[1]["inputs"]["brain"]["type"] = serde_json::json!("core:array<neuro:mask>");
         let report = validate_workflow_value_with_tools(&workflow, Some(&tools));
         assert!(!report.ok, "a volume is not a mask: {report:?}");
+    }
+
+    /// Item counts are a 0.1.2 feature, so the tool declares that version.
+    fn item_count_issues(workflow: &Value, tools: &Value) -> (ValidationReport, Vec<String>) {
+        let mut tools = tools.clone();
+        tools[1]["neuroflow"] = serde_json::json!("0.1.2");
+        let report = validate_workflow_value_with_tools(workflow, Some(&tools));
+        let messages = report
+            .issues
+            .iter()
+            .filter(|issue| issue.message.starts_with("Input brain takes"))
+            .map(|issue| format!("{}: {}", issue.severity, issue.message))
+            .collect();
+        (report, messages)
+    }
+
+    #[test]
+    fn checks_the_item_count_of_an_array_input() {
+        let (mut workflow, mut tools) = strip_segment_workflow("steps.strip.outputs.brain_volume");
+        tools[1]["inputs"]["brain"] =
+            serde_json::json!({ "type": "core:array<neuro:volume>", "maxItems": 3 });
+        let (report, messages) = item_count_issues(&workflow, &tools);
+        assert!(report.ok, "{report:?}");
+        assert!(messages.is_empty(), "{messages:?}");
+
+        tools[1]["inputs"]["brain"]["minItems"] = serde_json::json!(2);
+        let (report, messages) = item_count_issues(&workflow, &tools);
+        assert!(!report.ok);
+        assert_eq!(
+            messages,
+            ["error: Input brain takes between 2 and 3 items, but the binding supplies 1."]
+        );
+
+        workflow["steps"]["segment"]["inputs"]["brain"] =
+            serde_json::json!({ "constant": ["/a", "/b", "/c", "/d"] });
+        let (_, messages) = item_count_issues(&workflow, &tools);
+        assert_eq!(
+            messages,
+            ["error: Input brain takes between 2 and 3 items, but the binding supplies 4."]
+        );
+
+        workflow["steps"]["segment"]["inputs"]["brain"] =
+            serde_json::json!({ "constant": ["/a", "/b"] });
+        let (report, messages) = item_count_issues(&workflow, &tools);
+        assert!(messages.is_empty(), "{report:?}");
+    }
+
+    #[test]
+    fn warns_that_an_array_bound_to_an_array_input_is_counted_at_run_time() {
+        let (mut workflow, mut tools) = strip_segment_workflow("inputs.images");
+        workflow["inputs"]["images"] = serde_json::json!({ "type": "core:array<neuro:volume>" });
+        tools[1]["inputs"]["brain"] =
+            serde_json::json!({ "type": "core:array<neuro:volume>", "minItems": 2, "maxItems": 2 });
+        let (report, messages) = item_count_issues(&workflow, &tools);
+        assert!(report.ok, "{report:?}");
+        assert_eq!(
+            messages,
+            ["warning: Input brain takes exactly 2 items; the array's length is checked at run time."]
+        );
+    }
+
+    #[test]
+    fn item_counts_require_0_1_2() {
+        let (workflow, mut tools) = strip_segment_workflow("steps.strip.outputs.brain_volume");
+        tools[1]["neuroflow"] = serde_json::json!("0.1.1");
+        tools[1]["inputs"]["brain"] =
+            serde_json::json!({ "type": "core:array<neuro:volume>", "maxItems": 3 });
+        let report = validate_workflow_value_with_tools(&workflow, Some(&tools));
+        assert!(
+            report
+                .issues
+                .iter()
+                .any(|issue| issue.message == "Item counts require neuroflow 0.1.2."),
+            "{report:?}"
+        );
+    }
+
+    #[test]
+    fn ignores_item_counts_on_a_scalar_input() {
+        let (workflow, mut tools) = strip_segment_workflow("steps.strip.outputs.brain_volume");
+        tools[1]["inputs"]["brain"]["minItems"] = serde_json::json!(2);
+        let (report, messages) = item_count_issues(&workflow, &tools);
+        assert!(report.ok, "{report:?}");
+        assert!(messages.is_empty(), "{messages:?}");
     }
 
     #[test]

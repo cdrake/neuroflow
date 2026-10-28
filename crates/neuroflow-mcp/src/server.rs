@@ -127,8 +127,8 @@ impl Server {
             "prompts": { "listChanged": false },
             "experimental": {
                 "com.niivue/neuroflow": {
-                    "neuroflow": "0.1.1",
-                    "supportedNeuroflowVersions": ["0.1.0", "0.1.1"],
+                    "neuroflow": "0.1.2",
+                    "supportedNeuroflowVersions": ["0.1.0", "0.1.1", "0.1.2"],
                     "binding": "0009",
                     "features": ["summaries", "type-qualifier-enforcement"],
                     "qualifierInspectors": qualifiers::capabilities(),
@@ -782,7 +782,10 @@ fn validate_tool(doc: &Value) -> Vec<Value> {
         out.push(json!({ "severity": "error", "pointer": pointer, "message": message }))
     };
     if !neuroflow_core::is_supported_spec_version(doc.get("neuroflow").and_then(Value::as_str)) {
-        err("/neuroflow", "neuroflow must be \"0.1.0\" or \"0.1.1\".");
+        err(
+            "/neuroflow",
+            "neuroflow must be \"0.1.0\", \"0.1.1\" or \"0.1.2\".",
+        );
     }
     if !doc
         .get("id")

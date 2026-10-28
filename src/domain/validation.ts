@@ -2,11 +2,12 @@ import { invoke } from '@tauri-apps/api/core'
 import type { Binding, ToolDefinition, ValidationIssue, ValidationReport, WorkflowDocument, WorkflowPlan } from './neuroflow'
 import { isConstantBinding, isRefBinding } from './neuroflow'
 import { buildToolMap, resolveToolDefinition } from './registry'
+import { arrayElementType } from './typeCompatibility'
 import { compareQualifiers, qualifierIssues, resolveQualifiers, validateDocumentQualifiers } from './qualifiers'
 export { TYPE_QUALIFIERS, declaredQualifiers } from './qualifiers'
 
-/** Spec versions this app reads: 0.1.1 is 0.1.0 plus the RFC 0010 type qualifiers. */
-export const SUPPORTED_SPEC_VERSIONS: readonly string[] = ['0.1.0', '0.1.1']
+/** Spec versions this app reads: 0.1.1 is 0.1.0 plus the RFC 0010 type qualifiers; 0.1.2 adds array item counts. */
+export const SUPPORTED_SPEC_VERSIONS: readonly string[] = ['0.1.0', '0.1.1', '0.1.2']
 
 const REF_PATTERN =
   /^(inputs\.[A-Za-z][A-Za-z0-9_-]*|context|context\.[A-Za-z][A-Za-z0-9_-]*|steps\.[A-Za-z][A-Za-z0-9_-]*\.outputs\.[A-Za-z][A-Za-z0-9_-]*)$/
@@ -150,7 +151,7 @@ function validateWorkflowEnvelope(workflow: WorkflowDocument, issues: Validation
     issues.push({
       severity: 'error',
       path: 'neuroflow',
-      message: 'Workflow must target NeuroFlow spec version 0.1.0 or 0.1.1.'
+      message: 'Workflow must target NeuroFlow spec version 0.1.0, 0.1.1 or 0.1.2.'
     })
   }
   if (!workflow.id || !workflow.id.includes('/')) {
@@ -198,6 +199,12 @@ function validateToolInputs(
     if (isRefBinding(binding)) {
       const source = resolveQualifiers(binding.ref, workflow, toolMap)
       issues.push(...qualifierIssues(`steps.${stepName}.inputs.${inputName}`, compareQualifiers(source.declaration, inputDef, source.spaceIdentity, source.spaceIdentity)))
+      const sourceType = resolveRefType(binding.ref, workflow, toolMap)
+      if (sourceType) {
+        // A single value counts as one item; an array's length is only known at run time.
+        const issue = itemCountIssue(inputName, inputDef, arrayElementType(sourceType) ? null : 1, `steps.${stepName}.inputs.${inputName}`)
+        if (issue) issues.push(issue)
+      }
       if (inputDef.optional !== true && inputDef.default === undefined) {
         const issue = optionalStepOutput(binding.ref, `steps.${stepName}.inputs.${inputName}`, `required input ${inputName}`, workflow, toolMap)
         if (issue) issues.push(issue)
@@ -207,6 +214,9 @@ function validateToolInputs(
     if (isConstantBinding(binding)) {
       issues.push(...qualifierIssues(`steps.${stepName}.inputs.${inputName}`, compareQualifiers({}, inputDef)))
       validateConstant(stepName, inputName, binding.constant, inputDef, issues)
+      const count = Array.isArray(binding.constant) ? binding.constant.length : 1
+      const issue = itemCountIssue(inputName, inputDef, count, `steps.${stepName}.inputs.${inputName}`)
+      if (issue) issues.push(issue)
     }
   }
 
@@ -282,6 +292,42 @@ function validateConstant(
       })
     }
   }
+}
+
+function itemBound(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : undefined
+}
+
+function describeItemBounds(min: number | undefined, max: number | undefined): string {
+  const items = (n: number) => `${n} item${n === 1 ? '' : 's'}`
+  if (min !== undefined && max !== undefined) {
+    return min === max ? `exactly ${items(min)}` : `between ${min} and ${items(max)}`
+  }
+  if (min !== undefined) return `at least ${items(min)}`
+  if (max !== undefined) return `at most ${items(max)}`
+  return 'any number of items'
+}
+
+// Mirrors item_count_issue in neuroflow-core: count is null when the binding is
+// an array whose length is only known at run time, which is a warning.
+function itemCountIssue(
+  inputName: string,
+  inputDef: ToolDefinition['inputs'][string],
+  count: number | null,
+  path: string
+): ValidationIssue | null {
+  if (!arrayElementType(inputDef.type)) return null
+  const min = itemBound(inputDef.minItems)
+  const max = itemBound(inputDef.maxItems)
+  if (min === undefined && max === undefined) return null
+  const bounds = describeItemBounds(min, max)
+  if (count === null) {
+    return { severity: 'warning', path, message: `Input ${inputName} takes ${bounds}; the array's length is checked at run time.` }
+  }
+  if ((min !== undefined && count < min) || (max !== undefined && count > max)) {
+    return { severity: 'error', path, message: `Input ${inputName} takes ${bounds}, but the binding supplies ${count}.` }
+  }
+  return null
 }
 
 function resolveRefType(
