@@ -117,7 +117,8 @@ Supported input channels are:
 ## Array Item Counts
 
 An array input may bound how many items it takes with `minItems` and
-`maxItems` (non-negative integers, either or both):
+`maxItems` (non-negative integers, either or both). A document that uses them
+declares `"neuroflow": "0.1.2"`:
 
 ```json
 {

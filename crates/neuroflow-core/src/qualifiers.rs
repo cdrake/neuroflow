@@ -421,7 +421,8 @@ fn valid_value(axis: &str, value: &Value) -> bool {
 }
 
 /// Semantic rules supplement schema validation, including inherited references
-/// and the required 0.1.1 envelope. Call this for standalone tools as well.
+/// and the required 0.1.1 (qualifiers) or 0.1.2 (item counts) envelope. Call
+/// this for standalone tools as well.
 pub fn validate_document_qualifiers(document: &Value) -> Vec<ValidationIssue> {
     let mut issues = Vec::new();
     let is_tool = document.get("kind").and_then(Value::as_str) == Some("tool");
@@ -446,13 +447,27 @@ pub fn validate_document_qualifiers(document: &Value) -> Vec<ValidationIssue> {
         ),
     ] {
         for (name, declaration) in declarations {
+            for field in ["minItems", "maxItems"] {
+                if declaration.get(field).is_some()
+                    && document.get("neuroflow").and_then(Value::as_str) != Some("0.1.2")
+                {
+                    let path = format!("{section}.{name}.{field}");
+                    issues.push(error(&path, "Item counts require neuroflow 0.1.2."));
+                }
+            }
             for axis in TYPE_QUALIFIERS {
                 let Some(value) = declaration.get(*axis) else {
                     continue;
                 };
                 let path = format!("{section}.{name}.{axis}");
-                if document.get("neuroflow").and_then(Value::as_str) != Some("0.1.1") {
-                    issues.push(error(&path, "Type qualifiers require neuroflow 0.1.1."));
+                if !matches!(
+                    document.get("neuroflow").and_then(Value::as_str),
+                    Some("0.1.1" | "0.1.2")
+                ) {
+                    issues.push(error(
+                        &path,
+                        "Type qualifiers require neuroflow 0.1.1 or later.",
+                    ));
                 }
                 let t = declaration
                     .get("type")

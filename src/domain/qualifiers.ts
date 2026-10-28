@@ -162,11 +162,16 @@ export function validateDocumentQualifiers(document: object): ValidationIssue[] 
   for (const [section, declarations] of Object.entries(sections)) {
     for (const [name, value] of Object.entries(declarations)) {
       const declaration = record(value)
+      for (const field of ['minItems', 'maxItems']) {
+        if (field in declaration && doc.neuroflow !== '0.1.2') {
+          issues.push({ severity: 'error', path: `${section}.${name}.${field}`, message: 'Item counts require neuroflow 0.1.2.' })
+        }
+      }
       for (const axis of TYPE_QUALIFIERS) {
         if (!(axis in declaration)) continue
         const value = declaration[axis], path = `${section}.${name}.${axis}`
         const fail = (message: string) => issues.push({ severity: 'error', path, message })
-        if (doc.neuroflow !== '0.1.1') fail('Type qualifiers require neuroflow 0.1.1.')
+        if (doc.neuroflow !== '0.1.1' && doc.neuroflow !== '0.1.2') fail('Type qualifiers require neuroflow 0.1.1 or later.')
         const t = typeof declaration.type === 'string' ? declaration.type : ''
         if (!allowed(axis, t)) fail(`${axis} is not allowed on ${t}.`)
         if (typeof value === 'string' && value.startsWith('inputs.')) {

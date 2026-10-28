@@ -30,6 +30,7 @@ function fixture(): { workflow: WorkflowDocument; tools: ToolDefinition[] } {
       outputs: { brain: { type: 'neuro:volume', description: 'Brain' } }
     },
     {
+      neuroflow: '0.1.2',
       id: 'test.tools/segment',
       name: 'segment',
       inputs: { brain: { type: 'core:array<neuro:volume>', description: 'Brain', maxItems: 3 } },
@@ -69,6 +70,13 @@ test('an array ref is counted at run time', () => {
   const report = validateWorkflowLocally(workflow, tools)
   assert.equal(report.ok, true, JSON.stringify(report.issues))
   assert.deepEqual(countIssues(workflow, tools), ["warning: Input brain takes exactly 2 items; the array's length is checked at run time."])
+})
+
+test('item counts require neuroflow 0.1.2', () => {
+  const { workflow, tools } = fixture()
+  ;(tools[1] as unknown as { neuroflow: string }).neuroflow = '0.1.1'
+  const messages = validateWorkflowLocally(workflow, tools).issues.map((issue) => issue.message)
+  assert.ok(messages.includes('Item counts require neuroflow 0.1.2.'), JSON.stringify(messages))
 })
 
 test('item counts on a scalar input are ignored', () => {

@@ -6,8 +6,8 @@ import { arrayElementType } from './typeCompatibility'
 import { compareQualifiers, qualifierIssues, resolveQualifiers, validateDocumentQualifiers } from './qualifiers'
 export { TYPE_QUALIFIERS, declaredQualifiers } from './qualifiers'
 
-/** Spec versions this app reads: 0.1.1 is 0.1.0 plus the RFC 0010 type qualifiers. */
-export const SUPPORTED_SPEC_VERSIONS: readonly string[] = ['0.1.0', '0.1.1']
+/** Spec versions this app reads: 0.1.1 is 0.1.0 plus the RFC 0010 type qualifiers; 0.1.2 adds array item counts. */
+export const SUPPORTED_SPEC_VERSIONS: readonly string[] = ['0.1.0', '0.1.1', '0.1.2']
 
 const REF_PATTERN =
   /^(inputs\.[A-Za-z][A-Za-z0-9_-]*|context|context\.[A-Za-z][A-Za-z0-9_-]*|steps\.[A-Za-z][A-Za-z0-9_-]*\.outputs\.[A-Za-z][A-Za-z0-9_-]*)$/
@@ -151,7 +151,7 @@ function validateWorkflowEnvelope(workflow: WorkflowDocument, issues: Validation
     issues.push({
       severity: 'error',
       path: 'neuroflow',
-      message: 'Workflow must target NeuroFlow spec version 0.1.0 or 0.1.1.'
+      message: 'Workflow must target NeuroFlow spec version 0.1.0, 0.1.1 or 0.1.2.'
     })
   }
   if (!workflow.id || !workflow.id.includes('/')) {

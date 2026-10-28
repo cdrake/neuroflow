@@ -82,7 +82,7 @@ pub fn validate_workflow_value_with_tools(
     if !is_supported_spec_version(root.get("neuroflow").and_then(Value::as_str)) {
         issues.push(error(
             "neuroflow",
-            "Workflow must target NeuroFlow spec version 0.1.0 or 0.1.1.",
+            "Workflow must target NeuroFlow spec version 0.1.0, 0.1.1 or 0.1.2.",
         ));
     }
 
@@ -961,7 +961,8 @@ fn coercible_to(source_type: &str, input_type: &str) -> bool {
 
 /// Specification versions this runtime reads. `0.1.1` is `0.1.0` plus the
 /// RFC 0010 type qualifiers; a document declares it when it carries any.
-pub const SUPPORTED_SPEC_VERSIONS: &[&str] = &["0.1.0", "0.1.1"];
+/// `0.1.2` adds `minItems`/`maxItems` on array declarations.
+pub const SUPPORTED_SPEC_VERSIONS: &[&str] = &["0.1.0", "0.1.1", "0.1.2"];
 
 /// Whether a document's `neuroflow` envelope value is one this runtime reads.
 pub fn is_supported_spec_version(value: Option<&str>) -> bool {
@@ -1301,8 +1302,11 @@ mod tests {
         assert!(!report.ok, "a volume is not a mask: {report:?}");
     }
 
+    /// Item counts are a 0.1.2 feature, so the tool declares that version.
     fn item_count_issues(workflow: &Value, tools: &Value) -> (ValidationReport, Vec<String>) {
-        let report = validate_workflow_value_with_tools(workflow, Some(tools));
+        let mut tools = tools.clone();
+        tools[1]["neuroflow"] = serde_json::json!("0.1.2");
+        let report = validate_workflow_value_with_tools(workflow, Some(&tools));
         let messages = report
             .issues
             .iter()
@@ -1354,6 +1358,22 @@ mod tests {
         assert_eq!(
             messages,
             ["warning: Input brain takes exactly 2 items; the array's length is checked at run time."]
+        );
+    }
+
+    #[test]
+    fn item_counts_require_0_1_2() {
+        let (workflow, mut tools) = strip_segment_workflow("steps.strip.outputs.brain_volume");
+        tools[1]["neuroflow"] = serde_json::json!("0.1.1");
+        tools[1]["inputs"]["brain"] =
+            serde_json::json!({ "type": "core:array<neuro:volume>", "maxItems": 3 });
+        let report = validate_workflow_value_with_tools(&workflow, Some(&tools));
+        assert!(
+            report
+                .issues
+                .iter()
+                .any(|issue| issue.message == "Item counts require neuroflow 0.1.2."),
+            "{report:?}"
         );
     }
 
