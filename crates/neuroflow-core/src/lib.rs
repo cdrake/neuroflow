@@ -299,6 +299,17 @@ pub fn validate_workflow_value_with_tools(
                             resolved.space_identity.as_deref(),
                             resolved.space_identity.as_deref(),
                         );
+                        if required_input(input_def) {
+                            if let Some(issue) = optional_step_output(
+                                reference,
+                                &binding_path,
+                                &format!("required input {input_name}"),
+                                steps,
+                                &tool_registry,
+                            ) {
+                                issues.push(issue);
+                            }
+                        }
                     } else {
                         issues.push(warning(
                             binding_path.clone(),
@@ -392,6 +403,15 @@ pub fn validate_workflow_value_with_tools(
                 ));
                 continue;
             };
+            if let Some(issue) = optional_step_output(
+                reference,
+                &format!("outputs.{output_name}.ref"),
+                &format!("workflow output {output_name}"),
+                steps,
+                &tool_registry,
+            ) {
+                issues.push(issue);
+            }
             let resolved =
                 qualifiers::resolve_qualifiers(reference, workflow, tools.unwrap_or(&Value::Null));
             append_qualifier_issues(
@@ -708,6 +728,39 @@ fn undeclared_step_output(
             ),
         ),
         format!("Declared outputs: {}.", declared.join(", ")),
+    ))
+}
+
+/// When `reference` is `steps.<s>.outputs.<o>` and the step's tool declares
+/// `<o>` optional, warn that `target` may be left without a value. A warning,
+/// not an error: the tool can still produce the output, e.g. on multi-shell data.
+fn optional_step_output(
+    reference: &str,
+    path: &str,
+    target: &str,
+    steps: &serde_json::Map<String, Value>,
+    tools: &HashMap<String, ToolContract<'_>>,
+) -> Option<ValidationIssue> {
+    let parts: Vec<&str> = reference.split('.').collect();
+    let ["steps", step_name, "outputs", output_name] = parts.as_slice() else {
+        return None;
+    };
+    let tool_ref = steps.get(*step_name)?.get("tool").and_then(Value::as_str)?;
+    let tool = tools.get(tool_ref)?;
+    let output = tool.outputs.get(*output_name)?;
+    if !output
+        .get("optional")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        return None;
+    }
+    Some(warning(
+        path.to_string(),
+        format!(
+            "Output {output_name} of {} is optional, so {target} may have no value when the step finishes.",
+            tool.name
+        ),
     ))
 }
 
@@ -1120,6 +1173,50 @@ mod tests {
         let (workflow, tools) = strip_segment_workflow("steps.strip.outputs.brain_volume");
         let report = validate_workflow_value_with_tools(&workflow, Some(&tools));
         assert!(report.ok, "{report:?}");
+    }
+
+    fn optional_output_warnings(
+        workflow: &Value,
+        tools: &Value,
+    ) -> (ValidationReport, Vec<String>) {
+        let report = validate_workflow_value_with_tools(workflow, Some(tools));
+        let paths = report
+            .issues
+            .iter()
+            .filter(|issue| issue.severity == "warning" && issue.message.contains("is optional"))
+            .filter_map(|issue| issue.path.clone())
+            .collect();
+        (report, paths)
+    }
+
+    #[test]
+    fn warns_when_an_optional_output_feeds_a_required_input() {
+        let (workflow, mut tools) = strip_segment_workflow("steps.strip.outputs.brain_volume");
+        tools[0]["outputs"]["brain_volume"]["optional"] = serde_json::json!(true);
+        let (report, paths) = optional_output_warnings(&workflow, &tools);
+        assert!(report.ok, "a warning, not an error: {report:?}");
+        assert_eq!(paths, ["steps.segment.inputs.brain"]);
+
+        tools[1]["inputs"]["brain"]["optional"] = serde_json::json!(true);
+        let (_, paths) = optional_output_warnings(&workflow, &tools);
+        assert!(paths.is_empty(), "an optional input can go unfilled");
+
+        tools[1]["inputs"]["brain"]["optional"] = serde_json::json!(false);
+        tools[1]["inputs"]["brain"]["default"] = serde_json::json!("brain.nii.gz");
+        let (_, paths) = optional_output_warnings(&workflow, &tools);
+        assert!(paths.is_empty(), "a default fills the input");
+    }
+
+    #[test]
+    fn warns_when_a_workflow_output_is_optional() {
+        let (workflow, mut tools) = strip_segment_workflow("steps.strip.outputs.brain_volume");
+        let (_, paths) = optional_output_warnings(&workflow, &tools);
+        assert!(paths.is_empty(), "{paths:?}");
+
+        tools[1]["outputs"]["labels"]["optional"] = serde_json::json!(true);
+        let (report, paths) = optional_output_warnings(&workflow, &tools);
+        assert!(report.ok, "a warning, not an error: {report:?}");
+        assert_eq!(paths, ["outputs.labels.ref"]);
     }
 
     #[test]

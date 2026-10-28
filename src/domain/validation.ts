@@ -133,6 +133,8 @@ export function validateWorkflowLocally(
         message: `Workflow output references unknown value ${output.ref}.`
       })
     } else if (resolved) {
+      const issue = optionalStepOutput(output.ref, `outputs.${outputName}.ref`, `workflow output ${outputName}`, workflow, toolMap)
+      if (issue) issues.push(issue)
       const source = resolveQualifiers(output.ref, workflow, toolMap)
       issues.push(...qualifierIssues(`outputs.${outputName}.ref`, compareQualifiers(source.declaration, output, source.spaceIdentity, source.spaceIdentity)))
     } else if (tools.length === 0) {
@@ -196,6 +198,10 @@ function validateToolInputs(
     if (isRefBinding(binding)) {
       const source = resolveQualifiers(binding.ref, workflow, toolMap)
       issues.push(...qualifierIssues(`steps.${stepName}.inputs.${inputName}`, compareQualifiers(source.declaration, inputDef, source.spaceIdentity, source.spaceIdentity)))
+      if (inputDef.optional !== true && inputDef.default === undefined) {
+        const issue = optionalStepOutput(binding.ref, `steps.${stepName}.inputs.${inputName}`, `required input ${inputName}`, workflow, toolMap)
+        if (issue) issues.push(issue)
+      }
     }
 
     if (isConstantBinding(binding)) {
@@ -299,6 +305,27 @@ function resolveRefType(
     return tool?.outputs[parts[3]]?.type ?? null
   }
   return null
+}
+
+// Mirrors optional_step_output in neuroflow-core: a warning, since the tool can
+// still produce the output.
+function optionalStepOutput(
+  ref: string,
+  path: string,
+  target: string,
+  workflow: WorkflowDocument,
+  toolMap: Map<string, ToolDefinition>
+): ValidationIssue | null {
+  const parts = ref.split('.')
+  if (parts[0] !== 'steps' || parts.length !== 4 || parts[2] !== 'outputs') return null
+  const step = workflow.steps[parts[1]]
+  const tool = step ? resolveToolDefinition(toolMap, step.tool) : undefined
+  if (tool?.outputs[parts[3]]?.optional !== true) return null
+  return {
+    severity: 'warning',
+    path,
+    message: `Output ${parts[3]} of ${tool.name} is optional, so ${target} may have no value when the step finishes.`
+  }
 }
 
 function isMissingBinding(binding: Binding | undefined): boolean {
