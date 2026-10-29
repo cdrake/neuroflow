@@ -88,7 +88,7 @@ pub fn validate_workflow_value_with_tools(
     if !is_supported_spec_version(root.get("neuroflow").and_then(Value::as_str)) {
         issues.push(error(
             "neuroflow",
-            "Workflow must target NeuroFlow spec version 0.1.0, 0.1.1 or 0.1.2.",
+            "Workflow must target NeuroFlow spec version 0.1.0, 0.1.1, 0.1.2 or 0.1.3.",
         ));
     }
 
@@ -430,13 +430,17 @@ pub fn validate_workflow_value_with_tools(
                 ));
                 continue;
             };
+            // An optional workflow output (spec 0.1.3) is omitted when its source is absent.
+            let optional = output.get("optional").and_then(Value::as_bool) == Some(true);
             if let Some(issue) = optional_step_output(
                 reference,
                 &format!("outputs.{output_name}.ref"),
                 &format!("workflow output {output_name}"),
                 steps,
                 &tool_registry,
-            ) {
+            )
+            .filter(|_| !optional)
+            {
                 issues.push(issue);
             }
             let resolved =
@@ -970,8 +974,10 @@ fn coercible_to(source_type: &str, input_type: &str) -> bool {
 
 /// Specification versions this runtime reads. `0.1.1` is `0.1.0` plus the
 /// RFC 0010 type qualifiers; a document declares it when it carries any.
-/// `0.1.2` adds `minItems`/`maxItems` on array declarations.
-pub const SUPPORTED_SPEC_VERSIONS: &[&str] = &["0.1.0", "0.1.1", "0.1.2"];
+/// `0.1.2` adds `minItems`/`maxItems` on array declarations. `0.1.3` lets a
+/// workflow output carry `optional`, `description`, `label` and qualifiers.
+/// Listed in order: a later entry accepts every feature of an earlier one.
+pub const SUPPORTED_SPEC_VERSIONS: &[&str] = &["0.1.0", "0.1.1", "0.1.2", "0.1.3"];
 
 /// Whether a document's `neuroflow` envelope value is one this runtime reads.
 pub fn is_supported_spec_version(value: Option<&str>) -> bool {
@@ -1309,6 +1315,56 @@ mod tests {
     }
 
     #[test]
+    fn an_optional_workflow_output_accepts_an_absent_value() {
+        let (mut workflow, mut tools) = strip_segment_workflow("steps.strip.outputs.brain_volume");
+        tools[1]["outputs"]["labels"]["optional"] = serde_json::json!(true);
+        workflow["neuroflow"] = serde_json::json!("0.1.3");
+        workflow["outputs"]["labels"]["optional"] = serde_json::json!(true);
+        let (report, paths) = optional_output_warnings(&workflow, &tools);
+        assert!(report.ok, "{report:?}");
+        assert!(paths.is_empty(), "{paths:?}");
+
+        workflow["outputs"]["labels"]["optional"] = serde_json::json!(false);
+        let (_, paths) = optional_output_warnings(&workflow, &tools);
+        assert_eq!(paths, ["outputs.labels.ref"]);
+    }
+
+    #[test]
+    fn workflow_output_fields_need_spec_0_1_3() {
+        let (mut workflow, tools) = strip_segment_workflow("steps.strip.outputs.brain_volume");
+        workflow["outputs"]["labels"]["optional"] = serde_json::json!(true);
+        workflow["outputs"]["labels"]["description"] = serde_json::json!("Labels.");
+        // Sorted: member order depends on serde_json's preserve_order feature.
+        let errors = |workflow: &Value| -> Vec<String> {
+            let mut errors: Vec<String> =
+                validate_workflow_value_with_tools(workflow, Some(&tools))
+                    .issues
+                    .into_iter()
+                    .filter(|issue| issue.severity == "error")
+                    .map(|issue| format!("{}: {}", issue.path.unwrap_or_default(), issue.message))
+                    .collect();
+            errors.sort();
+            errors
+        };
+        assert_eq!(
+            errors(&workflow),
+            [
+                "outputs.labels.description: Workflow output description requires neuroflow 0.1.3.",
+                "outputs.labels.optional: Workflow output optional requires neuroflow 0.1.3.",
+            ]
+        );
+
+        workflow["neuroflow"] = serde_json::json!("0.1.3");
+        assert!(errors(&workflow).is_empty(), "{:?}", errors(&workflow));
+
+        workflow["outputs"]["labels"]["default"] = serde_json::json!("labels.nii.gz");
+        assert_eq!(
+            errors(&workflow),
+            ["outputs.labels.default: A workflow output takes no default; its value comes from ref."]
+        );
+    }
+
+    #[test]
     fn issue_codes_serialize_only_when_set() {
         let (workflow, mut tools) = strip_segment_workflow("steps.strip.outputs.brain_volume");
         tools[0]["outputs"]["brain_volume"]["optional"] = serde_json::json!(true);
@@ -1408,7 +1464,7 @@ mod tests {
             report
                 .issues
                 .iter()
-                .any(|issue| issue.message == "Item counts require neuroflow 0.1.2."),
+                .any(|issue| issue.message == "Item counts require neuroflow 0.1.2 or later."),
             "{report:?}"
         );
     }

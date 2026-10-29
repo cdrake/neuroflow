@@ -61,3 +61,25 @@ test('a workflow output bound to an optional output is a warning', () => {
   tools[1].outputs.labels.optional = true
   assert.deepEqual(optionalWarnings(workflow, tools), ['outputs.labels.ref'])
 })
+
+test('an optional workflow output accepts an absent value', () => {
+  const { workflow, tools } = fixture()
+  tools[1].outputs.labels.optional = true
+  workflow.neuroflow = '0.1.3'
+  workflow.outputs.labels.optional = true
+  assert.deepEqual(optionalWarnings(workflow, tools), [])
+})
+
+test('workflow output fields need spec 0.1.3', () => {
+  const { workflow, tools } = fixture()
+  Object.assign(workflow.outputs.labels, { optional: true, label: 'Labels', default: 'labels.nii.gz' })
+  const errors = validateWorkflowLocally(workflow, tools).issues
+    .filter((issue) => issue.severity === 'error')
+    .map((issue) => `${issue.path}: ${issue.message}`)
+    .sort()
+  assert.deepEqual(errors, [
+    'outputs.labels.default: A workflow output takes no default; its value comes from ref.',
+    'outputs.labels.label: Workflow output label requires neuroflow 0.1.3.',
+    'outputs.labels.optional: Workflow output optional requires neuroflow 0.1.3.'
+  ])
+})

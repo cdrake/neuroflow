@@ -3,6 +3,9 @@ import { isRefBinding } from './neuroflow'
 import { resolveToolDefinition } from './registry'
 import { isTypeCompatible } from './typeCompatibility'
 
+/** Spec versions this app reads: 0.1.1 is 0.1.0 plus the RFC 0010 type qualifiers; 0.1.2 adds array item counts; 0.1.3 adds description, label and optional on workflow outputs. */
+export const SUPPORTED_SPEC_VERSIONS: readonly string[] = ['0.1.0', '0.1.1', '0.1.2', '0.1.3']
+
 export const TYPE_QUALIFIERS = ['formats', 'space', 'resolution', 'density', 'labelSystem'] as const
 export type Compatibility = 'compatible' | 'incompatible' | 'requires-runtime-check'
 export interface QualifierCheck {
@@ -154,6 +157,15 @@ function validValue(axis: string, value: unknown): boolean {
   }
 }
 
+/** Whether the document declares `version` or a later supported version. */
+function declaresAtLeast(doc: Record<string, unknown>, version: string): boolean {
+  const rank = SUPPORTED_SPEC_VERSIONS.indexOf(typeof doc.neuroflow === 'string' ? doc.neuroflow : '')
+  return rank >= 0 && rank >= SUPPORTED_SPEC_VERSIONS.indexOf(version)
+}
+
+/** Workflow output fields that need neuroflow 0.1.3. Qualifiers on a workflow output follow the 0.1.1 rule, as on any declaration. */
+const WORKFLOW_OUTPUT_FIELDS = ['description', 'label', 'optional']
+
 /** Semantic checks supplement JSON Schema, including envelope and inheritance. */
 export function validateDocumentQualifiers(document: object): ValidationIssue[] {
   const doc = record(document), issues: ValidationIssue[] = []
@@ -163,15 +175,15 @@ export function validateDocumentQualifiers(document: object): ValidationIssue[] 
     for (const [name, value] of Object.entries(declarations)) {
       const declaration = record(value)
       for (const field of ['minItems', 'maxItems']) {
-        if (field in declaration && doc.neuroflow !== '0.1.2') {
-          issues.push({ severity: 'error', path: `${section}.${name}.${field}`, message: 'Item counts require neuroflow 0.1.2.' })
+        if (field in declaration && !declaresAtLeast(doc, '0.1.2')) {
+          issues.push({ severity: 'error', path: `${section}.${name}.${field}`, message: 'Item counts require neuroflow 0.1.2 or later.' })
         }
       }
       for (const axis of TYPE_QUALIFIERS) {
         if (!(axis in declaration)) continue
         const value = declaration[axis], path = `${section}.${name}.${axis}`
         const fail = (message: string) => issues.push({ severity: 'error', path, message })
-        if (doc.neuroflow !== '0.1.1' && doc.neuroflow !== '0.1.2') fail('Type qualifiers require neuroflow 0.1.1 or later.')
+        if (!declaresAtLeast(doc, '0.1.1')) fail('Type qualifiers require neuroflow 0.1.1 or later.')
         const t = typeof declaration.type === 'string' ? declaration.type : ''
         if (!allowed(axis, t)) fail(`${axis} is not allowed on ${t}.`)
         if (typeof value === 'string' && value.startsWith('inputs.')) {
@@ -183,6 +195,18 @@ export function validateDocumentQualifiers(document: object): ValidationIssue[] 
             if (typeof source.type !== 'string' || !allowed(axis, source.type)) fail(`Input ${input} cannot carry ${axis}.`)
           }
         } else if (!validValue(axis, value)) fail(`Invalid ${axis} qualifier value ${JSON.stringify(value)}.`)
+      }
+    }
+  }
+  if (doc.kind === 'workflow') {
+    for (const [name, value] of Object.entries(record(doc.outputs))) {
+      for (const field of Object.keys(record(value))) {
+        const path = `outputs.${name}.${field}`
+        if (field === 'default' || field === 'delivery') {
+          issues.push({ severity: 'error', path, message: `A workflow output takes no ${field}; its value comes from ref.` })
+        } else if (WORKFLOW_OUTPUT_FIELDS.includes(field) && !declaresAtLeast(doc, '0.1.3')) {
+          issues.push({ severity: 'error', path, message: `Workflow output ${field} requires neuroflow 0.1.3.` })
+        }
       }
     }
   }

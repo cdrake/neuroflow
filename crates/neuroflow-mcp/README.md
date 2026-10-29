@@ -17,7 +17,7 @@ Each release from v0.2.1 on carries a prebuilt binary for linux x86-64
 For example, on Linux:
 
 ```bash
-tag=v0.3.1 target=x86_64-unknown-linux-musl
+tag=v0.3.2 target=x86_64-unknown-linux-musl
 gh release download "$tag" -R cdrake/neuroflow -p "neuroflow-mcp-$tag-$target.tar.gz" -p SHA256SUMS
 sha256sum --check --ignore-missing SHA256SUMS
 tar -xzf "neuroflow-mcp-$tag-$target.tar.gz"
@@ -222,7 +222,7 @@ workflows and unsupported execution features report `runnable: false`.
 
 A diagnostic may also carry a `code` naming the check that raised it, such as
 `optional-output` when an optional step output feeds a required input or a
-workflow output. Codes are stable across releases; match on `code`, not on the
+workflow output not marked `optional` (spec 0.1.3). Codes are stable across releases; match on `code`, not on the
 message wording.
 
 The initialize/discover capability
