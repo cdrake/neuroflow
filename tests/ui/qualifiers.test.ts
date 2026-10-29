@@ -1,28 +1,14 @@
+// npm run test:ui
+// qualifiers.ts and validation.ts: the RFC 0010 conformance fixture shared with neuroflow-core.
+import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { after, test } from 'node:test'
-import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { createRequire } from 'node:module'
-import ts from 'typescript'
+import { readFileSync } from 'node:fs'
+import { compareQualifiers, resolveQualifiers, validateDocumentQualifiers } from '../../src/domain/qualifiers'
+import { validateWorkflowLocally } from '../../src/domain/validation'
+import { buildToolMap } from '../../src/domain/registry'
 
-// Compile the real fallback modules; the same compiler is checked by npm run build.
-const root = fileURLToPath(new URL('../../', import.meta.url))
-const work = await mkdtemp(join(tmpdir(), 'neuroflow-qualifiers-'))
-after(() => rm(work, { recursive: true, force: true }))
-await writeFile(join(work, 'package.json'), '{"type":"commonjs"}')
-await symlink(join(root, 'node_modules'), join(work, 'node_modules'), 'dir')
-for (const name of ['neuroflow', 'typeCompatibility', 'registry', 'qualifiers', 'validation']) {
-  const source = await readFile(new URL(`./${name}.ts`, import.meta.url), 'utf8')
-  const { outputText } = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } })
-  await writeFile(join(work, `${name}.js`), outputText)
-}
-const require = createRequire(join(work, 'package.json'))
-const { compareQualifiers, resolveQualifiers, validateDocumentQualifiers } = require('./qualifiers.js')
-const { validateWorkflowLocally } = require('./validation.js')
-const { buildToolMap } = require('./registry.js')
-const cases = JSON.parse(await readFile(join(root, 'crates/neuroflow-core/tests/fixtures/qualifiers.json'), 'utf8'))
+// The bundle runs from target/ui-tests, two levels below the repository root.
+const cases = JSON.parse(readFileSync(new URL('../../crates/neuroflow-core/tests/fixtures/qualifiers.json', import.meta.url), 'utf8'))
 for (const entry of cases) {
   test(`RFC conformance: ${entry.name}`, () => {
     const checks = compareQualifiers(entry.source, entry.target, entry.sourceIdentity, entry.targetIdentity)
@@ -32,7 +18,7 @@ for (const entry of cases) {
   })
 }
 
-function graph() {
+function graph(): { workflow: any; tools: any[] } {
   const workflow = {
     neuroflow: '0.1.1', kind: 'workflow', id: 'test/chain', version: '1.0.0', description: 'Chain',
     inputs: { t1: { type: 'neuro:volume', formats: ['nii-gz'], space: 'individual', resolution: 1 } },
@@ -107,7 +93,7 @@ test('semantic checks reject old envelopes, misplaced or impossible inheritance 
 })
 
 test('mutable context declarations never prove acquisition identity', () => {
-  const workflow = { context: { fields: { image: { type: 'neuro:volume', space: 'individual' } } } }
+  const workflow: any = { context: { fields: { image: { type: 'neuro:volume', space: 'individual' } } } }
   assert.equal(resolveQualifiers('context.image', workflow, new Map()).spaceIdentity, undefined)
 })
 
