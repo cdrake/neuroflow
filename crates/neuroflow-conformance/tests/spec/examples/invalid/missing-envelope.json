@@ -1,0 +1,7 @@
+{
+  "kind": "workflow",
+  "description": "Workflow missing the required neuroflow, id, and version envelope fields.",
+  "inputs": {},
+  "steps": {},
+  "outputs": {}
+}

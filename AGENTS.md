@@ -80,13 +80,17 @@ npm run validate:gallery
 npm run test:gallery
 npm run test:ui
 cargo test --workspace
+(cd crates/neuroflow-conformance && cargo test)
 ```
 
 Use `npm run build` as the default frontend verification gate. Use
 `cargo check --workspace` when touching Rust crates or Tauri command shapes.
 Run `npm run wasm:build` after changing the public WASM surface. Run
 `npm run validate:gallery` and `npm run test:gallery` after touching
-`gallery/`.
+`gallery/`. Run the `crates/neuroflow-conformance` tests after changing the
+closed field lists in `neuroflow-core/src/fields.rs` (mirrored in
+`src/domain/fields.ts`) or the vendored spec files. That crate is outside the
+workspace so its `jsonschema` dev-dependency never reaches the shipped WASM.
 
 ## Architecture Rules
 

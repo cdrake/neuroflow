@@ -5,4 +5,6 @@ members = [
   "crates/neuroflow-mcp",
   "src-tauri"
 ]
+# Test-only, with its own lockfile; see its Cargo.toml.
+exclude = ["crates/neuroflow-conformance"]
 resolver = "2"

@@ -1,0 +1,56 @@
+{
+  "base": {
+    "neuroflow": "0.1.3",
+    "kind": "workflow",
+    "id": "test/unknown-fields",
+    "version": "1.0.0",
+    "description": "Every closed declaration the unknown-field check covers.",
+    "inputs": {
+      "dicom_dir": { "type": "neuro:dicom-folder", "description": "DICOM source directory." }
+    },
+    "context": {
+      "description": "Run context.",
+      "fields": {
+        "series": { "type": "core:json", "description": "Series list." }
+      }
+    },
+    "steps": {
+      "convert": {
+        "tool": "test/convert",
+        "inputs": { "dicom_dir": { "ref": "inputs.dicom_dir" } },
+        "errorPolicy": { "onError": "halt", "tolerateItemFailures": { "max": 1 } },
+        "fixLoop": { "fixerStep": "fix" },
+        "eventBindings": { "subscribeTo": [{ "step": "fix" }] }
+      },
+      "fix": {
+        "tool": "test/fix",
+        "inputs": { "dicom_dir": { "ref": "inputs.dicom_dir" } }
+      }
+    },
+    "outputs": {
+      "volumes": { "type": "core:array<neuro:volume>", "ref": "steps.convert.outputs.volumes" }
+    },
+    "errorPolicy": { "defaultOnError": "halt" }
+  },
+  "cases": [
+    { "at": [], "path": "unknownField" },
+    { "at": ["context"], "path": "context.unknownField" },
+    { "at": ["context", "fields", "series"], "path": "context.fields.series.unknownField" },
+    { "at": ["inputs", "dicom_dir"], "path": "inputs.dicom_dir.unknownField" },
+    { "at": ["steps", "convert"], "path": "steps.convert.unknownField" },
+    { "at": ["steps", "convert", "inputs", "dicom_dir"], "path": "steps.convert.inputs.dicom_dir.unknownField" },
+    { "at": ["steps", "convert", "errorPolicy"], "path": "steps.convert.errorPolicy.unknownField" },
+    {
+      "at": ["steps", "convert", "errorPolicy", "tolerateItemFailures"],
+      "path": "steps.convert.errorPolicy.tolerateItemFailures.unknownField"
+    },
+    { "at": ["steps", "convert", "fixLoop"], "path": "steps.convert.fixLoop.unknownField" },
+    { "at": ["steps", "convert", "eventBindings"], "path": "steps.convert.eventBindings.unknownField" },
+    {
+      "at": ["steps", "convert", "eventBindings", "subscribeTo", 0],
+      "path": "steps.convert.eventBindings.subscribeTo[0].unknownField"
+    },
+    { "at": ["outputs", "volumes"], "path": "outputs.volumes.unknownField" },
+    { "at": ["errorPolicy"], "path": "errorPolicy.unknownField" }
+  ]
+}

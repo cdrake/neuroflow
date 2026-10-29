@@ -1,0 +1,24 @@
+{
+  "neuroflow": "0.1.0",
+  "kind": "workflow",
+  "id": "neuroflow.test/bad-reference",
+  "version": "1.0.0",
+  "description": "A step input binding uses a reference that does not match the reference grammar.",
+  "inputs": {
+    "dicom_dir": {
+      "type": "neuro:dicom-folder",
+      "description": "DICOM source directory."
+    }
+  },
+  "steps": {
+    "convert": {
+      "tool": "neuroflow.test/dcm2niix",
+      "inputs": {
+        "dicom_dir": {
+          "ref": "input.dicom_dir"
+        }
+      }
+    }
+  },
+  "outputs": {}
+}

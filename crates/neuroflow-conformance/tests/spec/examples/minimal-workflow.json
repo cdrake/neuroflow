@@ -1,0 +1,69 @@
+{
+  "neuroflow": "0.1.0",
+  "kind": "workflow",
+  "id": "niivue.desktop/dicom-to-nifti",
+  "version": "1.0.0",
+  "description": "Convert a DICOM directory to NIfTI volumes.",
+  "inputs": {
+    "dicom_dir": {
+      "type": "neuro:dicom-folder",
+      "description": "DICOM source directory."
+    }
+  },
+  "context": {
+    "fields": {
+      "dicom_series": {
+        "type": "core:array<neuro:dicom-series>",
+        "description": "All DICOM series discovered in the source directory.",
+        "heuristic": "list-dicom-series",
+        "dependsOn": ["dicom_dir"]
+      },
+      "selected_series": {
+        "type": "core:array<neuro:dicom-series>",
+        "description": "Subset of DICOM series selected for conversion.",
+        "default": []
+      },
+      "outDir": {
+        "type": "core:directory",
+        "description": "Directory containing converted files."
+      }
+    }
+  },
+  "steps": {
+    "convert": {
+      "tool": "niivue.desktop.tools/dcm2niix",
+      "inputs": {
+        "dicom_dir": {
+          "ref": "inputs.dicom_dir"
+        },
+        "series": {
+          "ref": "context.selected_series"
+        },
+        "bids": {
+          "constant": "y"
+        },
+        "compress": {
+          "constant": "y"
+        }
+      },
+      "outputMappings": {
+        "outDir": "outDir"
+      }
+    }
+  },
+  "outputs": {
+    "volumes": {
+      "type": "core:array<neuro:volume>",
+      "ref": "steps.convert.outputs.volumes"
+    },
+    "outDir": {
+      "type": "core:directory",
+      "ref": "steps.convert.outputs.outDir"
+    }
+  },
+  "extensions": {
+    "niivue/ui": {
+      "menu": "Import"
+    }
+  }
+}

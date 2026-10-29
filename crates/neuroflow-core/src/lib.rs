@@ -1,3 +1,4 @@
+pub mod fields;
 pub mod qualifiers;
 
 use serde::{Deserialize, Serialize};
@@ -80,6 +81,8 @@ pub fn validate_workflow_value_with_tools(
             }],
         };
     };
+
+    issues.extend(fields::unknown_field_issues(workflow));
 
     if root.get("kind").and_then(Value::as_str) != Some("workflow") {
         issues.push(error("kind", "Document kind must be workflow."));

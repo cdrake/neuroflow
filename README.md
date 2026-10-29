@@ -72,6 +72,7 @@ npm run validate:gallery   # gallery documents against the spec schemas
 npm run test:gallery       # gallery adapters and check_tool.mjs
 npm run test:ui            # builder domain tests (tests/ui)
 cargo test --workspace
+(cd crates/neuroflow-conformance && cargo test)   # core vs the spec schemas
 ```
 
 ## Pipeline builder

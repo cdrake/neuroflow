@@ -1,0 +1,480 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://niivue.github.io/neuroflow-spec/schemas/0.1/events.schema.json",
+  "title": "NeuroFlow Runtime Events",
+  "description": "Shared definitions for the NeuroFlow runtime-events channel: the wire-level event envelope, the closed core event-type vocabulary, the closed core transport vocabulary, the tool-side `events` declaration, and the workflow-side step `eventBindings` shape. These definitions are referenced from tool.schema.json and workflow.schema.json; this file is not a document family on its own.",
+  "$defs": {
+    "eventType": {
+      "description": "Namespace-qualified event type. The core: namespace is a closed vocabulary defined by this specification; any other namespace denotes an open extension event type. Validators MUST reject a core: event type that is not one of the names defined here.",
+      "anyOf": [
+        { "$ref": "#/$defs/coreEventType" },
+        { "$ref": "#/$defs/extensionEventType" }
+      ]
+    },
+    "coreEventType": {
+      "type": "string",
+      "description": "Closed core event-type vocabulary.",
+      "enum": [
+        "core:status",
+        "core:progress",
+        "core:log",
+        "core:heartbeat",
+        "core:context-write",
+        "core:output-intermediate",
+        "core:output-final",
+        "core:error",
+        "core:item-error",
+        "core:fix-proposal",
+        "core:await-approval",
+        "core:cancel-request"
+      ]
+    },
+    "extensionEventType": {
+      "type": "string",
+      "description": "An event type contributed by a third-party namespace (any namespace other than core).",
+      "pattern": "^(?!core:)[a-z][a-z0-9.-]*:[a-z][a-z0-9-]*$"
+    },
+    "transport": {
+      "description": "Namespace-qualified transport identifier. The core: namespace is a closed vocabulary; any other namespace denotes an open extension transport. Validators MUST reject a core: transport that is not one of the names defined here.",
+      "anyOf": [
+        { "$ref": "#/$defs/coreTransport" },
+        { "$ref": "#/$defs/extensionTransport" }
+      ]
+    },
+    "coreTransport": {
+      "type": "string",
+      "description": "Closed core transport vocabulary.",
+      "enum": [
+        "core:stdout-ndjson",
+        "core:stderr-ndjson",
+        "core:event-file",
+        "core:event-dir",
+        "core:unix-socket",
+        "core:named-pipe",
+        "core:tcp",
+        "core:http-webhook",
+        "core:websocket"
+      ]
+    },
+    "extensionTransport": {
+      "type": "string",
+      "description": "A transport contributed by a third-party namespace (any namespace other than core).",
+      "pattern": "^(?!core:)[a-z][a-z0-9.-]*:[a-z][a-z0-9-]*$"
+    },
+    "envelope": {
+      "type": "object",
+      "description": "Wire-level event envelope emitted by a tool and consumed by a runtime. Every event MUST be a single JSON object matching this shape, regardless of transport.",
+      "required": ["neuroflowEvent", "runId", "stepId", "sequence", "timestamp", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "neuroflowEvent": {
+          "type": "string",
+          "description": "Event envelope version. MUST be 0.1.0 for this specification.",
+          "const": "0.1.0"
+        },
+        "runId": {
+          "type": "string",
+          "description": "Opaque run identifier supplied by the runtime when launching the tool. Tools MUST echo this value unchanged.",
+          "minLength": 1
+        },
+        "stepId": {
+          "$ref": "common.schema.json#/$defs/localId",
+          "description": "Local identifier of the step whose tool emitted this event."
+        },
+        "toolId": {
+          "$ref": "common.schema.json#/$defs/documentId",
+          "description": "Optional tool document identifier for runtimes that multiplex across tools."
+        },
+        "sequence": {
+          "type": "integer",
+          "description": "Monotonic sequence number per (runId, stepId). Starts at 0 and increases by 1 for each event from the same step in the same run.",
+          "minimum": 0
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Event emission time in RFC 3339 / ISO 8601 format."
+        },
+        "type": { "$ref": "#/$defs/eventType" },
+        "name": {
+          "type": "string",
+          "description": "Optional emitter-defined name for this event (must match a key declared under the tool's events.emits map when the type is namespaced)."
+        },
+        "payload": {
+          "description": "Event-type-specific payload. Shape is determined by `type` and (for core types) constrained by this schema."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "core:status" } }, "required": ["type"] },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/statusPayload" } }, "required": ["payload"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "core:progress" } }, "required": ["type"] },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/progressPayload" } }, "required": ["payload"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "core:log" } }, "required": ["type"] },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/logPayload" } }, "required": ["payload"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "core:heartbeat" } }, "required": ["type"] },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/heartbeatPayload" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "core:context-write" } }, "required": ["type"] },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/contextWritePayload" } }, "required": ["payload"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "core:output-intermediate" } }, "required": ["type"] },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/outputPayload" } }, "required": ["payload"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "core:output-final" } }, "required": ["type"] },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/outputPayload" } }, "required": ["payload"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "core:error" } }, "required": ["type"] },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/errorPayload" } }, "required": ["payload"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "core:item-error" } }, "required": ["type"] },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/itemErrorPayload" } }, "required": ["payload"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "core:fix-proposal" } }, "required": ["type"] },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/fixProposalPayload" } }, "required": ["payload"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "core:await-approval" } }, "required": ["type"] },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/awaitApprovalPayload" } }, "required": ["payload"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "core:cancel-request" } }, "required": ["type"] },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/cancelRequestPayload" } } }
+        }
+      ]
+    },
+    "statusPayload": {
+      "type": "object",
+      "description": "Lifecycle state change for the emitting step.",
+      "required": ["state"],
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": ["started", "running", "paused", "resumed", "completed", "failed", "cancelled"]
+        },
+        "message": { "type": "string" }
+      }
+    },
+    "progressPayload": {
+      "type": "object",
+      "description": "Fractional or counted progress for the emitting step.",
+      "additionalProperties": false,
+      "properties": {
+        "fraction": {
+          "type": "number",
+          "description": "Completion fraction in the closed interval [0, 1].",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "current": { "type": "number", "description": "Count of completed units." },
+        "total": { "type": "number", "description": "Total expected units, when known." },
+        "unit": { "type": "string", "description": "Unit label, e.g. 'volumes', 'subjects'." },
+        "message": { "type": "string", "description": "Human-readable status line." }
+      }
+    },
+    "logPayload": {
+      "type": "object",
+      "description": "Text log line emitted by the tool.",
+      "required": ["message"],
+      "additionalProperties": false,
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": ["debug", "info", "warn", "error"],
+          "default": "info"
+        },
+        "message": { "type": "string" },
+        "source": { "type": "string", "description": "Optional logger name or component." }
+      }
+    },
+    "heartbeatPayload": {
+      "type": "object",
+      "description": "Keep-alive ping. Payload is optional.",
+      "additionalProperties": false,
+      "properties": {
+        "message": { "type": "string" }
+      }
+    },
+    "contextWritePayload": {
+      "type": "object",
+      "description": "Proposes a write to a workflow context field. Targets are resolved against the step's `eventBindings.contextWrites` map in the workflow document; if the emitting tool sends a `field` that the step does not bind, the runtime MUST ignore the event.",
+      "required": ["field", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "type": "string",
+          "description": "Tool-side identifier for the context-write channel. Matches a key declared under the tool's events.emits map."
+        },
+        "value": { "description": "New value for the bound context field." },
+        "merge": {
+          "type": "string",
+          "description": "How the runtime SHOULD combine the value with the current context state.",
+          "enum": ["replace", "append", "merge"],
+          "default": "replace"
+        }
+      }
+    },
+    "outputPayload": {
+      "type": "object",
+      "description": "Intermediate or final value for a named tool output. Final outputs delivered via core:output-final supersede any value the runtime would otherwise collect at step completion.",
+      "required": ["output", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "output": {
+          "$ref": "common.schema.json#/$defs/localId",
+          "description": "Tool output identifier this value applies to."
+        },
+        "value": { "description": "The output value." }
+      }
+    },
+    "errorPayload": {
+      "type": "object",
+      "description": "Fatal or non-fatal error reported by the tool. Applies to the step as a whole. Use core:item-error for per-item failures that the tool tolerated.",
+      "required": ["message"],
+      "additionalProperties": false,
+      "properties": {
+        "code": { "type": "string", "description": "Tool-defined error code." },
+        "message": { "type": "string" },
+        "fatal": {
+          "type": "boolean",
+          "description": "If true, the runtime MUST treat the step as failed.",
+          "default": false
+        },
+        "details": { "description": "Additional diagnostic data." }
+      }
+    },
+    "itemErrorPayload": {
+      "type": "object",
+      "description": "A per-item failure inside a tool that processes a batch of inputs. The tool itself has not failed; it is reporting that one input was skipped or could not be processed. The runtime records the item failure on the step activity and consults the step's errorPolicy to decide whether the step ultimately succeeds, partially succeeds, or fails.",
+      "required": ["message"],
+      "additionalProperties": false,
+      "properties": {
+        "itemId": {
+          "type": "string",
+          "description": "Identifier of the failing item, e.g. a file path, a subject id, or an input array index expressed as a string."
+        },
+        "input": {
+          "type": "string",
+          "description": "Optional tool input name on which the item appeared, when the tool processes multiple inputs."
+        },
+        "code": { "type": "string", "description": "Tool-defined error code." },
+        "message": { "type": "string" },
+        "severity": {
+          "type": "string",
+          "enum": ["warn", "error"],
+          "default": "error",
+          "description": "Severity of the item failure. `warn` indicates the item was processed with reduced confidence; `error` indicates it was skipped or dropped from the tool's outputs."
+        },
+        "details": { "description": "Additional diagnostic data." }
+      }
+    },
+    "cancelRequestPayload": {
+      "type": "object",
+      "description": "Cooperative cancellation signal a tool MAY observe from the runtime (when delivered via a subscribed channel) or emit toward sibling steps (when the tool is an orchestrator). Tools that cooperate SHOULD wind down promptly and emit core:status with state `cancelled`. Payload is optional.",
+      "additionalProperties": false,
+      "properties": {
+        "reason": {
+          "type": "string",
+          "description": "Human-readable reason for the cancellation."
+        },
+        "code": {
+          "type": "string",
+          "description": "Runtime- or workflow-defined cancellation code (e.g. operator-cancel, workflow-halt, sibling-failure)."
+        }
+      }
+    },
+    "fixProposalPayload": {
+      "type": "object",
+      "description": "A structured proposal for repairing or modifying workflow artifacts. Used by validators and detectors (e.g. missing-BIDS-field detector, defacing detector) to surface remediable issues without halting the run.",
+      "required": ["proposalId", "summary", "operations"],
+      "additionalProperties": false,
+      "properties": {
+        "proposalId": {
+          "type": "string",
+          "description": "Identifier unique within the run. Referenced by approval / rejection events and by the provenance decisions log."
+        },
+        "summary": {
+          "type": "string",
+          "description": "Human-readable summary of the proposed change."
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["info", "warn", "error"],
+          "description": "Severity of the underlying issue. `error` indicates the workflow should not finish until the issue is resolved.",
+          "default": "warn"
+        },
+        "category": {
+          "type": "string",
+          "description": "Open-ended category label, e.g. bids:missing-sidecar-field, bids:reface, bids:subject-relabel."
+        },
+        "targets": {
+          "type": "array",
+          "description": "Entities affected by the proposal. Implementations MAY include file paths, context fields, or other locators.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "path": { "type": "string" },
+              "contextField": { "$ref": "common.schema.json#/$defs/localId" },
+              "entityRef": { "type": "string", "description": "Entity id for the provenance record." }
+            }
+          }
+        },
+        "operations": {
+          "type": "array",
+          "description": "Ordered list of operations the fixer would perform if approved. Implementations consume these declaratively.",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/fixOperation" }
+        },
+        "autoApprove": {
+          "type": "boolean",
+          "description": "If true, the runtime MAY apply the proposal without operator confirmation when policy allows.",
+          "default": false
+        }
+      }
+    },
+    "fixOperation": {
+      "type": "object",
+      "description": "One declarative operation in a fix proposal. The vocabulary is closed in this draft.",
+      "required": ["op"],
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "type": "string",
+          "enum": [
+            "set-field",
+            "delete-field",
+            "rename-field",
+            "set-bids-entity",
+            "rename-file",
+            "copy-file",
+            "delete-file",
+            "patch-json",
+            "replace-image",
+            "annotate"
+          ]
+        },
+        "path": { "type": "string", "description": "Filesystem path or JSON pointer target." },
+        "field": { "type": "string", "description": "Field name (for set-field, delete-field, rename-field, set-bids-entity)." },
+        "from": { "type": "string", "description": "Source name for rename-field / rename-file / copy-file." },
+        "to":   { "type": "string", "description": "Destination name for rename-field / rename-file / copy-file." },
+        "value": { "description": "New value for set-field / patch-json / annotate / set-bids-entity." },
+        "reason": { "type": "string", "description": "Optional rationale for the operation, surfaced to the operator." }
+      }
+    },
+    "awaitApprovalPayload": {
+      "type": "object",
+      "description": "Signals that the tool is waiting on operator (or policy) approval before continuing. Pairs with one or more prior core:fix-proposal events identified by proposalId.",
+      "required": ["proposalIds"],
+      "additionalProperties": false,
+      "properties": {
+        "proposalIds": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "How long the tool is willing to wait. 0 means indefinite. Runtimes MAY enforce shorter timeouts."
+        }
+      }
+    },
+    "toolEventsDecl": {
+      "type": "object",
+      "description": "Tool-side declaration of which events the tool may emit and which transports it supports. Declared once per tool document under the top-level `events` key.",
+      "additionalProperties": false,
+      "properties": {
+        "transports": {
+          "type": "array",
+          "description": "Transports this tool can emit on. The runtime chooses one supported transport at launch and signals the choice to the tool via channel discovery. An empty or absent list means the tool emits no events.",
+          "items": { "$ref": "#/$defs/transport" },
+          "uniqueItems": true
+        },
+        "emits": {
+          "type": "object",
+          "description": "Named event channels the tool may emit. Each key is a tool-side local identifier carried in the envelope `name` field (and, for context writes, in `payload.field`).",
+          "additionalProperties": { "$ref": "#/$defs/emittedEventDecl" }
+        }
+      }
+    },
+    "emittedEventDecl": {
+      "type": "object",
+      "description": "Declaration of a single named event channel the tool may emit.",
+      "required": ["type", "description"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "$ref": "#/$defs/eventType" },
+        "description": { "type": "string" },
+        "valueType": {
+          "$ref": "common.schema.json#/$defs/qualifiedType",
+          "description": "For core:context-write and core:output-intermediate / core:output-final channels, the qualified type of the emitted value. MUST be compatible with the target context field or tool output."
+        },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" }
+      }
+    },
+    "stepEventBindings": {
+      "type": "object",
+      "description": "Workflow-side subscription declaring how a step consumes events emitted by its own tool and (optionally) by sibling steps.",
+      "additionalProperties": false,
+      "properties": {
+        "transport": {
+          "$ref": "#/$defs/transport",
+          "description": "Preferred transport for this step's own tool. MUST be one of the transports the tool declares. If absent, the runtime chooses any supported transport."
+        },
+        "contextWrites": {
+          "type": "object",
+          "description": "Maps tool-side event channel names (matching the tool's events.emits keys and carried in core:context-write payload.field) to context field identifiers. The target context field MUST be declared with liveWritable: true.",
+          "additionalProperties": { "$ref": "common.schema.json#/$defs/localId" }
+        },
+        "subscribeTo": {
+          "type": "array",
+          "description": "Sibling steps whose events this step also wants to consume. The runtime delivers matching events emitted by the listed sibling steps to this step's tool via the same transport mechanism. Useful for QC, monitor, and orchestrator siblings.",
+          "items": { "$ref": "#/$defs/siblingSubscription" },
+          "uniqueItems": false
+        }
+      }
+    },
+    "siblingSubscription": {
+      "type": "object",
+      "description": "Subscription to events emitted by a sibling step in the same workflow run.",
+      "required": ["step"],
+      "additionalProperties": false,
+      "properties": {
+        "step": {
+          "$ref": "common.schema.json#/$defs/localId",
+          "description": "Sibling step identifier within the same workflow."
+        },
+        "types": {
+          "type": "array",
+          "description": "Event types to forward. If absent, all event types from the sibling are forwarded.",
+          "items": { "$ref": "#/$defs/eventType" },
+          "uniqueItems": true
+        },
+        "names": {
+          "type": "array",
+          "description": "Tool-side event channel names (from the sibling tool's events.emits map) to forward. If absent, all channels are forwarded.",
+          "items": { "$ref": "common.schema.json#/$defs/localId" },
+          "uniqueItems": true
+        },
+        "inputBinding": {
+          "$ref": "common.schema.json#/$defs/localId",
+          "description": "Optional tool input identifier on the subscribing step that the forwarded events should be delivered to. Tools that consume sibling events typically declare a dedicated input of type core:array<…> or a domain-specific stream type."
+        }
+      }
+    }
+  }
+}

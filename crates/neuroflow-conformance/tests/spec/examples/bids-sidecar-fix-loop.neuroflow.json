@@ -1,0 +1,72 @@
+{
+  "neuroflow": "0.1.0",
+  "kind": "workflow",
+  "id": "niivue.desktop/bids-sidecar-fix",
+  "version": "1.0.0",
+  "description": "Validate a BIDS staging dataset, fix missing required sidecar fields via a fixer paired into a fixLoop, and re-validate to a fixed point.",
+  "inputs": {
+    "staging_dir": {
+      "type": "neuro:bids-dataset",
+      "description": "BIDS staging directory to validate and fix in place."
+    }
+  },
+  "context": {
+    "fields": {
+      "validation_report": {
+        "type": "bids:validation-report",
+        "description": "Most recent validator report.",
+        "liveWritable": true
+      },
+      "pending_fixes": {
+        "type": "core:array<bids:fix-proposal>",
+        "description": "Fix proposals raised by the most recent validator pass, awaiting (or having received) approval.",
+        "liveWritable": true,
+        "default": []
+      }
+    }
+  },
+  "steps": {
+    "validate": {
+      "tool": "niivue.desktop.tools/bids-validate",
+      "inputs": {
+        "bids_dir": { "ref": "inputs.staging_dir" }
+      },
+      "outputMappings": {
+        "report": "validation_report"
+      },
+      "eventBindings": {
+        "contextWrites": {
+          "fix_proposals": "pending_fixes"
+        }
+      },
+      "fixLoop": {
+        "fixerStep": "fix_sidecars",
+        "maxIterations": 5,
+        "stopOn": "no-error-proposals"
+      }
+    },
+    "fix_sidecars": {
+      "tool": "niivue.desktop.tools/bids-fix-sidecar",
+      "inputs": {
+        "bids_dir":  { "ref": "inputs.staging_dir" },
+        "proposals": { "ref": "context.pending_fixes" }
+      },
+      "awaitApproval": "auto"
+    }
+  },
+  "outputs": {
+    "bids_dir": {
+      "type": "neuro:bids-dataset",
+      "ref": "steps.validate.outputs.bids_dir"
+    },
+    "final_report": {
+      "type": "bids:validation-report",
+      "ref": "steps.validate.outputs.report"
+    }
+  },
+  "extensions": {
+    "niivue/ui": {
+      "menu": "Processing"
+    }
+  }
+}

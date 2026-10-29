@@ -21,6 +21,10 @@ jobs:
           rustup default "$RUST_TOOLCHAIN"
       # src-tauri is left out: it needs the WebKitGTK system libraries.
       - run: cargo test -p neuroflow-core -p neuroflow-mcp -p neuroflow-wasm
+      # Checks the core against the vendored spec schemas with `jsonschema`. Outside
+      # the workspace, so its dependencies never reach the released artifacts.
+      - run: cargo test --locked
+        working-directory: crates/neuroflow-conformance
 
   typescript:
     runs-on: ubuntu-24.04

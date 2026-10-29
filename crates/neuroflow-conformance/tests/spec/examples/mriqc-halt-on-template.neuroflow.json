@@ -1,0 +1,91 @@
+{
+  "neuroflow": "0.1.0",
+  "kind": "workflow",
+  "id": "niivue.desktop/mriqc-halt-on-template",
+  "version": "1.0.0",
+  "description": "Per-subject MRIQC that tolerates failures, a strict registration-to-template step that halts the workflow on any failure, and a workflow-level error-handler step that writes a partial-batch report when the run halts or finishes with partial steps.",
+  "inputs": {
+    "bids_dir": {
+      "type": "neuro:bids-dataset",
+      "description": "Input BIDS dataset."
+    },
+    "template": {
+      "type": "neuro:volume",
+      "description": "Study template volume for registration."
+    },
+    "report_dir": {
+      "type": "core:directory",
+      "description": "Where partial-batch reports are written."
+    }
+  },
+  "context": {
+    "fields": {
+      "qc_results": {
+        "type": "bids:derivatives-dataset",
+        "description": "MRIQC derivatives produced for the subjects that processed cleanly."
+      },
+      "registered_dir": {
+        "type": "bids:derivatives-dataset",
+        "description": "Subject volumes registered to the study template."
+      }
+    }
+  },
+  "steps": {
+    "mriqc_per_subject": {
+      "tool": "niivue.desktop.tools/mriqc",
+      "inputs": {
+        "bids_dir": { "ref": "inputs.bids_dir" }
+      },
+      "outputMappings": {
+        "derivatives": "qc_results"
+      },
+      "errorPolicy": {
+        "onError": "continue",
+        "tolerateItemFailures": {
+          "maxFraction": 0.10,
+          "minSuccesses": 5
+        },
+        "requiredOutputs": ["derivatives"],
+        "notify": ["niivue:desktop-toast"]
+      }
+    },
+    "register_to_template": {
+      "tool": "niivue.desktop.tools/register",
+      "inputs": {
+        "bids_dir": { "ref": "inputs.bids_dir" },
+        "template": { "ref": "inputs.template" }
+      },
+      "outputMappings": {
+        "registered_dir": "registered_dir"
+      },
+      "errorPolicy": {
+        "onError": "halt"
+      }
+    },
+    "write_partial_report": {
+      "tool": "niivue.desktop.tools/write-partial-report",
+      "inputs": {
+        "report_dir":    { "ref": "inputs.report_dir" },
+        "qc_results":    { "ref": "context.qc_results" },
+        "registered_dir": { "ref": "context.registered_dir" }
+      }
+    }
+  },
+  "outputs": {
+    "qc_results": {
+      "type": "bids:derivatives-dataset",
+      "ref": "steps.mriqc_per_subject.outputs.derivatives"
+    },
+    "registered_dir": {
+      "type": "bids:derivatives-dataset",
+      "ref": "steps.register_to_template.outputs.registered_dir"
+    }
+  },
+  "errorPolicy": {
+    "defaultOnError": "continue",
+    "haltOnSteps": ["register_to_template"],
+    "onError": ["write_partial_report"],
+    "notify": ["niivue:desktop-toast"],
+    "completionStatus": "partial"
+  }
+}
