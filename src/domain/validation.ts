@@ -370,7 +370,8 @@ function optionalStepOutput(
   return {
     severity: 'warning',
     path,
-    message: `Output ${parts[3]} of ${tool.name} is optional, so ${target} may have no value when the step finishes.`
+    message: `Output ${parts[3]} of ${tool.name} is optional, so ${target} may have no value when the step finishes.`,
+    code: 'optional-output'
   }
 }
 

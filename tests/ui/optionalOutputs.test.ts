@@ -40,7 +40,7 @@ function optionalWarnings(workflow: WorkflowDocument, tools: ToolDefinition[]): 
   const report = validateWorkflowLocally(workflow, tools)
   assert.equal(report.ok, true, JSON.stringify(report.issues))
   return report.issues
-    .filter((issue) => issue.severity === 'warning' && issue.message.includes('is optional'))
+    .filter((issue) => issue.severity === 'warning' && issue.code === 'optional-output')
     .map((issue) => issue.path ?? '')
 }
 
