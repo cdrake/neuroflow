@@ -220,6 +220,11 @@ is a warning carrying `outcome: "requires-runtime-check"` on the diagnostic;
 resolves the requirement from artifact evidence before each launch. Invalid
 workflows and unsupported execution features report `runnable: false`.
 
+A diagnostic may also carry a `code` naming the check that raised it, such as
+`optional-output` when an optional step output feeds a required input or a
+workflow output. Codes are stable across releases; match on `code`, not on the
+message wording.
+
 The initialize/discover capability
 `experimental["com.niivue/neuroflow"].qualifierInspectors` states the supported
 readers and provenance checks:

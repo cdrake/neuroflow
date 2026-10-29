@@ -18,6 +18,11 @@ pub struct ValidationIssue {
     /// what makes a workflow conditional, independent of the message wording.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub outcome: Option<qualifiers::Compatibility>,
+    /// Stable identifier of the check that raised the issue, e.g. `optional-output`.
+    /// Unlike `message`, it does not change between releases, so callers can
+    /// recognise an issue without matching its wording.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,6 +76,7 @@ pub fn validate_workflow_value_with_tools(
                 message: "Workflow document must be a JSON object.".to_string(),
                 hint: None,
                 outcome: None,
+                code: None,
             }],
         };
     };
@@ -776,12 +782,15 @@ fn optional_step_output(
     {
         return None;
     }
-    Some(warning(
-        path.to_string(),
-        format!(
-            "Output {output_name} of {} is optional, so {target} may have no value when the step finishes.",
-            tool.name
+    Some(with_code(
+        warning(
+            path.to_string(),
+            format!(
+                "Output {output_name} of {} is optional, so {target} may have no value when the step finishes.",
+                tool.name
+            ),
         ),
+        "optional-output",
     ))
 }
 
@@ -1034,6 +1043,7 @@ fn error(path: impl Into<String>, message: impl Into<String>) -> ValidationIssue
         message: message.into(),
         hint: None,
         outcome: None,
+        code: None,
     }
 }
 
@@ -1047,6 +1057,11 @@ fn with_outcome(mut issue: ValidationIssue, outcome: qualifiers::Compatibility) 
     issue
 }
 
+fn with_code(mut issue: ValidationIssue, code: &str) -> ValidationIssue {
+    issue.code = Some(code.to_string());
+    issue
+}
+
 fn warning(path: impl Into<String>, message: impl Into<String>) -> ValidationIssue {
     ValidationIssue {
         severity: "warning".to_string(),
@@ -1054,6 +1069,7 @@ fn warning(path: impl Into<String>, message: impl Into<String>) -> ValidationIss
         message: message.into(),
         hint: None,
         outcome: None,
+        code: None,
     }
 }
 
@@ -1254,7 +1270,9 @@ mod tests {
         let paths = report
             .issues
             .iter()
-            .filter(|issue| issue.severity == "warning" && issue.message.contains("is optional"))
+            .filter(|issue| {
+                issue.severity == "warning" && issue.code.as_deref() == Some("optional-output")
+            })
             .filter_map(|issue| issue.path.clone())
             .collect();
         (report, paths)
@@ -1288,6 +1306,24 @@ mod tests {
         let (report, paths) = optional_output_warnings(&workflow, &tools);
         assert!(report.ok, "a warning, not an error: {report:?}");
         assert_eq!(paths, ["outputs.labels.ref"]);
+    }
+
+    #[test]
+    fn issue_codes_serialize_only_when_set() {
+        let (workflow, mut tools) = strip_segment_workflow("steps.strip.outputs.brain_volume");
+        tools[0]["outputs"]["brain_volume"]["optional"] = serde_json::json!(true);
+        let (report, _) = optional_output_warnings(&workflow, &tools);
+        let issues = serde_json::to_value(&report).unwrap()["issues"].clone();
+        let codes: Vec<&Value> = issues
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|issue| &issue["code"])
+            .collect();
+        assert_eq!(codes, [&serde_json::json!("optional-output")], "{issues}");
+
+        let error = serde_json::to_value(error("steps.a", "broken")).unwrap();
+        assert!(error.get("code").is_none(), "{error}");
     }
 
     #[test]
