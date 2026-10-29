@@ -1,0 +1,35 @@
+# Runs the core and server tests and the TypeScript validator tests, which must
+# agree with the core (tests/ui/qualifiers.test.ts shares the core's fixture).
+name: test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+env:
+  RUST_TOOLCHAIN: 1.99.0
+
+jobs:
+  rust:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust ${{ env.RUST_TOOLCHAIN }}
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
+          rustup default "$RUST_TOOLCHAIN"
+      # src-tauri is left out: it needs the WebKitGTK system libraries.
+      - run: cargo test -p neuroflow-core -p neuroflow-mcp -p neuroflow-wasm
+
+  typescript:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm run test:ui
