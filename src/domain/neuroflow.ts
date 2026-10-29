@@ -217,6 +217,8 @@ export interface ValidationIssue {
   message: string
   /** RFC 0010 comparison outcome when the issue comes from a qualifier check. */
   outcome?: 'compatible' | 'incompatible' | 'requires-runtime-check'
+  /** Stable identifier of the check, e.g. `optional-output`; match this, not `message`. */
+  code?: string
 }
 
 export interface ValidationReport {
