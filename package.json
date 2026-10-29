@@ -2,7 +2,7 @@
   "license": "MIT OR Apache-2.0",
   "name": "neuroflow",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.3.1",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
