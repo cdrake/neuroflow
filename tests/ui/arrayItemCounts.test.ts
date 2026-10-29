@@ -76,7 +76,7 @@ test('item counts require neuroflow 0.1.2', () => {
   const { workflow, tools } = fixture()
   ;(tools[1] as unknown as { neuroflow: string }).neuroflow = '0.1.1'
   const messages = validateWorkflowLocally(workflow, tools).issues.map((issue) => issue.message)
-  assert.ok(messages.includes('Item counts require neuroflow 0.1.2.'), JSON.stringify(messages))
+  assert.ok(messages.includes('Item counts require neuroflow 0.1.2 or later.'), JSON.stringify(messages))
 })
 
 test('item counts on a scalar input are ignored', () => {

@@ -4,7 +4,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use std::collections::HashSet;
 
-use crate::{array_element_type, error, is_type_compatible, ValidationIssue, TYPE_QUALIFIERS};
+use crate::{
+    array_element_type, error, is_type_compatible, ValidationIssue, SUPPORTED_SPEC_VERSIONS,
+    TYPE_QUALIFIERS,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -420,9 +423,20 @@ fn valid_value(axis: &str, value: &Value) -> bool {
     }
 }
 
+/// Whether the document declares `version` or a later supported version.
+fn declares_at_least(document: &Value, version: &str) -> bool {
+    let rank = |v: Option<&str>| SUPPORTED_SPEC_VERSIONS.iter().position(|s| Some(*s) == v);
+    rank(document.get("neuroflow").and_then(Value::as_str)) >= rank(Some(version))
+}
+
+/// Workflow output fields that need neuroflow 0.1.3. Qualifiers on a workflow
+/// output follow the 0.1.1 rule, as on any declaration.
+const WORKFLOW_OUTPUT_FIELDS: &[&str] = &["description", "label", "optional"];
+
 /// Semantic rules supplement schema validation, including inherited references
-/// and the required 0.1.1 (qualifiers) or 0.1.2 (item counts) envelope. Call
-/// this for standalone tools as well.
+/// and the required envelope: 0.1.1 for qualifiers, 0.1.2 for item counts and
+/// 0.1.3 for description, label and optional on a workflow output. Call this for
+/// standalone tools as well.
 pub fn validate_document_qualifiers(document: &Value) -> Vec<ValidationIssue> {
     let mut issues = Vec::new();
     let is_tool = document.get("kind").and_then(Value::as_str) == Some("tool");
@@ -448,11 +462,12 @@ pub fn validate_document_qualifiers(document: &Value) -> Vec<ValidationIssue> {
     ] {
         for (name, declaration) in declarations {
             for field in ["minItems", "maxItems"] {
-                if declaration.get(field).is_some()
-                    && document.get("neuroflow").and_then(Value::as_str) != Some("0.1.2")
-                {
+                if declaration.get(field).is_some() && !declares_at_least(document, "0.1.2") {
                     let path = format!("{section}.{name}.{field}");
-                    issues.push(error(&path, "Item counts require neuroflow 0.1.2."));
+                    issues.push(error(
+                        &path,
+                        "Item counts require neuroflow 0.1.2 or later.",
+                    ));
                 }
             }
             for axis in TYPE_QUALIFIERS {
@@ -460,10 +475,7 @@ pub fn validate_document_qualifiers(document: &Value) -> Vec<ValidationIssue> {
                     continue;
                 };
                 let path = format!("{section}.{name}.{axis}");
-                if !matches!(
-                    document.get("neuroflow").and_then(Value::as_str),
-                    Some("0.1.1" | "0.1.2")
-                ) {
+                if !declares_at_least(document, "0.1.1") {
                     issues.push(error(
                         &path,
                         "Type qualifiers require neuroflow 0.1.1 or later.",
@@ -502,6 +514,31 @@ pub fn validate_document_qualifiers(document: &Value) -> Vec<ValidationIssue> {
                     issues.push(error(
                         &path,
                         format!("Invalid {axis} qualifier value {value}."),
+                    ));
+                }
+            }
+        }
+    }
+    if document.get("kind").and_then(Value::as_str) == Some("workflow") {
+        for (name, output) in document
+            .get("outputs")
+            .and_then(Value::as_object)
+            .into_iter()
+            .flatten()
+        {
+            for field in output.as_object().into_iter().flat_map(Map::keys) {
+                let path = format!("outputs.{name}.{field}");
+                if matches!(field.as_str(), "default" | "delivery") {
+                    issues.push(error(
+                        &path,
+                        format!("A workflow output takes no {field}; its value comes from ref."),
+                    ));
+                } else if WORKFLOW_OUTPUT_FIELDS.contains(&field.as_str())
+                    && !declares_at_least(document, "0.1.3")
+                {
+                    issues.push(error(
+                        &path,
+                        format!("Workflow output {field} requires neuroflow 0.1.3."),
                     ));
                 }
             }

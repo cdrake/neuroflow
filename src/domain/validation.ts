@@ -3,11 +3,8 @@ import type { Binding, ToolDefinition, ValidationIssue, ValidationReport, Workfl
 import { isConstantBinding, isRefBinding } from './neuroflow'
 import { buildToolMap, resolveToolDefinition } from './registry'
 import { arrayElementType } from './typeCompatibility'
-import { compareQualifiers, qualifierIssues, resolveQualifiers, validateDocumentQualifiers } from './qualifiers'
-export { TYPE_QUALIFIERS, declaredQualifiers } from './qualifiers'
-
-/** Spec versions this app reads: 0.1.1 is 0.1.0 plus the RFC 0010 type qualifiers; 0.1.2 adds array item counts. */
-export const SUPPORTED_SPEC_VERSIONS: readonly string[] = ['0.1.0', '0.1.1', '0.1.2']
+import { SUPPORTED_SPEC_VERSIONS, compareQualifiers, qualifierIssues, resolveQualifiers, validateDocumentQualifiers } from './qualifiers'
+export { SUPPORTED_SPEC_VERSIONS, TYPE_QUALIFIERS, declaredQualifiers } from './qualifiers'
 
 const REF_PATTERN =
   /^(inputs\.[A-Za-z][A-Za-z0-9_-]*|context|context\.[A-Za-z][A-Za-z0-9_-]*|steps\.[A-Za-z][A-Za-z0-9_-]*\.outputs\.[A-Za-z][A-Za-z0-9_-]*)$/
@@ -134,8 +131,9 @@ export function validateWorkflowLocally(
         message: `Workflow output references unknown value ${output.ref}.`
       })
     } else if (resolved) {
+      // An optional workflow output (spec 0.1.3) is omitted when its source is absent.
       const issue = optionalStepOutput(output.ref, `outputs.${outputName}.ref`, `workflow output ${outputName}`, workflow, toolMap)
-      if (issue) issues.push(issue)
+      if (issue && output.optional !== true) issues.push(issue)
       const source = resolveQualifiers(output.ref, workflow, toolMap)
       issues.push(...qualifierIssues(`outputs.${outputName}.ref`, compareQualifiers(source.declaration, output, source.spaceIdentity, source.spaceIdentity)))
     } else if (tools.length === 0) {
@@ -151,7 +149,7 @@ function validateWorkflowEnvelope(workflow: WorkflowDocument, issues: Validation
     issues.push({
       severity: 'error',
       path: 'neuroflow',
-      message: 'Workflow must target NeuroFlow spec version 0.1.0, 0.1.1 or 0.1.2.'
+      message: 'Workflow must target NeuroFlow spec version 0.1.0, 0.1.1, 0.1.2 or 0.1.3.'
     })
   }
   if (!workflow.id || !workflow.id.includes('/')) {

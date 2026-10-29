@@ -200,7 +200,7 @@ export interface WorkflowDocument {
     fields: Record<string, ContextFieldDef>
   }
   steps: Record<string, StepDef>
-  outputs: Record<string, TypeQualifiers & { type: NeuroflowType; ref: string }>
+  outputs: Record<string, TypeQualifiers & { type: NeuroflowType; ref: string; description?: string; label?: string; optional?: boolean }>
   extensions?: Record<string, unknown>
 }
 
