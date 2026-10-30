@@ -1,0 +1,19 @@
+{
+  "neuroflow": "0.1.1",
+  "kind": "workflow",
+  "id": "neuroflow.test/bad-context-qualifier",
+  "version": "1.0.0",
+  "description": "A type qualifier on a context field whose type cannot carry it: space on a core:string field (RFC 0010).",
+  "inputs": {},
+  "context": {
+    "fields": {
+      "template": {
+        "type": "core:string",
+        "description": "Template name.",
+        "space": "MNI152NLin2009cAsym"
+      }
+    }
+  },
+  "steps": {},
+  "outputs": {}
+}

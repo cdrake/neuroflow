@@ -9,9 +9,7 @@ import { TYPE_QUALIFIERS } from './qualifiers'
 const ROOT = ['$schema', 'neuroflow', 'kind', 'id', 'version', 'description', 'inputs', 'context', 'steps', 'outputs', 'errorPolicy', 'extensions']
 const CONTEXT = ['description', 'fields']
 const CONTEXT_FIELD = [
-  'type', 'description', 'label', 'heuristic', 'dependsOn', 'optional', 'default', 'enum', 'min', 'max', 'liveWritable', 'extensions',
-  // Beyond the schema, see BEYOND_SCHEMA.
-  ...TYPE_QUALIFIERS
+  'type', 'description', 'label', 'heuristic', 'dependsOn', 'optional', 'default', 'enum', 'min', 'max', 'liveWritable', ...TYPE_QUALIFIERS, 'extensions'
 ]
 const INPUT = ['type', 'description', 'label', 'optional', 'default', 'enum', 'min', 'max', 'minItems', 'maxItems', ...TYPE_QUALIFIERS, 'extensions']
 const STEP = ['tool', 'inputs', 'outputMappings', 'condition', 'stage', 'eventBindings', 'awaitApproval', 'fixLoop', 'errorPolicy', 'extensions']
@@ -39,11 +37,6 @@ export const CLOSED_FIELDS: ReadonlyArray<readonly [string, readonly string[]]> 
   ['events.schema.json#/$defs/siblingSubscription', SIBLING_SUBSCRIPTION],
   ['workflow.schema.json#/$defs/outputDef', OUTPUT],
   ['workflow.schema.json#/$defs/workflowErrorPolicyDef', WORKFLOW_ERROR_POLICY]
-]
-
-/** Keys accepted although the schema does not list them: RFC 0010 qualifiers on context fields. */
-export const BEYOND_SCHEMA: ReadonlyArray<readonly [string, readonly string[]]> = [
-  ['workflow.schema.json#/$defs/contextFieldDef', TYPE_QUALIFIERS]
 ]
 
 function object(value: unknown): Record<string, unknown> | undefined {

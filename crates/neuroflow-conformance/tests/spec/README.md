@@ -1,7 +1,7 @@
 # Vendored NeuroFlow spec files
 
 Copied from [neuroflow-spec](https://github.com/cdrake/neuroflow-spec) at
-`b279931` (spec 0.1.3) for `tests/spec_conformance.rs`:
+`2ac00a8` (spec 0.1.3) for `tests/spec_conformance.rs`:
 
 - `schemas/`: `workflow`, `common` and `events` from `schemas/0.1/`, the files a
   workflow document is validated against.
