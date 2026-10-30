@@ -17,7 +17,7 @@ Each release from v0.2.1 on carries a prebuilt binary for linux x86-64
 For example, on Linux:
 
 ```bash
-tag=v0.5.0 target=x86_64-unknown-linux-musl
+tag=v0.6.0 target=x86_64-unknown-linux-musl
 gh release download "$tag" -R cdrake/neuroflow -p "neuroflow-mcp-$tag-$target.tar.gz" -p SHA256SUMS
 sha256sum --check --ignore-missing SHA256SUMS
 tar -xzf "neuroflow-mcp-$tag-$target.tar.gz"
