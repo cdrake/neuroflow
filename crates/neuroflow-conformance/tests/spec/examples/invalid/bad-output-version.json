@@ -1,0 +1,14 @@
+{
+  "neuroflow": "0.1.2",
+  "kind": "workflow",
+  "id": "neuroflow.test/bad-output-version",
+  "version": "1.0.0",
+  "description": "optional on a workflow output in a document that declares 0.1.2; workflow output fields require 0.1.3.",
+  "inputs": {},
+  "steps": {
+    "make": { "tool": "neuroflow.test/make", "inputs": {} }
+  },
+  "outputs": {
+    "result": { "type": "core:file", "optional": true, "ref": "steps.make.outputs.result" }
+  }
+}

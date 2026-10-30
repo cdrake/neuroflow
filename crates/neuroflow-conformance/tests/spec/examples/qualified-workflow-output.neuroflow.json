@@ -1,0 +1,29 @@
+{
+  "neuroflow": "0.1.1",
+  "kind": "workflow",
+  "id": "neuroflow.examples/skull-strip-native",
+  "version": "1.0.0",
+  "description": "Skull-strip a T1w volume and publish the brain in the subject's native space.",
+  "inputs": {
+    "t1w": {
+      "type": "neuro:volume",
+      "description": "T1-weighted volume.",
+      "space": "individual"
+    }
+  },
+  "steps": {
+    "strip": {
+      "tool": "neuroflow.examples/synthstrip",
+      "inputs": {
+        "image": { "ref": "inputs.t1w" }
+      }
+    }
+  },
+  "outputs": {
+    "brain": {
+      "type": "neuro:volume",
+      "space": "individual",
+      "ref": "steps.strip.outputs.brain"
+    }
+  }
+}

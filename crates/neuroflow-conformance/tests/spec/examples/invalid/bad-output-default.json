@@ -1,0 +1,14 @@
+{
+  "neuroflow": "0.1.3",
+  "kind": "workflow",
+  "id": "neuroflow.test/bad-output-default",
+  "version": "1.0.0",
+  "description": "default on a workflow output; its value always comes from ref.",
+  "inputs": {},
+  "steps": {
+    "make": { "tool": "neuroflow.test/make", "inputs": {} }
+  },
+  "outputs": {
+    "result": { "type": "core:file", "default": "/data/result.txt", "ref": "steps.make.outputs.result" }
+  }
+}

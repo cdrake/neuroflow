@@ -1,0 +1,72 @@
+{
+  "neuroflow": "0.1.0",
+  "kind": "workflow",
+  "id": "niivue.desktop/anat-reface",
+  "version": "1.0.0",
+  "description": "Detect defaced anatomical scans and refacing them conditionally. The detector emits fix proposals; the reface step applies them with operator approval.",
+  "inputs": {
+    "bids_dir": {
+      "type": "neuro:bids-dataset",
+      "description": "Source BIDS dataset whose anat scans may have been defaced."
+    }
+  },
+  "context": {
+    "fields": {
+      "defacing_report": {
+        "type": "bids:validation-report",
+        "description": "Per-scan defacing detection result.",
+        "liveWritable": true
+      },
+      "pending_reface": {
+        "type": "core:array<bids:fix-proposal>",
+        "description": "Proposed reface operations awaiting operator decision.",
+        "liveWritable": true,
+        "default": []
+      }
+    }
+  },
+  "steps": {
+    "detect_defacing": {
+      "tool": "niivue.desktop.tools/deface-detect",
+      "inputs": {
+        "bids_dir": { "ref": "inputs.bids_dir" }
+      },
+      "outputMappings": {
+        "report": "defacing_report"
+      },
+      "eventBindings": {
+        "contextWrites": {
+          "fix_proposals": "pending_reface"
+        }
+      }
+    },
+    "reface": {
+      "tool": "niivue.desktop.tools/reface",
+      "condition": "context.pending_reface",
+      "inputs": {
+        "bids_dir":  { "ref": "inputs.bids_dir" },
+        "proposals": { "ref": "context.pending_reface" }
+      },
+      "awaitApproval": "required",
+      "extensions": {
+        "bids/profile": {
+          "role": "reface-tool",
+          "refacing": {
+            "operation": "reface",
+            "annotationField": "RefacedBy"
+          }
+        }
+      }
+    }
+  },
+  "outputs": {
+    "bids_dir": {
+      "type": "neuro:bids-dataset",
+      "ref": "steps.reface.outputs.bids_dir"
+    },
+    "report": {
+      "type": "bids:validation-report",
+      "ref": "steps.detect_defacing.outputs.report"
+    }
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "neuroflow": "0.1.0",
+  "kind": "workflow",
+  "id": "neuroflow.test/bad-stage",
+  "version": "1.0.0",
+  "description": "A step uses a stage value outside the closed ingest/explore/publish vocabulary.",
+  "inputs": {
+    "dicom_dir": {
+      "type": "neuro:dicom-folder",
+      "description": "DICOM source directory."
+    }
+  },
+  "steps": {
+    "convert": {
+      "tool": "niivue.desktop.tools/dcm2niix",
+      "stage": "teleport",
+      "inputs": {
+        "dicom_dir": {
+          "ref": "inputs.dicom_dir"
+        }
+      }
+    }
+  },
+  "outputs": {
+    "volumes": {
+      "type": "core:array<neuro:volume>",
+      "ref": "steps.convert.outputs.volumes"
+    }
+  }
+}

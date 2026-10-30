@@ -1,0 +1,258 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://niivue.github.io/neuroflow-spec/schemas/0.1/workflow.schema.json",
+  "title": "NeuroFlow Workflow Document",
+  "description": "Normalized NeuroFlow workflow document: composes tool contracts into a declarative pipeline with a run-context sidecar.",
+  "type": "object",
+  "required": ["neuroflow", "kind", "id", "version", "description", "inputs", "steps", "outputs"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference for editor support."
+    },
+    "neuroflow": { "$ref": "common.schema.json#/$defs/specVersion" },
+    "kind": { "const": "workflow" },
+    "id": { "$ref": "common.schema.json#/$defs/documentId" },
+    "version": { "$ref": "common.schema.json#/$defs/semver" },
+    "description": {
+      "type": "string",
+      "description": "Human-readable description of the workflow."
+    },
+    "inputs": {
+      "type": "object",
+      "description": "Workflow-level inputs supplied by the caller at launch.",
+      "additionalProperties": { "$ref": "common.schema.json#/$defs/typeDeclaration" }
+    },
+    "context": {
+      "type": "object",
+      "description": "Run-context sidecar: values accumulated, edited, and derived during a workflow run.",
+      "required": ["fields"],
+      "additionalProperties": false,
+      "properties": {
+        "description": { "type": "string" },
+        "fields": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/contextFieldDef" }
+        }
+      }
+    },
+    "steps": {
+      "type": "object",
+      "description": "Pipeline steps keyed by step identifier.",
+      "additionalProperties": { "$ref": "#/$defs/stepDef" }
+    },
+    "outputs": {
+      "type": "object",
+      "description": "Public workflow outputs.",
+      "additionalProperties": { "$ref": "#/$defs/outputDef" }
+    },
+    "errorPolicy": { "$ref": "#/$defs/workflowErrorPolicyDef" },
+    "extensions": { "$ref": "common.schema.json#/$defs/extensions" }
+  },
+  "$defs": {
+    "contextFieldDef": {
+      "type": "object",
+      "description": "A run-context field declaration.",
+      "required": ["type", "description"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "$ref": "common.schema.json#/$defs/qualifiedType" },
+        "description": { "type": "string", "description": "Tooltip text shown on hover." },
+        "label": { "type": "string", "description": "Short label displayed above the field." },
+        "heuristic": {
+          "type": "string",
+          "description": "Identifier of a heuristic that auto-populates this field."
+        },
+        "dependsOn": {
+          "type": "array",
+          "description": "Input or context field identifiers that must be available before the heuristic runs.",
+          "items": { "$ref": "common.schema.json#/$defs/localId" }
+        },
+        "optional": { "type": "boolean", "default": false },
+        "default": { "description": "Static default value." },
+        "enum": { "type": "array", "items": {} },
+        "min": { "type": "number" },
+        "max": { "type": "number" },
+        "liveWritable": {
+          "type": "boolean",
+          "description": "If true, steps MAY bind a tool's core:context-write events to this field via step.eventBindings.contextWrites. Default false.",
+          "default": false
+        },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" }
+      }
+    },
+    "stepDef": {
+      "type": "object",
+      "description": "A step that invokes a tool contract.",
+      "required": ["tool", "inputs"],
+      "additionalProperties": false,
+      "properties": {
+        "tool": {
+          "type": "string",
+          "description": "Identifier of the tool document this step invokes."
+        },
+        "inputs": {
+          "type": "object",
+          "description": "Bindings supplying values for the tool's inputs.",
+          "additionalProperties": { "$ref": "common.schema.json#/$defs/binding" }
+        },
+        "outputMappings": {
+          "type": "object",
+          "description": "Maps tool output identifiers to context field identifiers.",
+          "additionalProperties": { "$ref": "common.schema.json#/$defs/localId" }
+        },
+        "condition": {
+          "type": "string",
+          "description": "Dot-path expression evaluated against run state; the step is skipped when it resolves to a falsy value."
+        },
+        "stage": {
+          "$ref": "common.schema.json#/$defs/workflowStage",
+          "description": "Informal, non-normative grouping of this step into a coarse workflow stage (ingest/explore/publish). Toolkit-neutral and ignored by the core runtime; used for discovery and document organization. See specification Section 27."
+        },
+        "eventBindings": {
+          "$ref": "events.schema.json#/$defs/stepEventBindings",
+          "description": "Optional subscription to runtime events emitted by this step's tool. Lets the tool stream live context writes, intermediate outputs, progress, logs, and status updates back to the workflow."
+        },
+        "awaitApproval": {
+          "type": "string",
+          "description": "Approval policy for fix proposals raised by this step. `none` (default): proposals are surfaced but the step does not block. `auto`: proposals marked autoApprove=true are applied; others are surfaced. `required`: every proposal raised by this step pauses the step until an approval or rejection is recorded.",
+          "enum": ["none", "auto", "required"],
+          "default": "none"
+        },
+        "fixLoop": { "$ref": "#/$defs/fixLoopDef" },
+        "errorPolicy": { "$ref": "#/$defs/stepErrorPolicyDef" },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" }
+      }
+    },
+    "stepErrorPolicyDef": {
+      "type": "object",
+      "description": "Per-step policy for handling tool failures and per-item failures. The runtime applies this policy when the step emits core:error (fatal) or core:item-error events. Resumption of failed workflows is an implementation concern of the runtime and is not specified here.",
+      "additionalProperties": false,
+      "properties": {
+        "onError": {
+          "type": "string",
+          "description": "Reaction when the tool itself fails (emits core:error with fatal=true, or exits non-zero). `halt`: workflow stops; only the workflow-level onError handlers run. `continue`: this step is marked failed but downstream steps still run; dependents that need this step's outputs are skipped. `skip-dependents`: equivalent to continue but additionally marks steps that transitively depend on this step as skipped. `notify`: identical to continue except the runtime MUST emit a notification to any configured channels.",
+          "enum": ["halt", "continue", "skip-dependents", "notify"],
+          "default": "halt"
+        },
+        "tolerateItemFailures": {
+          "type": "object",
+          "description": "Bounds on how many per-item failures (core:item-error events) this step is allowed to accumulate before being treated as failed.",
+          "additionalProperties": false,
+          "properties": {
+            "max": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Maximum absolute count of item failures tolerated. When exceeded, the step is marked failed and onError applies."
+            },
+            "maxFraction": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Maximum fraction of items (failures / total) tolerated. When exceeded, the step is marked failed and onError applies. Evaluated only when the tool has reported a total item count via core:progress."
+            },
+            "minSuccesses": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Minimum number of successfully processed items required for the step to be considered successful. When the tool reports fewer successes than this, the step is marked failed and onError applies."
+            }
+          }
+        },
+        "requiredOutputs": {
+          "type": "array",
+          "description": "Tool output identifiers that MUST be present (and non-empty for array types) for the step to be considered successful, even when item failures are tolerated. If any listed output is missing or empty, the step is marked failed and onError applies.",
+          "items": { "$ref": "common.schema.json#/$defs/localId" },
+          "uniqueItems": true
+        },
+        "notify": {
+          "type": "array",
+          "description": "Notification channel identifiers the runtime SHOULD use when this step fails or accumulates item failures. Channel definitions live in extension namespaces; the core specification does not enumerate them.",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        }
+      }
+    },
+    "fixLoopDef": {
+      "type": "object",
+      "description": "Declares that this step is the validator half of a detector → fixer → validator loop. The runtime re-runs this step after each successful fixer pass until either no fix proposals remain or maxIterations is reached.",
+      "required": ["fixerStep"],
+      "additionalProperties": false,
+      "properties": {
+        "fixerStep": {
+          "$ref": "common.schema.json#/$defs/localId",
+          "description": "Step identifier of the fixer that consumes this step's fix proposals."
+        },
+        "maxIterations": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Hard cap on validator/fixer cycles to prevent infinite loops.",
+          "default": 5
+        },
+        "stopOn": {
+          "type": "string",
+          "enum": ["no-proposals", "no-error-proposals", "operator"],
+          "description": "Termination condition. `no-proposals`: stop when the validator emits no proposals. `no-error-proposals`: stop when no error-severity proposals remain (warnings tolerated). `operator`: stop when the operator declines to apply further fixes.",
+          "default": "no-error-proposals"
+        }
+      }
+    },
+    "outputDef": {
+      "type": "object",
+      "description": "A public workflow output bound to a step output. May also carry description, label, optional and the RFC 0010 type qualifiers; never default, since the value always comes from ref. Qualifiers require neuroflow 0.1.1 or later, as on any declaration; description, label and optional require 0.1.3.",
+      "required": ["type", "ref"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "$ref": "common.schema.json#/$defs/qualifiedType" },
+        "ref": { "$ref": "common.schema.json#/$defs/stepOutputReference" },
+        "description": { "type": "string" },
+        "label": { "type": "string" },
+        "optional": { "type": "boolean", "default": false, "description": "Whether the run may complete without this output. An optional output whose ref was not produced is omitted from the run's outputs." },
+        "formats": { "$ref": "common.schema.json#/$defs/formats" },
+        "space": { "$ref": "common.schema.json#/$defs/space" },
+        "resolution": { "$ref": "common.schema.json#/$defs/resolution" },
+        "density": { "$ref": "common.schema.json#/$defs/density" },
+        "labelSystem": { "$ref": "common.schema.json#/$defs/labelSystem" },
+        "extensions": { "$ref": "common.schema.json#/$defs/extensions" }
+      },
+      "allOf": [{ "$ref": "common.schema.json#/$defs/typeQualifierRules" }]
+    },
+    "workflowErrorPolicyDef": {
+      "type": "object",
+      "description": "Workflow-level error policy. Sets defaults for steps that do not declare their own errorPolicy and lists handler steps that the runtime invokes when the run halts or completes with failures. Resumption of failed or halted workflows is an implementation concern of the runtime; this specification only defines the visible boundary (halt, notify, run handlers, write provenance).",
+      "additionalProperties": false,
+      "properties": {
+        "defaultOnError": {
+          "type": "string",
+          "description": "Default value of step.errorPolicy.onError for steps that do not specify their own.",
+          "enum": ["halt", "continue", "skip-dependents", "notify"],
+          "default": "halt"
+        },
+        "haltOnSteps": {
+          "type": "array",
+          "description": "Step identifiers whose failure MUST halt the workflow regardless of those steps' own errorPolicy. Useful for pinning a small set of critical steps in an otherwise tolerant pipeline.",
+          "items": { "$ref": "common.schema.json#/$defs/localId" },
+          "uniqueItems": true
+        },
+        "onError": {
+          "type": "array",
+          "description": "Handler step identifiers the runtime runs when the workflow halts or completes with any failed step. Handler steps run in declaration order; each is an ordinary step elsewhere in `steps` with its own tool, inputs, and outputs. Handlers MUST NOT be on the normal dependency graph leading to public outputs.",
+          "items": { "$ref": "common.schema.json#/$defs/localId" },
+          "uniqueItems": true
+        },
+        "notify": {
+          "type": "array",
+          "description": "Notification channel identifiers the runtime SHOULD use when the workflow halts or completes with failures. Channel definitions live in extension namespaces.",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "completionStatus": {
+          "type": "string",
+          "description": "How the runtime SHOULD label a run that finishes with one or more failed-but-tolerated steps. `partial` is recorded in the provenance run record; `success` treats tolerated failures as a clean run.",
+          "enum": ["partial", "success"],
+          "default": "partial"
+        }
+      }
+    }
+  }
+}

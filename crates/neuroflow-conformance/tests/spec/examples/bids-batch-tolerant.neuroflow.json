@@ -1,0 +1,79 @@
+{
+  "neuroflow": "0.1.0",
+  "kind": "workflow",
+  "id": "niivue.desktop/bids-batch-tolerant",
+  "version": "1.0.0",
+  "description": "DICOM-to-BIDS conversion that tolerates a small fraction of per-subject failures and a validator that halts only on tool-level failure. Per-subject conversion errors surface as core:item-error events; the workflow records them as partial-status activities and notifies the desktop runtime.",
+  "inputs": {
+    "dicom_dirs": {
+      "type": "core:array<neuro:dicom-folder>",
+      "description": "Per-subject DICOM directories to convert."
+    },
+    "out_dir": {
+      "type": "core:directory",
+      "description": "Output root for the BIDS staging dataset."
+    }
+  },
+  "context": {
+    "fields": {
+      "staging_dir": {
+        "type": "neuro:bids-dataset",
+        "description": "BIDS staging dataset accumulated by the conversion step."
+      },
+      "validation_report": {
+        "type": "bids:validation-report",
+        "description": "Most recent validator report.",
+        "liveWritable": true
+      }
+    }
+  },
+  "steps": {
+    "convert_dicoms": {
+      "tool": "niivue.desktop.tools/dcm2niix-batch",
+      "inputs": {
+        "dicom_dirs": { "ref": "inputs.dicom_dirs" },
+        "out_dir":    { "ref": "inputs.out_dir" }
+      },
+      "outputMappings": {
+        "bids_dir": "staging_dir"
+      },
+      "errorPolicy": {
+        "onError": "continue",
+        "tolerateItemFailures": {
+          "maxFraction": 0.05,
+          "minSuccesses": 1
+        },
+        "requiredOutputs": ["bids_dir"],
+        "notify": ["niivue:desktop-toast"]
+      }
+    },
+    "validate": {
+      "tool": "niivue.desktop.tools/bids-validate",
+      "inputs": {
+        "bids_dir": { "ref": "context.staging_dir" }
+      },
+      "outputMappings": {
+        "report": "validation_report"
+      },
+      "errorPolicy": {
+        "onError": "halt",
+        "notify": ["niivue:desktop-toast"]
+      }
+    }
+  },
+  "outputs": {
+    "bids_dir": {
+      "type": "neuro:bids-dataset",
+      "ref": "steps.convert_dicoms.outputs.bids_dir"
+    },
+    "report": {
+      "type": "bids:validation-report",
+      "ref": "steps.validate.outputs.report"
+    }
+  },
+  "errorPolicy": {
+    "defaultOnError": "continue",
+    "completionStatus": "partial",
+    "notify": ["niivue:desktop-toast"]
+  }
+}

@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import type { Binding, ToolDefinition, ValidationIssue, ValidationReport, WorkflowDocument, WorkflowPlan } from './neuroflow'
 import { isConstantBinding, isRefBinding } from './neuroflow'
+import { unknownFieldIssues } from './fields'
 import { buildToolMap, resolveToolDefinition } from './registry'
 import { arrayElementType } from './typeCompatibility'
 import { SUPPORTED_SPEC_VERSIONS, compareQualifiers, qualifierIssues, resolveQualifiers, validateDocumentQualifiers } from './qualifiers'
@@ -34,7 +35,7 @@ export function validateWorkflowLocally(
   workflow: WorkflowDocument,
   tools: ToolDefinition[] = []
 ): ValidationReport {
-  const issues: ValidationIssue[] = validateDocumentQualifiers(workflow)
+  const issues: ValidationIssue[] = [...validateDocumentQualifiers(workflow), ...unknownFieldIssues(workflow)]
   const toolMap = buildToolMap(tools)
   for (const reference of new Set(Object.values(workflow.steps ?? {}).map((step) => step.tool))) {
     const tool = resolveToolDefinition(toolMap, reference)

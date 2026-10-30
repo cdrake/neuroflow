@@ -1,0 +1,46 @@
+{
+  "neuroflow": "0.1.3",
+  "kind": "workflow",
+  "id": "neuroflow.examples/convert-with-qc",
+  "version": "1.0.0",
+  "description": "Convert a DICOM directory to NIfTI and, when requested, write a quality-control report.",
+  "inputs": {
+    "dicom_dir": {
+      "type": "neuro:dicom-folder",
+      "description": "DICOM source directory."
+    },
+    "run_qc": {
+      "type": "core:boolean",
+      "description": "Whether to write a quality-control report.",
+      "default": false
+    }
+  },
+  "steps": {
+    "convert": {
+      "tool": "niivue.desktop.tools/dcm2niix",
+      "inputs": {
+        "dicom_dir": { "ref": "inputs.dicom_dir" }
+      }
+    },
+    "qc": {
+      "tool": "neuroflow.examples/volume-qc",
+      "condition": "inputs.run_qc",
+      "inputs": {
+        "volumes": { "ref": "steps.convert.outputs.volumes" }
+      }
+    }
+  },
+  "outputs": {
+    "volumes": {
+      "type": "core:array<neuro:volume>",
+      "description": "Converted volumes.",
+      "ref": "steps.convert.outputs.volumes"
+    },
+    "qc_report": {
+      "type": "core:file",
+      "description": "Quality-control report; omitted when run_qc is false.",
+      "optional": true,
+      "ref": "steps.qc.outputs.report"
+    }
+  }
+}

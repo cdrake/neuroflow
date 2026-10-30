@@ -1,0 +1,17 @@
+# Spec conformance tests for neuroflow-core (tests/spec_conformance.rs).
+#
+# Kept out of the workspace on purpose: `jsonschema` raises shared dependencies
+# such as `zmij`, which would change the workspace lockfile and with it the
+# released WASM bytes. This crate has its own Cargo.lock and never ships.
+[package]
+name = "neuroflow-conformance"
+version = "0.0.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[dev-dependencies]
+neuroflow-core = { path = "../neuroflow-core" }
+serde_json = "1"
+# No default features: they fetch remote schemas over HTTP.
+jsonschema = { version = "0.60", default-features = false }
