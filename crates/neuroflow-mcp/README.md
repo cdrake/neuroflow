@@ -224,7 +224,9 @@ workflows and unsupported execution features report `runnable: false`.
 
 A diagnostic may also carry a `code` naming the check that raised it, such as
 `optional-output` when an optional step output feeds a required input or a
-workflow output not marked `optional` (spec 0.1.3). Codes are stable across releases; match on `code`, not on the
+workflow output not marked `optional` (spec 0.1.3), `input-undeclared` when a
+binding references an undeclared workflow input, or `constant-invalid` when a
+constant does not match the input's type, `enum`, `min` or `max`. Codes are stable across releases; match on `code`, not on the
 message wording.
 
 The initialize/discover capability

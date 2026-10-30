@@ -120,6 +120,19 @@ pub fn validate_workflow_value_with_tools(
         issues.push(error("description", "Workflow description is required."));
     }
 
+    let workflow_inputs = root.get("inputs").and_then(Value::as_object);
+    if root.get("inputs").is_some() && workflow_inputs.is_none() {
+        issues.push(error("inputs", "Workflow inputs must be an object."));
+    }
+    for (name, declaration) in workflow_inputs.into_iter().flatten() {
+        if !declaration.is_object() {
+            issues.push(error(
+                format!("inputs.{name}"),
+                "Workflow input declaration must be an object.",
+            ));
+        }
+    }
+
     let context_fields = root
         .get("context")
         .and_then(|v| v.get("fields"))
@@ -252,6 +265,16 @@ pub fn validate_workflow_value_with_tools(
                         None,
                         None,
                     );
+                    let value = fill_array(input_def, binding_obj["constant"].clone());
+                    if let Err(reason) = check_value(input_name, input_def, &value) {
+                        issues.push(with_code(
+                            error(
+                                binding_path.clone(),
+                                format!("Constant for {input_name} is invalid: {reason}."),
+                            ),
+                            "constant-invalid",
+                        ));
+                    }
                     let count = match &binding_obj["constant"] {
                         Value::Array(items) => Some(items.len()),
                         _ => Some(1),
@@ -279,6 +302,31 @@ pub fn validate_workflow_value_with_tools(
                             binding_path.clone(),
                             format!("Reference {reference} points to an undeclared context field."),
                         ));
+                    }
+                }
+
+                if let Some(name) = reference.strip_prefix("inputs.") {
+                    if !workflow_inputs.is_some_and(|inputs| inputs.contains_key(name)) {
+                        let known: Vec<&str> = workflow_inputs
+                            .into_iter()
+                            .flat_map(|inputs| inputs.keys().map(String::as_str))
+                            .collect();
+                        let hint = if known.is_empty() {
+                            "The workflow declares no inputs.".to_string()
+                        } else {
+                            format!("Declared inputs: {}.", known.join(", "))
+                        };
+                        issues.push(with_code(
+                            with_hint(
+                                error(
+                                    binding_path.clone(),
+                                    format!("Reference {reference} points to an undeclared workflow input."),
+                                ),
+                                hint,
+                            ),
+                            "input-undeclared",
+                        ));
+                        continue;
                     }
                 }
 
@@ -799,6 +847,72 @@ fn optional_step_output(
         ),
         "optional-output",
     ))
+}
+
+/// A single value bound to an array input is a one-element array.
+pub fn fill_array(decl: &Value, value: Value) -> Value {
+    let t = decl
+        .get("type")
+        .and_then(Value::as_str)
+        .unwrap_or("core:json");
+    if array_element_type(t).is_some() && !value.is_array() && !value.is_null() {
+        Value::Array(vec![value])
+    } else {
+        value
+    }
+}
+
+/// Check a non-artifact value (after `fill_array`) against its declaration:
+/// the core scalar type of the value or of each array element, then `enum`,
+/// `min` and `max`. Other types, such as artifacts, pass the type check.
+pub fn check_value(name: &str, decl: &Value, value: &Value) -> Result<(), String> {
+    let t = decl
+        .get("type")
+        .and_then(Value::as_str)
+        .unwrap_or("core:json");
+    let check = |v: &Value, t: &str| -> Result<(), String> {
+        let ok = match t {
+            "core:string" => v.is_string(),
+            "core:number" => v.is_number(),
+            "core:integer" => v.is_i64() || v.is_u64(),
+            "core:boolean" => v.is_boolean(),
+            "core:object" => v.is_object(),
+            _ => true,
+        };
+        if ok {
+            Ok(())
+        } else {
+            Err(format!("expected {t}, got {v}"))
+        }
+    };
+    match array_element_type(t) {
+        Some(inner) => {
+            let items = value.as_array().ok_or_else(|| format!("expected {t}"))?;
+            for item in items {
+                check(item, inner)?;
+            }
+        }
+        None => check(value, t)?,
+    }
+    if let Some(options) = decl.get("enum").and_then(Value::as_array) {
+        if !options.contains(value) {
+            return Err(format!(
+                "{value} is not one of {}",
+                Value::Array(options.clone())
+            ));
+        }
+    }
+    if let (Some(n), Some(min)) = (value.as_f64(), decl.get("min").and_then(Value::as_f64)) {
+        if n < min {
+            return Err(format!("{name} must be >= {min}"));
+        }
+    }
+    if let (Some(n), Some(max)) = (value.as_f64(), decl.get("max").and_then(Value::as_f64)) {
+        if n > max {
+            return Err(format!("{name} must be <= {max}"));
+        }
+    }
+    Ok(())
 }
 
 /// `minItems`/`maxItems` of an array input, when it declares either.
@@ -1479,6 +1593,126 @@ mod tests {
         let (report, messages) = item_count_issues(&workflow, &tools);
         assert!(report.ok, "{report:?}");
         assert!(messages.is_empty(), "{messages:?}");
+    }
+
+    #[test]
+    fn rejects_a_reference_to_an_undeclared_workflow_input() {
+        let (workflow, tools) = strip_segment_workflow("inputs.nonexistent");
+        let report = validate_workflow_value_with_tools(&workflow, Some(&tools));
+        let issue = report
+            .issues
+            .iter()
+            .find(|issue| issue.code.as_deref() == Some("input-undeclared"))
+            .unwrap_or_else(|| panic!("{report:?}"));
+        assert!(!report.ok);
+        assert_eq!(issue.path.as_deref(), Some("steps.segment.inputs.brain"));
+        assert_eq!(issue.hint.as_deref(), Some("Declared inputs: t1."));
+    }
+
+    #[test]
+    fn rejects_an_input_declaration_that_is_not_an_object() {
+        for declaration in [Value::Null, serde_json::json!("hello")] {
+            let (mut workflow, tools) = strip_segment_workflow("steps.strip.outputs.brain_volume");
+            workflow["inputs"]["t1"] = declaration;
+            let report = validate_workflow_value_with_tools(&workflow, Some(&tools));
+            assert!(
+                report
+                    .issues
+                    .iter()
+                    .any(|issue| issue.path.as_deref() == Some("inputs.t1")
+                        && issue.message == "Workflow input declaration must be an object."),
+                "{report:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_workflow_inputs_that_are_not_an_object() {
+        let (mut workflow, tools) = strip_segment_workflow("steps.strip.outputs.brain_volume");
+        workflow["inputs"] = serde_json::json!("hello");
+        let report = validate_workflow_value_with_tools(&workflow, Some(&tools));
+        assert!(
+            report
+                .issues
+                .iter()
+                .any(|issue| issue.path.as_deref() == Some("inputs")
+                    && issue.message == "Workflow inputs must be an object."),
+            "{report:?}"
+        );
+    }
+
+    #[test]
+    fn checks_a_constant_against_the_input_declaration() {
+        let cases = [
+            (
+                serde_json::json!({ "type": "core:array<core:number>" }),
+                serde_json::json!("[10,20]"),
+            ),
+            (
+                serde_json::json!({ "type": "core:integer" }),
+                serde_json::json!(1.5),
+            ),
+            (
+                serde_json::json!({ "type": "core:number", "min": 0 }),
+                serde_json::json!(-3),
+            ),
+            (
+                serde_json::json!({ "type": "core:number", "max": 1 }),
+                serde_json::json!(5),
+            ),
+            (
+                serde_json::json!({ "type": "core:number" }),
+                serde_json::json!("0.7"),
+            ),
+            (
+                serde_json::json!({ "type": "core:boolean" }),
+                serde_json::json!("true"),
+            ),
+            (
+                serde_json::json!({ "type": "core:integer", "enum": [1, 2, 3, 4] }),
+                serde_json::json!(7),
+            ),
+        ];
+        for (declaration, constant) in cases {
+            let (mut workflow, mut tools) =
+                strip_segment_workflow("steps.strip.outputs.brain_volume");
+            tools[1]["inputs"]["param"] = declaration.clone();
+            workflow["steps"]["segment"]["inputs"]["param"] =
+                serde_json::json!({ "constant": constant });
+            let report = validate_workflow_value_with_tools(&workflow, Some(&tools));
+            assert!(
+                report
+                    .issues
+                    .iter()
+                    .any(|issue| issue.code.as_deref() == Some("constant-invalid")
+                        && issue.path.as_deref() == Some("steps.segment.inputs.param")),
+                "{declaration} {constant}: {report:?}"
+            );
+        }
+
+        let valid = [
+            (
+                serde_json::json!({ "type": "core:array<core:number>" }),
+                serde_json::json!([10, 20]),
+            ),
+            (
+                serde_json::json!({ "type": "core:array<core:number>" }),
+                serde_json::json!(10),
+            ),
+            (
+                serde_json::json!({ "type": "core:integer", "min": 0, "enum": [1, 2] }),
+                serde_json::json!(2),
+            ),
+        ];
+        for (declaration, constant) in valid {
+            let (mut workflow, mut tools) =
+                strip_segment_workflow("steps.strip.outputs.brain_volume");
+            tools[1]["inputs"]["param"] = declaration.clone();
+            workflow["steps"]["segment"]["inputs"]["param"] =
+                serde_json::json!({ "constant": constant });
+            let report = validate_workflow_value_with_tools(&workflow, Some(&tools));
+            assert!(report.ok, "{declaration} {constant}: {report:?}");
+        }
     }
 
     #[test]
