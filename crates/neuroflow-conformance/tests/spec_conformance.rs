@@ -4,10 +4,7 @@
 //! (`neuroflow_core::fields`) and semantic rules instead. These tests run
 //! `jsonschema` beside it, so a schema change that the core does not follow fails here.
 
-use neuroflow_core::{
-    fields::{BEYOND_SCHEMA, CLOSED_FIELDS},
-    validate_workflow_value, ValidationReport,
-};
+use neuroflow_core::{fields::CLOSED_FIELDS, validate_workflow_value, ValidationReport};
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 use std::fs;
@@ -75,17 +72,7 @@ fn schema_fields(reference: &str) -> BTreeSet<String> {
 #[test]
 fn closed_fields_follow_the_schema() {
     for (reference, fields) in CLOSED_FIELDS {
-        let mut expected = schema_fields(reference);
-        for (extra_reference, extras) in BEYOND_SCHEMA {
-            if extra_reference == reference {
-                for extra in *extras {
-                    assert!(
-                        expected.insert(extra.to_string()),
-                        "{reference} now lists {extra}"
-                    );
-                }
-            }
-        }
+        let expected = schema_fields(reference);
         let actual: BTreeSet<String> = fields.iter().map(|f| f.to_string()).collect();
         assert_eq!(actual, expected, "{reference}");
     }
@@ -204,7 +191,7 @@ fn invalid_examples_fail_the_core_and_the_schema() {
         match name.as_str() {
             // The schema does not gate fields by `neuroflow` version; the core and
             // the spec's own harness (tests/validate.mjs) apply that rule.
-            "bad-output-version.json" => {
+            "bad-output-version.json" | "bad-context-qualifier-version.json" => {
                 assert!(schema_errors.is_empty(), "{name}: {schema_errors:?}");
                 assert!(!report.ok, "{name}");
             }

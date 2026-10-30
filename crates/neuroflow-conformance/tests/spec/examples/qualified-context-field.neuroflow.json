@@ -1,0 +1,41 @@
+{
+  "neuroflow": "0.1.1",
+  "kind": "workflow",
+  "id": "neuroflow.examples/skull-strip-mask-context",
+  "version": "1.0.0",
+  "description": "Skull-strip a T1w volume and keep its brain mask in the run context, qualified so the mapping is checked.",
+  "inputs": {
+    "t1w": {
+      "type": "neuro:volume",
+      "description": "T1-weighted volume.",
+      "space": "individual"
+    }
+  },
+  "context": {
+    "fields": {
+      "brain_mask": {
+        "type": "neuro:mask",
+        "description": "Brain mask in the subject's native space, for later review steps.",
+        "formats": ["nii-gz"],
+        "space": "individual"
+      }
+    }
+  },
+  "steps": {
+    "strip": {
+      "tool": "neuroflow.examples/synthstrip",
+      "inputs": {
+        "image": { "ref": "inputs.t1w" }
+      },
+      "outputMappings": {
+        "mask": "brain_mask"
+      }
+    }
+  },
+  "outputs": {
+    "brain": {
+      "type": "neuro:volume",
+      "ref": "steps.strip.outputs.brain"
+    }
+  }
+}

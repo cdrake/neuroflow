@@ -4,7 +4,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
-import { BEYOND_SCHEMA, CLOSED_FIELDS, closest, editDistance } from '../../src/domain/fields'
+import { CLOSED_FIELDS, closest, editDistance } from '../../src/domain/fields'
 import { validateWorkflowLocally } from '../../src/domain/validation'
 
 // The bundle runs from target/ui-tests, two levels below the repository root.
@@ -25,15 +25,7 @@ function schemaFields(reference: string): Set<string> {
 
 test('closed fields follow the vendored spec schemas', () => {
   for (const [reference, fields] of CLOSED_FIELDS) {
-    const expected = schemaFields(reference)
-    for (const [extraReference, extras] of BEYOND_SCHEMA) {
-      if (extraReference !== reference) continue
-      for (const extra of extras) {
-        assert.ok(!expected.has(extra), `${reference} now lists ${extra}`)
-        expected.add(extra)
-      }
-    }
-    assert.deepEqual(new Set(fields), expected, reference)
+    assert.deepEqual(new Set(fields), schemaFields(reference), reference)
   }
 })
 

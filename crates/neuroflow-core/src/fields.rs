@@ -39,7 +39,6 @@ const CONTEXT_FIELD: &[&str] = &[
     "max",
     "liveWritable",
     "extensions",
-    // Beyond the schema, see BEYOND_SCHEMA.
     "formats",
     "space",
     "resolution",
@@ -140,15 +139,6 @@ pub const CLOSED_FIELDS: &[(&str, &[&str])] = &[
         WORKFLOW_ERROR_POLICY,
     ),
 ];
-
-/// Keys the core accepts although the schema declaration does not list them.
-/// RFC 0010 names a context field as a qualifier source, and the core compares
-/// its qualifiers on `outputMappings`, but `contextFieldDef` in the 0.1 schema
-/// does not list the qualifiers yet.
-pub const BEYOND_SCHEMA: &[(&str, &[&str])] = &[(
-    "workflow.schema.json#/$defs/contextFieldDef",
-    crate::TYPE_QUALIFIERS,
-)];
 
 /// Reports every key outside its declaration's closed set as an `unknown-field`
 /// error. `default` and `delivery` on a workflow output are left to

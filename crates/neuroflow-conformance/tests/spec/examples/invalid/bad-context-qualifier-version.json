@@ -1,0 +1,45 @@
+{
+  "neuroflow": "0.1.0",
+  "kind": "workflow",
+  "id": "neuroflow.test/bad-context-qualifier-version",
+  "version": "1.0.0",
+  "description": "Type qualifiers on a context field under neuroflow 0.1.0; they need 0.1.1 or later (RFC 0010).",
+  "inputs": {
+    "t1w": {
+      "type": "neuro:volume",
+      "description": "T1-weighted volume.",
+      "space": "individual"
+    }
+  },
+  "context": {
+    "fields": {
+      "brain_mask": {
+        "type": "neuro:mask",
+        "description": "Brain mask in the subject's native space, for later review steps.",
+        "formats": [
+          "nii-gz"
+        ],
+        "space": "individual"
+      }
+    }
+  },
+  "steps": {
+    "strip": {
+      "tool": "neuroflow.examples/synthstrip",
+      "inputs": {
+        "image": {
+          "ref": "inputs.t1w"
+        }
+      },
+      "outputMappings": {
+        "mask": "brain_mask"
+      }
+    }
+  },
+  "outputs": {
+    "brain": {
+      "type": "neuro:volume",
+      "ref": "steps.strip.outputs.brain"
+    }
+  }
+}

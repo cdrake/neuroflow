@@ -53,7 +53,7 @@
   "$defs": {
     "contextFieldDef": {
       "type": "object",
-      "description": "A run-context field declaration.",
+      "description": "A run-context field declaration. May carry the RFC 0010 type qualifiers, which a validator compares when a step output is mapped into the field; they require neuroflow 0.1.1 or later, as on any declaration.",
       "required": ["type", "description"],
       "additionalProperties": false,
       "properties": {
@@ -79,8 +79,14 @@
           "description": "If true, steps MAY bind a tool's core:context-write events to this field via step.eventBindings.contextWrites. Default false.",
           "default": false
         },
+        "formats": { "$ref": "common.schema.json#/$defs/formats" },
+        "space": { "$ref": "common.schema.json#/$defs/space" },
+        "resolution": { "$ref": "common.schema.json#/$defs/resolution" },
+        "density": { "$ref": "common.schema.json#/$defs/density" },
+        "labelSystem": { "$ref": "common.schema.json#/$defs/labelSystem" },
         "extensions": { "$ref": "common.schema.json#/$defs/extensions" }
-      }
+      },
+      "allOf": [{ "$ref": "common.schema.json#/$defs/typeQualifierRules" }]
     },
     "stepDef": {
       "type": "object",
