@@ -691,6 +691,9 @@ impl Server {
                     if let Some(o) = &i.outcome {
                         d["outcome"] = json!(o);
                     }
+                    if let Some(c) = &i.code {
+                        d["code"] = json!(c);
+                    }
                     d
                 })
                 .collect();
@@ -975,6 +978,12 @@ mod tests {
         assert_eq!(blocked["valid"], true);
         assert_eq!(blocked["conditional"], true);
         assert_eq!(blocked["runnable"], false);
+
+        let mut undeclared = workflow.clone();
+        undeclared["steps"]["check"]["inputs"]["image"]["ref"] = json!("inputs.nope");
+        let rejected = server.validate(&undeclared);
+        assert_eq!(rejected["diagnostics"][0]["code"], "input-undeclared");
+        assert!(conditional["diagnostics"][0].get("code").is_none());
 
         let mut misleading = workflow;
         misleading["steps"]["check"]["tool"] = json!("test/requires a runtime check");
