@@ -31,7 +31,7 @@ jobs:
         include:
           # musl gives one static binary for any x86-64 Linux, containers included.
           - { os: ubuntu-24.04, target: x86_64-unknown-linux-musl, archive: tar.gz }
-          - { os: macos-14, target: aarch64-apple-darwin, archive: tar.gz }
+          - { os: macos-15, target: aarch64-apple-darwin, archive: tar.gz }
           # A static CRT, so the binary needs no Visual C++ redistributable.
           - { os: windows-2022, target: x86_64-pc-windows-msvc, archive: zip, rustflags: -C target-feature=+crt-static }
     runs-on: ${{ matrix.os }}
