@@ -160,7 +160,9 @@ registry so an agent can compose a pipeline.
    interpreter with no shell.
 3. Outputs are harvested per RFC 0008 delivery modes: `result-dir`,
    `result-file` (a path, or keys in `result.json`), `stdout-json`,
-   `exit-code`, and `fixed-path`.
+   `exit-code`, and `fixed-path`. A workflow output whose step output was not
+   produced is omitted when it is marked `optional`; otherwise the run fails
+   with `failedStep` set to `outputs.<name>` (spec 0.1 §13).
 4. `run.json` and `run.provenance.json` are written to the session. The MCP
    client is recorded as an agent. File entities, directory entities (a
    tree checksum over their files) and the executed `workflow.json` carry

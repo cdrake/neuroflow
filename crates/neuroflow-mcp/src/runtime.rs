@@ -62,14 +62,26 @@ pub fn wrap_tool(tool: &Doc) -> Value {
         .into_iter()
         .flatten()
         .map(|(name, decl)| {
-            let out = json!({ "type": decl.get("type").cloned().unwrap_or(json!("core:json")),
+            let mut out = json!({ "type": decl.get("type").cloned().unwrap_or(json!("core:json")),
                                   "ref": format!("steps.{step}.outputs.{name}") });
+            if decl.get("optional").and_then(Value::as_bool) == Some(true) {
+                out["optional"] = json!(true);
+            }
             (name.clone(), out)
         })
         .collect();
+    // Workflow-output `optional` needs 0.1.3, the latest supported version.
+    let version = if outputs.values().any(|out| out.get("optional").is_some()) {
+        json!("0.1.3")
+    } else {
+        tool.value
+            .get("neuroflow")
+            .cloned()
+            .unwrap_or(json!("0.1.0"))
+    };
     let segment = crate::util::to_local_id(&tool.id.replace('/', "-"));
     json!({
-        "neuroflow": tool.value.get("neuroflow").cloned().unwrap_or(json!("0.1.0")),
+        "neuroflow": version,
         "kind": "workflow",
         "id": format!("neuroflow.mcp.adhoc/{segment}"),
         "version": tool.version,
@@ -470,8 +482,27 @@ pub fn run_workflow_with_cancel(
         {
             let reference = out.get("ref").and_then(Value::as_str).unwrap_or("");
             let parts: Vec<&str> = reference.split('.').collect();
-            if let ["steps", s, "outputs", o] = parts.as_slice() {
-                if let Some(v) = step_outputs.get(*s).and_then(|m| m.get(*o)) {
+            let produced = match parts.as_slice() {
+                ["steps", s, "outputs", o] => step_outputs
+                    .get(*s)
+                    .and_then(|m| m.get(*o))
+                    .map(|v| (*s, *o, v)),
+                _ => None,
+            };
+            let optional = out
+                .get("optional")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            match produced {
+                None if optional => {}
+                None => {
+                    failure = Some((
+                        format!("outputs.{name}"),
+                        format!("required workflow output {name} was not produced"),
+                    ));
+                    break;
+                }
+                Some((s, o, v)) => {
                     if qualifiers::qualified(out) {
                         let mut checks = Vec::new();
                         let checked =
@@ -1892,6 +1923,73 @@ mod tests {
             "{}",
             outcome.structured
         );
+    }
+
+    #[test]
+    fn a_missing_workflow_output_fails_the_run_unless_it_is_optional() {
+        let root = std::env::temp_dir().join(format!("neuroflow-missing-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("registry")).unwrap();
+        fs::create_dir_all(root.join("runs")).unwrap();
+        // The tool declares an optional output and produces nothing.
+        fs::write(root.join("registry/noop.py"), "").unwrap();
+        let tool = json!({
+            "neuroflow": "0.1.1", "kind": "tool", "id": "test/noop", "version": "1.0.0",
+            "description": "Produces nothing.",
+            "inputs": {},
+            "outputs": { "report": { "type": "core:json", "description": "Maybe a report.", "optional": true } },
+            "extensions": { "neuroflow/launch": {
+                "kind": "script", "interpreter": "python3", "script": "noop.py", "completion": "exit"
+            } }
+        });
+        fs::write(root.join("registry/noop.json"), tool.to_string()).unwrap();
+        let cfg = Config {
+            registry_dirs: vec![root.join("registry")],
+            spec_dir: None,
+            data_roots: vec![root.clone()],
+            sessions_root: root.join("runs"),
+            interpreters: HashMap::new(),
+            step_timeout: None,
+            summary_max_bytes: 1024,
+            interactive: false,
+        };
+        let registry =
+            Registry::load(&cfg.registry_dirs, &cfg.interpreters, cfg.interactive).unwrap();
+        let run = |workflow: &Value| {
+            run_workflow(
+                &cfg,
+                &registry,
+                workflow,
+                &Map::new(),
+                &json!({}),
+                &mut |_, _, _| {},
+            )
+            .unwrap()
+        };
+
+        // The single-tool wrapper keeps the output optional.
+        let mut workflow = wrap_tool(registry.tool("test/noop").unwrap());
+        let optional = run(&workflow);
+        assert_eq!(optional.status, "completed", "{}", optional.summary);
+        assert_eq!(optional.structured["outputs"], json!({}));
+
+        workflow["outputs"]["report"]
+            .as_object_mut()
+            .unwrap()
+            .remove("optional");
+        let required = run(&workflow);
+        let record: Value = serde_json::from_str(
+            &fs::read_to_string(cfg.sessions_root.join(&required.run_id).join("run.json")).unwrap(),
+        )
+        .unwrap();
+        let _ = fs::remove_dir_all(&root);
+        assert_eq!(required.status, "failed", "{}", required.summary);
+        assert_eq!(record["failedStep"], json!("outputs.report"));
+        assert_eq!(
+            record["error"],
+            json!("required workflow output report was not produced")
+        );
+        assert_eq!(record["outputs"], json!({}));
     }
 
     #[test]
