@@ -46,6 +46,16 @@ export function validateWorkflowLocally(
   const stepNames = new Set(Object.keys(workflow.steps ?? {}))
   const contextFields = new Set(Object.keys(workflow.context?.fields ?? {}))
 
+  const inputs: unknown = workflow.inputs
+  if (inputs !== undefined && (typeof inputs !== 'object' || inputs === null || Array.isArray(inputs))) {
+    issues.push({ severity: 'error', path: 'inputs', message: 'Workflow inputs must be an object.' })
+  }
+  for (const [name, declaration] of Object.entries(typeof inputs === 'object' && inputs !== null ? inputs : {})) {
+    if (typeof declaration !== 'object' || declaration === null || Array.isArray(declaration)) {
+      issues.push({ severity: 'error', path: `inputs.${name}`, message: 'Workflow input declaration must be an object.' })
+    }
+  }
+
   for (const [name, declaration] of Object.entries(workflow.context?.fields ?? {})) {
     if ('default' in declaration) issues.push(...qualifierIssues(`context.fields.${name}.default`, compareQualifiers({}, declaration)))
   }
@@ -100,6 +110,18 @@ export function validateWorkflowLocally(
               severity: 'warning',
               path: `steps.${stepName}.inputs.${inputName}`,
               message: `Reference ${binding.ref} points to an undeclared context field.`
+            })
+          }
+        }
+        if (binding.ref.startsWith('inputs.')) {
+          const known = Object.keys(workflow.inputs ?? {})
+          if (!known.includes(binding.ref.slice('inputs.'.length))) {
+            issues.push({
+              severity: 'error',
+              path: `steps.${stepName}.inputs.${inputName}`,
+              message: `Reference ${binding.ref} points to an undeclared workflow input.`,
+              hint: known.length > 0 ? `Declared inputs: ${known.join(', ')}.` : 'The workflow declares no inputs.',
+              code: 'input-undeclared'
             })
           }
         }
@@ -261,36 +283,52 @@ function validateOutputMappings(
   }
 }
 
+// Mirrors fill_array + check_value in neuroflow-core.
 function validateConstant(
   stepName: string,
   inputName: string,
-  value: unknown,
+  constant: unknown,
   inputDef: ToolDefinition['inputs'][string],
   issues: ValidationIssue[]
 ): void {
-  if (inputDef.enum && !inputDef.enum.includes(value)) {
+  const reason = constantProblem(inputName, constant, inputDef)
+  if (reason) {
     issues.push({
       severity: 'error',
       path: `steps.${stepName}.inputs.${inputName}`,
-      message: `Constant for ${inputName} must be one of ${inputDef.enum.join(', ')}.`
+      message: `Constant for ${inputName} is invalid: ${reason}.`,
+      code: 'constant-invalid'
     })
   }
-  if (typeof value === 'number') {
-    if (typeof inputDef.min === 'number' && value < inputDef.min) {
-      issues.push({
-        severity: 'error',
-        path: `steps.${stepName}.inputs.${inputName}`,
-        message: `Constant for ${inputName} must be at least ${inputDef.min}.`
-      })
-    }
-    if (typeof inputDef.max === 'number' && value > inputDef.max) {
-      issues.push({
-        severity: 'error',
-        path: `steps.${stepName}.inputs.${inputName}`,
-        message: `Constant for ${inputName} must be at most ${inputDef.max}.`
-      })
+}
+
+function constantProblem(inputName: string, constant: unknown, inputDef: ToolDefinition['inputs'][string]): string | null {
+  const type = inputDef.type ?? 'core:json'
+  const element = arrayElementType(type)
+  const value = element && !Array.isArray(constant) && constant !== null ? [constant] : constant
+  const matches = (v: unknown, t: string): boolean => {
+    switch (t) {
+      case 'core:string': return typeof v === 'string'
+      case 'core:number': return typeof v === 'number'
+      case 'core:integer': return Number.isInteger(v)
+      case 'core:boolean': return typeof v === 'boolean'
+      case 'core:object': return typeof v === 'object' && v !== null && !Array.isArray(v)
+      default: return true
     }
   }
+  if (element) {
+    if (!Array.isArray(value)) return `expected ${type}`
+    const bad = value.find((item) => !matches(item, element))
+    if (bad !== undefined) return `expected ${element}, got ${JSON.stringify(bad)}`
+  } else if (!matches(value, type)) {
+    return `expected ${type}, got ${JSON.stringify(value)}`
+  }
+  if (inputDef.enum && !inputDef.enum.some((option) => JSON.stringify(option) === JSON.stringify(value))) {
+    return `${JSON.stringify(value)} is not one of ${JSON.stringify(inputDef.enum)}`
+  }
+  if (typeof value === 'number' && typeof inputDef.min === 'number' && value < inputDef.min) return `${inputName} must be >= ${inputDef.min}`
+  if (typeof value === 'number' && typeof inputDef.max === 'number' && value > inputDef.max) return `${inputName} must be <= ${inputDef.max}`
+  return null
 }
 
 function itemBound(value: unknown): number | undefined {

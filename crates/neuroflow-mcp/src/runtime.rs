@@ -9,6 +9,7 @@ use crate::schema::{
 use crate::util::{new_run_id, now_rfc3339, to_local_id, within_any};
 use crate::Config;
 use crate::{artifacts, qualifiers};
+use neuroflow_core::fill_array;
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
 use std::fs;
@@ -1149,19 +1150,6 @@ fn normalize_output(
     }
 }
 
-/// A single value bound to an array input is a one-element array.
-fn fill_array(decl: &Value, value: Value) -> Value {
-    let t = decl
-        .get("type")
-        .and_then(Value::as_str)
-        .unwrap_or("core:json");
-    if is_array_type(t) && !value.is_array() && !value.is_null() {
-        Value::Array(vec![value])
-    } else {
-        value
-    }
-}
-
 /// Reject an array whose length is outside the declaration's `minItems`/`maxItems`.
 fn check_item_count(decl: &Value, value: &Value) -> Result<(), String> {
     let (Some((min, max)), Some(items)) = (neuroflow_core::item_bounds(decl), value.as_array())
@@ -1218,48 +1206,7 @@ fn resolve_value(
         }
         return resolve(value).map(Value::String);
     }
-    let check = |v: &Value, t: &str| -> Result<(), String> {
-        let ok = match t {
-            "core:string" => v.is_string(),
-            "core:number" => v.is_number(),
-            "core:integer" => v.is_i64() || v.is_u64(),
-            "core:boolean" => v.is_boolean(),
-            "core:object" => v.is_object(),
-            _ => true,
-        };
-        if ok {
-            Ok(())
-        } else {
-            Err(format!("expected {t}, got {v}"))
-        }
-    };
-    match neuroflow_core::array_element_type(t) {
-        Some(inner) => {
-            let items = value.as_array().ok_or_else(|| format!("expected {t}"))?;
-            for item in items {
-                check(item, inner)?;
-            }
-        }
-        None => check(value, t)?,
-    }
-    if let Some(options) = decl.get("enum").and_then(Value::as_array) {
-        if !options.contains(value) {
-            return Err(format!(
-                "{value} is not one of {}",
-                Value::Array(options.clone())
-            ));
-        }
-    }
-    if let (Some(n), Some(min)) = (value.as_f64(), decl.get("min").and_then(Value::as_f64)) {
-        if n < min {
-            return Err(format!("{name} must be >= {min}"));
-        }
-    }
-    if let (Some(n), Some(max)) = (value.as_f64(), decl.get("max").and_then(Value::as_f64)) {
-        if n > max {
-            return Err(format!("{name} must be <= {max}"));
-        }
-    }
+    neuroflow_core::check_value(name, decl, value)?;
     Ok(value.clone())
 }
 
