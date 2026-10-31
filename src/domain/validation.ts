@@ -7,6 +7,9 @@ import { arrayElementType } from './typeCompatibility'
 import { SUPPORTED_SPEC_VERSIONS, compareQualifiers, qualifierIssues, resolveQualifiers, validateDocumentQualifiers } from './qualifiers'
 export { SUPPORTED_SPEC_VERSIONS, TYPE_QUALIFIERS, declaredQualifiers } from './qualifiers'
 
+// Spec 0.1 §6 local identifier.
+const LOCAL_ID = /^[a-z][A-Za-z0-9]*(?:[-_][A-Za-z0-9]+)*$/
+
 const REF_PATTERN =
   /^(inputs\.[A-Za-z][A-Za-z0-9_-]*|context|context\.[A-Za-z][A-Za-z0-9_-]*|steps\.[A-Za-z][A-Za-z0-9_-]*\.outputs\.[A-Za-z][A-Za-z0-9_-]*)$/
 
@@ -45,6 +48,26 @@ export function validateWorkflowLocally(
   }
   const stepNames = new Set(Object.keys(workflow.steps ?? {}))
   const contextFields = new Set(Object.keys(workflow.context?.fields ?? {}))
+
+  const named: Array<[string, unknown]> = [
+    ['inputs', workflow.inputs],
+    ['context.fields', workflow.context?.fields],
+    ['steps', workflow.steps],
+    ['outputs', workflow.outputs]
+  ]
+  for (const [section, map] of named) {
+    for (const name of typeof map === 'object' && map !== null && !Array.isArray(map) ? Object.keys(map) : []) {
+      if (!LOCAL_ID.test(name)) {
+        issues.push({
+          severity: 'error',
+          path: `${section}.${name}`,
+          message: `${name} is not a valid local identifier.`,
+          hint: 'Start with a lowercase letter, then letters and digits, with single - or _ between them.',
+          code: 'local-id-invalid'
+        })
+      }
+    }
+  }
 
   const inputs: unknown = workflow.inputs
   if (inputs !== undefined && (typeof inputs !== 'object' || inputs === null || Array.isArray(inputs))) {
