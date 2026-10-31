@@ -145,7 +145,8 @@ export function validateWorkflowLocally(
       issues.push({
         severity: 'error',
         path: `outputs.${outputName}.ref`,
-        message: 'Workflow outputs must reference step outputs.'
+        message: 'Workflow outputs must reference step outputs.',
+        code: 'output-ref-not-step'
       })
     } else if (!resolved && tools.length > 0) {
       issues.push({

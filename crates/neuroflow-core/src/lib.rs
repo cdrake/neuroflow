@@ -447,9 +447,12 @@ pub fn validate_workflow_value_with_tools(
         for (output_name, output) in outputs {
             let reference = output.get("ref").and_then(Value::as_str).unwrap_or("");
             if !reference.starts_with("steps.") {
-                issues.push(error(
-                    format!("outputs.{output_name}.ref"),
-                    "Workflow output must reference a step output.",
+                issues.push(with_code(
+                    error(
+                        format!("outputs.{output_name}.ref"),
+                        "Workflow output must reference a step output.",
+                    ),
+                    "output-ref-not-step",
                 ));
                 continue;
             }
@@ -1607,6 +1610,20 @@ mod tests {
         assert!(!report.ok);
         assert_eq!(issue.path.as_deref(), Some("steps.segment.inputs.brain"));
         assert_eq!(issue.hint.as_deref(), Some("Declared inputs: t1."));
+    }
+
+    #[test]
+    fn tags_a_workflow_output_that_does_not_reference_a_step() {
+        let (mut workflow, tools) = strip_segment_workflow("steps.strip.outputs.brain_volume");
+        workflow["outputs"] =
+            serde_json::json!({ "stray": { "type": "neuro:volume", "ref": "inputs.t1" } });
+        let report = validate_workflow_value_with_tools(&workflow, Some(&tools));
+        let issue = report
+            .issues
+            .iter()
+            .find(|issue| issue.code.as_deref() == Some("output-ref-not-step"))
+            .unwrap_or_else(|| panic!("{report:?}"));
+        assert_eq!(issue.path.as_deref(), Some("outputs.stray.ref"));
     }
 
     #[test]
