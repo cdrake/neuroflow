@@ -1,11 +1,11 @@
 // npm run test:ui
-// validation.ts: mirrors the input-undeclared and constant-invalid checks in neuroflow-core.
+// validation.ts: mirrors the input-undeclared, output-ref-not-step, local-id-invalid and constant-invalid checks in neuroflow-core.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { validateWorkflowLocally } from '../../src/domain/validation'
 import type { ToolDefinition, WorkflowDocument } from '../../src/domain/neuroflow'
 
-function fixture(param: Record<string, unknown>, constant: unknown, ref = 'inputs.t1') {
+function fixture(param: Record<string, unknown>, constant: unknown, ref = 'inputs.t1', outputRef = 'steps.strip.outputs.brain') {
   const workflow = {
     neuroflow: '0.1.0',
     kind: 'workflow',
@@ -14,7 +14,7 @@ function fixture(param: Record<string, unknown>, constant: unknown, ref = 'input
     description: 'One-step workflow',
     inputs: { t1: { type: 'neuro:volume', description: 'T1' } },
     steps: { strip: { tool: 'test.tools/strip', inputs: { t1: { ref }, param: { constant } } } },
-    outputs: { brain: { type: 'neuro:volume', ref: 'steps.strip.outputs.brain' } }
+    outputs: { brain: { type: 'neuro:volume', ref: outputRef } }
   } as unknown as WorkflowDocument
   const tools = [
     {
@@ -26,6 +26,34 @@ function fixture(param: Record<string, unknown>, constant: unknown, ref = 'input
   ] as unknown as ToolDefinition[]
   return validateWorkflowLocally(workflow, tools)
 }
+
+test('tags a workflow output that does not reference a step', () => {
+  const report = fixture({ type: 'core:number' }, 1, 'inputs.t1', 'inputs.t1')
+  const issue = report.issues.find((i) => i.code === 'output-ref-not-step')
+  assert.equal(issue?.path, 'outputs.brain.ref')
+})
+
+test('rejects names that are not local identifiers', () => {
+  const workflow = {
+    neuroflow: '0.1.0',
+    kind: 'workflow',
+    id: 'test/strip',
+    version: '0.1.0',
+    description: 'One-step workflow',
+    inputs: { t1: { type: 'neuro:volume', description: 'T1' }, 'Bad name': { type: 'neuro:volume', description: 'Bad' } },
+    context: { fields: { 'a--b': { type: 'core:string' } } },
+    steps: JSON.parse('{"strip": {"tool": "test.tools/strip", "inputs": {"t1": {"ref": "inputs.t1"}}}, "Bad id!": {"tool": "test.tools/strip", "inputs": {"t1": {"ref": "inputs.t1"}}}, "__proto__": {"tool": "test.tools/strip", "inputs": {"t1": {"ref": "inputs.t1"}}}}'),
+    outputs: { brain: { type: 'neuro:volume', ref: 'steps.strip.outputs.brain' }, 'out-': { type: 'neuro:volume', ref: 'steps.strip.outputs.brain' } }
+  } as unknown as WorkflowDocument
+  const tools = [
+    { id: 'test.tools/strip', name: 'strip', inputs: { t1: { type: 'neuro:volume', description: 'T1' } }, outputs: { brain: { type: 'neuro:volume', description: 'Brain' } } }
+  ] as unknown as ToolDefinition[]
+  const paths = validateWorkflowLocally(workflow, tools)
+    .issues.filter((i) => i.code === 'local-id-invalid')
+    .map((i) => i.path)
+    .sort()
+  assert.deepEqual(paths, ['context.fields.a--b', 'inputs.Bad name', 'outputs.out-', 'steps.Bad id!', 'steps.__proto__'])
+})
 
 test('rejects a reference to an undeclared workflow input', () => {
   const report = fixture({ type: 'core:number' }, 1, 'inputs.nonexistent')

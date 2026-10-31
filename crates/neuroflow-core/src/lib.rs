@@ -120,6 +120,36 @@ pub fn validate_workflow_value_with_tools(
         issues.push(error("description", "Workflow description is required."));
     }
 
+    let named = [
+        ("inputs", root.get("inputs")),
+        (
+            "context.fields",
+            root.get("context").and_then(|c| c.get("fields")),
+        ),
+        ("steps", root.get("steps")),
+        ("outputs", root.get("outputs")),
+    ];
+    for (section, map) in named {
+        for name in map
+            .and_then(Value::as_object)
+            .into_iter()
+            .flat_map(|m| m.keys())
+        {
+            if !valid_local_id(name) {
+                issues.push(with_code(
+                    with_hint(
+                        error(
+                            format!("{section}.{name}"),
+                            format!("{name} is not a valid local identifier."),
+                        ),
+                        "Start with a lowercase letter, then letters and digits, with single - or _ between them.",
+                    ),
+                    "local-id-invalid",
+                ));
+            }
+        }
+    }
+
     let workflow_inputs = root.get("inputs").and_then(Value::as_object);
     if root.get("inputs").is_some() && workflow_inputs.is_none() {
         issues.push(error("inputs", "Workflow inputs must be an object."));
@@ -447,9 +477,12 @@ pub fn validate_workflow_value_with_tools(
         for (output_name, output) in outputs {
             let reference = output.get("ref").and_then(Value::as_str).unwrap_or("");
             if !reference.starts_with("steps.") {
-                issues.push(error(
-                    format!("outputs.{output_name}.ref"),
-                    "Workflow output must reference a step output.",
+                issues.push(with_code(
+                    error(
+                        format!("outputs.{output_name}.ref"),
+                        "Workflow output must reference a step output.",
+                    ),
+                    "output-ref-not-step",
                 ));
                 continue;
             }
@@ -1159,6 +1192,14 @@ fn finish(issues: Vec<ValidationIssue>) -> ValidationReport {
     ValidationReport { ok, issues }
 }
 
+/// Spec 0.1 §6: `^[a-z][A-Za-z0-9]*(?:[-_][A-Za-z0-9]+)*$`.
+fn valid_local_id(id: &str) -> bool {
+    id.as_bytes().first().is_some_and(u8::is_ascii_lowercase)
+        && id
+            .split(['-', '_'])
+            .all(|part| !part.is_empty() && part.bytes().all(|c| c.is_ascii_alphanumeric()))
+}
+
 fn error(path: impl Into<String>, message: impl Into<String>) -> ValidationIssue {
     ValidationIssue {
         severity: "error".to_string(),
@@ -1607,6 +1648,54 @@ mod tests {
         assert!(!report.ok);
         assert_eq!(issue.path.as_deref(), Some("steps.segment.inputs.brain"));
         assert_eq!(issue.hint.as_deref(), Some("Declared inputs: t1."));
+    }
+
+    #[test]
+    fn tags_a_workflow_output_that_does_not_reference_a_step() {
+        let (mut workflow, tools) = strip_segment_workflow("steps.strip.outputs.brain_volume");
+        workflow["outputs"] =
+            serde_json::json!({ "stray": { "type": "neuro:volume", "ref": "inputs.t1" } });
+        let report = validate_workflow_value_with_tools(&workflow, Some(&tools));
+        let issue = report
+            .issues
+            .iter()
+            .find(|issue| issue.code.as_deref() == Some("output-ref-not-step"))
+            .unwrap_or_else(|| panic!("{report:?}"));
+        assert_eq!(issue.path.as_deref(), Some("outputs.stray.ref"));
+    }
+
+    #[test]
+    fn rejects_names_that_are_not_local_identifiers() {
+        let (mut workflow, tools) = strip_segment_workflow("steps.strip.outputs.brain_volume");
+        let step = workflow["steps"]["segment"].clone();
+        let steps = workflow["steps"].as_object_mut().unwrap();
+        steps.insert("Bad id!".into(), step.clone());
+        steps.insert("__proto__".into(), step);
+        workflow["inputs"]["Bad name"] = serde_json::json!({ "type": "neuro:volume" });
+        workflow["outputs"]["out-"] = workflow["outputs"]["labels"].clone();
+        workflow["context"] =
+            serde_json::json!({ "fields": { "a--b": { "type": "core:string" } } });
+        let report = validate_workflow_value_with_tools(&workflow, Some(&tools));
+        let mut paths: Vec<_> = report
+            .issues
+            .iter()
+            .filter(|issue| issue.code.as_deref() == Some("local-id-invalid"))
+            .filter_map(|issue| issue.path.as_deref())
+            .collect();
+        paths.sort_unstable();
+        assert_eq!(
+            paths,
+            [
+                "context.fields.a--b",
+                "inputs.Bad name",
+                "outputs.out-",
+                "steps.Bad id!",
+                "steps.__proto__"
+            ]
+        );
+        for id in ["subject", "dicom_dir", "outDir", "brain-mask", "t1"] {
+            assert!(valid_local_id(id), "{id}");
+        }
     }
 
     #[test]
