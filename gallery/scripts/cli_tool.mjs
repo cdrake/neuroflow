@@ -32,6 +32,10 @@
  *   homeEnv (optional)   variable the command needs pointing at its install root
  *                        (e.g. FREESURFER_HOME); when unset it becomes the parent
  *                        of the executable's directory
+ *   inputEnv (optional)  variable -> input name: set the variable to that input's
+ *                        value (a path is made absolute) for the probe and the
+ *                        command, e.g. FS_LICENSE from an optional license input;
+ *                        an input with no value leaves the ambient variable alone
  *   labelTable (optional) { output, lut }: write a label colour table beside that
  *                        output as <stem>.json ({R,G,B,A,I,labels}, the NiiVue
  *                        label-map form) from a FreeSurfer-format LUT; a relative
@@ -42,7 +46,7 @@
  */
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, isAbsolute, join } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   appendProvenance, checkInputsExist, failer, findExecutable, findToolDoc, hasValue, mapOutputs, readSession, runProbe,
@@ -74,6 +78,12 @@ const childEnv = { ...process.env };
 for (const name of template.clearEnv ?? []) delete childEnv[name];
 if (template.homeEnv && !childEnv[template.homeEnv]) childEnv[template.homeEnv] = dirname(dirname(exe));
 const installRoot = template.homeEnv ? childEnv[template.homeEnv] : dirname(dirname(exe));
+for (const [name, input] of Object.entries(template.inputEnv ?? {})) {
+  if (!hasValue(inputs, input)) continue;
+  const def = tool.inputs?.[input];
+  const isPath = def?.type === 'core:file' || def?.type === 'core:directory';
+  childEnv[name] = isPath ? resolve(String(inputs[input])) : String(inputs[input]);
+}
 
 // Probe the release before running.
 let version = null;
