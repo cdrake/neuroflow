@@ -23,6 +23,7 @@ if (a[0] === '--version') {
 }
 const fs = require('node:fs');
 for (let i = 0; i < a.length; i++) if (a[i] === '--out') fs.writeFileSync(a[i + 1], a.join(' '));
+if (a.includes('--home')) fs.writeFileSync(a[a.indexOf('--out') + 1], a.join(' ') + ' ' + process.env.FAKECLI_HOME);
 const e = a.indexOf('--exit'); process.exit(e >= 0 ? Number(a[e + 1]) : 0);
 `);
 chmodSync(fake, 0o755);
@@ -132,6 +133,20 @@ test('clears template-selected variables for both probing and execution', () => 
     if (previous === undefined) delete process.env.FAKECLI_BLOCKED;
     else process.env.FAKECLI_BLOCKED = previous;
   }
+});
+
+test('sets template variables from the executable directory', () => {
+  const r = run({ setEnv: { FAKECLI_HOME: '{{exeDir}}/..' }, probe: { args: ['--version'], match: '-allineate' }, args: ['--out', '{{outputDir}}/result.txt', '--home'], outputs: { result: 'result.txt' } }, {});
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(readFileSync(join(r.outputDir, 'result.txt'), 'utf8'), `--out ${join(r.outputDir, 'result.txt')} --home ${dirname(root)}`);
+});
+
+test('sets a variable from an input only when the input has a value', () => {
+  const cli = { setEnv: { FAKECLI_HOME: '{{lic}}' }, args: ['--out', '{{outputDir}}/result.txt', '--home'], outputs: { result: 'result.txt' } };
+  const r = run(cli, { lic: '/data/license.txt' });
+  assert.match(readFileSync(join(r.outputDir, 'result.txt'), 'utf8'), / --home \/data\/license\.txt$/);
+  const r2 = run(cli, { lic: null });
+  assert.match(readFileSync(join(r2.outputDir, 'result.txt'), 'utf8'), / --home undefined$/);
 });
 
 test('accepts a probe that prints a matching banner but exits non-zero (dcm2niix -v returns 3)', () => {

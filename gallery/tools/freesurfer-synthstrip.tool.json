@@ -1,0 +1,171 @@
+{
+  "$schema": "../../../neuroflow-spec/schemas/0.1/tool.schema.json",
+  "neuroflow": "0.1.0",
+  "kind": "tool",
+  "id": "neuroflow.gallery.tools/freesurfer-synthstrip",
+  "version": "0.1.0",
+  "description": "Skull-strip a brain image of any contrast or resolution with FreeSurfer's mri_synthstrip (SynthStrip, PyTorch on CPU) from a local FreeSurfer install (tested with dev 2024-03-27). Writes the brain-only image and a binary brain mask, both on the input grid.",
+  "inputs": {
+    "t1": {
+      "type": "neuro:volume",
+      "description": "Full-head brain image (any contrast), NIfTI."
+    },
+    "border": {
+      "type": "core:integer",
+      "description": "Mask border threshold in mm (SynthStrip's -b).",
+      "optional": true,
+      "default": 1
+    },
+    "threads": {
+      "type": "core:integer",
+      "description": "PyTorch CPU threads.",
+      "optional": true,
+      "default": 4
+    }
+  },
+  "outputs": {
+    "brain": {
+      "type": "neuro:volume",
+      "description": "Input image with everything outside the brain zeroed.",
+      "delivery": {
+        "mode": "core:result-dir",
+        "path": "brain.nii.gz"
+      }
+    },
+    "brain_mask": {
+      "type": "neuro:mask",
+      "description": "Binary brain mask on the input grid.",
+      "delivery": {
+        "mode": "core:result-dir",
+        "path": "brain_mask.nii.gz"
+      }
+    }
+  },
+  "outputDelivery": {
+    "default": "core:result-dir"
+  },
+  "extensions": {
+    "niivue/ui": {
+      "block": {
+        "id": "freesurfer-synthstrip",
+        "label": "SynthStrip (FreeSurfer)",
+        "description": "Skull-strip with FreeSurfer's mri_synthstrip.",
+        "category": "Processing",
+        "stage": "explore",
+        "exposedFields": [
+          "border",
+          "threads"
+        ]
+      }
+    },
+    "neuroflow/launch": {
+      "kind": "script",
+      "interpreter": "node",
+      "script": "../scripts/cli_tool.mjs",
+      "completion": "exit",
+      "interactive": false,
+      "contract": "../../docs/neuroflow-session-contract.md",
+      "requirements": [
+        "FreeSurfer 7.4 or a newer dev build (tested with dev 2024-03-27) (mri_synthstrip); FREESURFER_HOME is set from the executable found"
+      ],
+      "description": "Runs mri_synthstrip -i <t1> -o brain.nii.gz -m brain_mask.nii.gz -b <border> -t <threads> through the shared native CLI adapter."
+    },
+    "neuroflow/mcp": {
+      "title": "Brain extraction (FreeSurfer SynthStrip)",
+      "annotations": {
+        "idempotentHint": true
+      },
+      "maxWaitMs": 600000
+    },
+    "neuroflow/cli": {
+      "command": "mri_synthstrip",
+      "paths": [
+        "/Applications/freesurfer/*/bin/mri_synthstrip",
+        "/Applications/freesurfer/bin/mri_synthstrip",
+        "/usr/local/freesurfer/*/bin/mri_synthstrip",
+        "/usr/local/freesurfer/bin/mri_synthstrip"
+      ],
+      "env": "FREESURFER_SYNTHSTRIP",
+      "setEnv": {
+        "FREESURFER_HOME": "{{exeDir}}/.."
+      },
+      "probe": {
+        "args": [
+          "-h"
+        ],
+        "match": "--no-csf",
+        "advice": "Install FreeSurfer 7.4 or a newer dev build (tested with dev 2024-03-27) (https://surfer.nmr.mgh.harvard.edu/fswiki/DownloadAndInstall), or set FREESURFER_SYNTHSTRIP to its bin/mri_synthstrip."
+      },
+      "args": [
+        "-i",
+        "{{t1}}",
+        "-o",
+        "{{outputDir}}/brain.nii.gz",
+        "-m",
+        "{{outputDir}}/brain_mask.nii.gz",
+        "-b",
+        "{{border}}",
+        "-t",
+        "{{threads}}"
+      ],
+      "outputs": {
+        "brain": "brain.nii.gz",
+        "brain_mask": "brain_mask.nii.gz"
+      },
+      "source": "https://w3id.org/synthstrip (FreeSurfer mri_synthstrip)"
+    },
+    "neuroflow/usage": {
+      "useWhen": [
+        "Skull-strip a brain image of any contrast with FreeSurfer's SynthStrip on a machine that has FreeSurfer installed.",
+        "A next step needs a brain mask on the input grid, e.g. the brain-mask volume in label-volumes."
+      ],
+      "avoidWhen": [
+        {
+          "when": "FreeSurfer is not installed but the brainchop CLI is.",
+          "instead": "neuroflow.gallery.tools/mindgrab"
+        },
+        {
+          "when": "FreeSurfer is not installed but the Neurodesk Webapps suite is.",
+          "instead": "neurodesk.webapps/brain-extraction"
+        }
+      ],
+      "preconditions": [
+        "FreeSurfer 7.4 or a newer dev build (tested with dev 2024-03-27) under /Applications/freesurfer or /usr/local/freesurfer, on PATH, or via FREESURFER_SYNTHSTRIP.",
+        "t1 is a full-head image."
+      ],
+      "effects": [
+        "Writes brain.nii.gz and brain_mask.nii.gz to the output directory, both on the input grid."
+      ],
+      "examples": [
+        {
+          "title": "Skull-strip a T1",
+          "inputs": {
+            "t1": "<t1>"
+          }
+        }
+      ],
+      "failures": [
+        {
+          "match": {
+            "contains": "mri_synthstrip was not found"
+          },
+          "meaning": "No FreeSurfer install with mri_synthstrip was found.",
+          "remedy": "Install FreeSurfer 7.4 or a newer dev build (tested with dev 2024-03-27), or set FREESURFER_SYNTHSTRIP to its bin/mri_synthstrip.",
+          "retry": "after-fix"
+        },
+        {
+          "match": {
+            "contains": "mri_synthstrip exited with status"
+          },
+          "meaning": "SynthStrip failed on this image.",
+          "remedy": "Read the step log, and check that t1 is a readable image with neuroflow_inspect.",
+          "retry": "after-fix"
+        }
+      ],
+      "duration": {
+        "typicalSeconds": 180,
+        "basis": "One gallery run on an Apple-silicon Mac (FreeSurfer dev 2024-03-27, 8 threads, 1 mm T1, running beside SynthSeg): 177 s."
+      }
+    }
+  }
+}

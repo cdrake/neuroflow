@@ -1,0 +1,77 @@
+{
+  "$schema": "../../../neuroflow-spec/schemas/0.1/workflow.schema.json",
+  "neuroflow": "0.1.0",
+  "kind": "workflow",
+  "id": "neuroflow.gallery/freesurfer-recon-all",
+  "version": "0.1.0",
+  "description": "FreeSurfer batch processing of one T1-weighted scan: recon-all -all (surfaces, parcellations, subcortical segmentation; several hours), then the subject's aseg volumes as a table. Runs unattended on a workstation or compute node.",
+  "inputs": {
+    "t1": {
+      "type": "neuro:volume",
+      "description": "T1-weighted NIfTI image, about 1 mm."
+    },
+    "subject": {
+      "type": "core:string",
+      "description": "Subject id, e.g. sub-01."
+    },
+    "threads": {
+      "type": "core:integer",
+      "description": "OpenMP threads for recon-all.",
+      "optional": true,
+      "default": 4
+    },
+    "license": {
+      "type": "core:file",
+      "description": "FreeSurfer license.txt, when the install does not hold one.",
+      "optional": true
+    }
+  },
+  "steps": {
+    "recon": {
+      "tool": "neuroflow.gallery.tools/freesurfer-recon-all",
+      "stage": "explore",
+      "inputs": {
+        "t1": {
+          "ref": "inputs.t1"
+        },
+        "subject": {
+          "ref": "inputs.subject"
+        },
+        "threads": {
+          "ref": "inputs.threads"
+        },
+        "license": {
+          "ref": "inputs.license"
+        }
+      }
+    },
+    "aseg": {
+      "tool": "neuroflow.gallery.tools/freesurfer-asegstats",
+      "stage": "publish",
+      "inputs": {
+        "subjects_dir": {
+          "ref": "steps.recon.outputs.subjects_dir"
+        },
+        "subject": {
+          "ref": "inputs.subject"
+        }
+      }
+    }
+  },
+  "outputs": {
+    "subjects_dir": {
+      "type": "core:directory",
+      "ref": "steps.recon.outputs.subjects_dir"
+    },
+    "aseg": {
+      "type": "core:tabular",
+      "ref": "steps.aseg.outputs.aseg"
+    }
+  },
+  "extensions": {
+    "neuroflow/mcp": {
+      "title": "FreeSurfer recon-all and aseg volumes",
+      "maxWaitMs": 60000
+    }
+  }
+}

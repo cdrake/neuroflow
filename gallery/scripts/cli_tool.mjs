@@ -29,13 +29,16 @@
  *                        declared delivery.path.
  *   cwd (optional)       "outputDir" | "workDir" (default workDir)
  *   clearEnv (optional)  environment-variable names withheld from the command
+ *   setEnv (optional)    name -> path set for the probe and the command; {{exeDir}}
+ *                        is the found executable's directory (e.g. FREESURFER_HOME),
+ *                        {{input}} an input's value (skipped when it has none)
  *
  * Env: NEUROFLOW_SESSION / _OUTPUT_DIR / _WORK_DIR / _STEP (session contract),
  * plus the template's own override variable.
  */
 import { spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   appendProvenance, checkInputsExist, failer, findExecutable, findToolDoc, hasValue, mapOutputs, readSession, runProbe,
@@ -65,6 +68,14 @@ if (!exe) {
 // ambient environment of the runtime or other tools.
 const childEnv = { ...process.env };
 for (const name of template.clearEnv ?? []) delete childEnv[name];
+// Suites like FreeSurfer need their install root set; derive it from the executable
+// found so the environment always matches the binary that runs. A value naming an
+// input with no value is skipped, so the ambient variable (e.g. FS_LICENSE) stays.
+for (const [name, value] of Object.entries(template.setEnv ?? {})) {
+  const refs = [...value.matchAll(/\{\{([A-Za-z0-9_-]+)\}\}/g)].map((m) => m[1]).filter((r) => r !== 'exeDir');
+  if (refs.some((r) => !hasValue(inputs, r))) continue;
+  childEnv[name] = resolve(value.replace(/\{\{([A-Za-z0-9_-]+)\}\}/g, (_, r) => (r === 'exeDir' ? dirname(exe) : String(inputs[r]))));
+}
 
 // Probe the release before running.
 let version = null;

@@ -1,0 +1,199 @@
+{
+  "$schema": "../../../neuroflow-spec/schemas/0.1/tool.schema.json",
+  "neuroflow": "0.1.0",
+  "kind": "tool",
+  "id": "neuroflow.gallery.tools/freesurfer-synthseg",
+  "version": "0.1.0",
+  "description": "Segment a brain MRI of any contrast or resolution into the SynthSeg 2.0 FreeSurfer labels with FreeSurfer's mri_synthseg (TensorFlow on CPU) from a local FreeSurfer install (tested with dev 2024-03-27). The label map keeps the input geometry (--keepgeom), so it lines up with masks made on the input grid; SynthSeg's own volume table comes with it.",
+  "inputs": {
+    "t1": {
+      "type": "neuro:volume",
+      "description": "Brain MRI (any contrast), NIfTI."
+    },
+    "mode": {
+      "type": "core:string",
+      "description": "default: SynthSeg 2.0; fast: skip some processing; robust: slower, for clinical or low-quality scans.",
+      "optional": true,
+      "default": "default",
+      "enum": [
+        "default",
+        "fast",
+        "robust"
+      ]
+    },
+    "threads": {
+      "type": "core:integer",
+      "description": "CPU threads (mri_synthseg defaults to 1).",
+      "optional": true,
+      "default": 4
+    }
+  },
+  "outputs": {
+    "labels": {
+      "type": "neuro:label-map",
+      "description": "SynthSeg label map (FreeSurfer label ids) on the input grid.",
+      "delivery": {
+        "mode": "core:result-dir",
+        "path": "synthseg.nii.gz"
+      }
+    },
+    "volumes": {
+      "type": "core:tabular",
+      "description": "SynthSeg's per-structure volume table (mm3), as written by --vol.",
+      "delivery": {
+        "mode": "core:result-dir",
+        "path": "synthseg_volumes.csv"
+      }
+    }
+  },
+  "outputDelivery": {
+    "default": "core:result-dir"
+  },
+  "extensions": {
+    "niivue/ui": {
+      "block": {
+        "id": "freesurfer-synthseg",
+        "label": "SynthSeg (FreeSurfer)",
+        "description": "Contrast-agnostic whole-brain segmentation with mri_synthseg.",
+        "category": "Processing",
+        "stage": "explore",
+        "exposedFields": [
+          "mode",
+          "threads"
+        ]
+      }
+    },
+    "neuroflow/launch": {
+      "kind": "script",
+      "interpreter": "node",
+      "script": "../scripts/cli_tool.mjs",
+      "completion": "exit",
+      "interactive": false,
+      "contract": "../../docs/neuroflow-session-contract.md",
+      "requirements": [
+        "FreeSurfer 7.4 or a newer dev build (tested with dev 2024-03-27) (mri_synthseg); FREESURFER_HOME is set from the executable found"
+      ],
+      "description": "Runs mri_synthseg --i <t1> --o synthseg.nii.gz --vol synthseg_volumes.csv --keepgeom --cpu --threads <threads> [--fast|--robust] through the shared native CLI adapter."
+    },
+    "neuroflow/mcp": {
+      "title": "SynthSeg whole-brain segmentation (FreeSurfer)",
+      "annotations": {
+        "idempotentHint": true
+      },
+      "maxWaitMs": 1800000
+    },
+    "neuroflow/cli": {
+      "command": "mri_synthseg",
+      "paths": [
+        "/Applications/freesurfer/*/bin/mri_synthseg",
+        "/Applications/freesurfer/bin/mri_synthseg",
+        "/usr/local/freesurfer/*/bin/mri_synthseg",
+        "/usr/local/freesurfer/bin/mri_synthseg"
+      ],
+      "env": "FREESURFER_SYNTHSEG",
+      "setEnv": {
+        "FREESURFER_HOME": "{{exeDir}}/.."
+      },
+      "args": [
+        "--i",
+        "{{t1}}",
+        "--o",
+        "{{outputDir}}/synthseg.nii.gz",
+        "--vol",
+        "{{outputDir}}/synthseg_volumes.csv",
+        "--keepgeom",
+        "--cpu",
+        "--threads",
+        "{{threads}}",
+        {
+          "arg": "--fast",
+          "when": {
+            "mode": "fast"
+          }
+        },
+        {
+          "arg": "--robust",
+          "when": {
+            "mode": "robust"
+          }
+        }
+      ],
+      "outputs": {
+        "labels": "synthseg.nii.gz",
+        "volumes": "synthseg_volumes.csv"
+      },
+      "source": "https://surfer.nmr.mgh.harvard.edu/fswiki/SynthSeg (FreeSurfer mri_synthseg)"
+    },
+    "neuroflow/usage": {
+      "useWhen": [
+        "Segment a brain MRI of any contrast into the SynthSeg 2.0 FreeSurfer labels on a machine that has FreeSurfer installed.",
+        "A next step needs a label map on the input grid, e.g. per-structure volumes with label-volumes and a mask from the same scan."
+      ],
+      "avoidWhen": [
+        {
+          "when": "FreeSurfer is not installed but Neurodesk's synthseg CLI or Webapps suite is.",
+          "instead": "neurodesk.webapps/synthseg"
+        },
+        {
+          "when": "You only need a brain mask or a skull-stripped image.",
+          "instead": "neuroflow.gallery.tools/freesurfer-synthstrip"
+        }
+      ],
+      "preconditions": [
+        "FreeSurfer 7.4 or a newer dev build (tested with dev 2024-03-27) under /Applications/freesurfer or /usr/local/freesurfer, on PATH, or via FREESURFER_SYNTHSEG.",
+        "t1 is a full-head image."
+      ],
+      "effects": [
+        "Writes synthseg.nii.gz (input geometry) and synthseg_volumes.csv to the output directory.",
+        "mode robust is slower; mode fast skips some processing.",
+        "Runs on the CPU (--cpu); drop --cpu from the neuroflow/cli args on a GPU node."
+      ],
+      "examples": [
+        {
+          "title": "Segment a T1",
+          "inputs": {
+            "t1": "<t1>"
+          }
+        },
+        {
+          "title": "Robust mode for a clinical scan",
+          "inputs": {
+            "t1": "<t1>",
+            "mode": "robust",
+            "threads": 8
+          }
+        }
+      ],
+      "failures": [
+        {
+          "match": {
+            "contains": "mri_synthseg was not found"
+          },
+          "meaning": "No FreeSurfer install with mri_synthseg was found.",
+          "remedy": "Install FreeSurfer 7.4 or a newer dev build (tested with dev 2024-03-27), or set FREESURFER_SYNTHSEG to its bin/mri_synthseg.",
+          "retry": "after-fix"
+        },
+        {
+          "match": {
+            "contains": "unrecognized arguments"
+          },
+          "meaning": "This mri_synthseg is too old: it lacks --keepgeom or another flag the tool passes.",
+          "remedy": "Install a FreeSurfer whose mri_synthseg -h lists --keepgeom, or set FREESURFER_SYNTHSEG to one.",
+          "retry": "after-fix"
+        },
+        {
+          "match": {
+            "contains": "mri_synthseg exited with status"
+          },
+          "meaning": "SynthSeg failed on this image.",
+          "remedy": "Read the step log, and check that t1 is a readable image with neuroflow_inspect.",
+          "retry": "after-fix"
+        }
+      ],
+      "duration": {
+        "typicalSeconds": 45,
+        "basis": "One gallery run on an Apple-silicon Mac (FreeSurfer dev 2024-03-27, 8 threads, 1 mm T1, running beside SynthStrip): 44 s."
+      }
+    }
+  }
+}
