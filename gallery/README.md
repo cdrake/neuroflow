@@ -28,6 +28,10 @@ node gallery/validate.mjs        # or: npm run validate:gallery
 | `niimath-allineate.tool.json` | `…tools/niimath-allineate` | explore | script → native CLI | `registered`, `transform` (`neuro:transform`) |
 | `nifti-header-matlab.tool.json` | `…tools/nifti-header-matlab` | explore | script → MATLAB/Octave | `header` (JSON), `summary` (inline JSON) |
 | `dti-fit.tool.json` | `…tools/dti-fit` | explore | script → Python (DIPY) | `fa`, `md` (NIfTI), `summary` (inline JSON) |
+| `freesurfer-synthstrip.tool.json` | `…tools/freesurfer-synthstrip` | explore | script → native CLI (FreeSurfer) | `brain`, `brain_mask` |
+| `freesurfer-synthseg.tool.json` | `…tools/freesurfer-synthseg` | explore | script → native CLI (FreeSurfer) | `labels`, `volumes` (CSV) |
+| `freesurfer-recon-all.tool.json` | `…tools/freesurfer-recon-all` | explore | script → native CLI (FreeSurfer) | `subjects_dir` (directory) |
+| `freesurfer-asegstats.tool.json` | `…tools/freesurfer-asegstats` | publish | script → native CLI (FreeSurfer) | `aseg` (TSV) |
 
 The two **uiApp** tools (BIDSvue, NeuroVue) are interactive: a NeuroFlow runtime
 launches them with a session context and they block until the user finishes. The
@@ -72,6 +76,22 @@ volumes and an MNI-space brain with the lightNIIng tools (dcm2niix → mindgrab 
 niimath `-allineate` → SynthSeg → label volumes). It is the reference answer for
 `../demos/prompt-to-workflow`, where an agent composes the same pipeline from a
 prompt.
+
+`freesurfer-brain-volumes.neuroflow.json` is `brain-volumes` on a local
+FreeSurfer install instead of Neurodesk: `mri_synthstrip` and `mri_synthseg`
+(labels kept on the input grid with `--keepgeom`) → label volumes. Every step is
+a plain command, so it runs unattended over MCP or on a compute node. On an
+Apple-silicon Mac (FreeSurfer dev 2024-03-27, 8 threads, 1 mm T1) it took 3.7
+minutes, most of it SynthStrip on the CPU. SynthSeg runs with `--cpu`; drop it
+from the tool's `neuroflow/cli` args on a GPU node.
+
+`freesurfer-recon-all.neuroflow.json` is FreeSurfer batch processing:
+`recon-all -all -parallel` on one T1 (several hours), then the subject's aseg
+volumes as a TSV via `asegstats2table`. recon-all's step output directory is the
+SUBJECTS_DIR (delivery path `.`), holding one folder named by the `subject`
+input. FreeSurfer needs a license: in `$FREESURFER_HOME`, in `FS_LICENSE`, or as
+the optional `license` input (set as `FS_LICENSE` for that step; it must sit
+inside an allowed data root).
 
 `filter-qa.neuroflow.json` is fully headless (filter, then QA page), so the
 MCP server (`crates/neuroflow-mcp`) can run it end to end.

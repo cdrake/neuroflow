@@ -17,6 +17,10 @@ conversion, brain extraction and registration:
 | `gallery/tools/dcm2niix.tool.json` | `dcm2niix` | `dicom_dir`, `anonymize` | `volume` (`neuro:volume`), `sidecar` (`core:json`) |
 | `gallery/tools/mindgrab.tool.json` | `brainchop --skull-strip` | `t1`, `border` | `brain`, `brain_mask` |
 | `gallery/tools/niimath-allineate.tool.json` | `niimath -allineate` | `moving`, `template`, `cost`, `interpolation`, optional `weight` | `registered`, `transform` (`neuro:transform`) |
+| `gallery/tools/freesurfer-synthstrip.tool.json` | FreeSurfer `mri_synthstrip` | `t1`, `border`, `threads` | `brain`, `brain_mask` |
+| `gallery/tools/freesurfer-synthseg.tool.json` | FreeSurfer `mri_synthseg --keepgeom` | `t1`, `mode`, `threads` | `labels` (`neuro:label-map`), `volumes` (`core:tabular`) |
+| `gallery/tools/freesurfer-recon-all.tool.json` | FreeSurfer `recon-all -all -parallel` | `t1`, `subject`, `threads`, optional `license` | `subjects_dir` (`core:directory`) |
+| `gallery/tools/freesurfer-asegstats.tool.json` | FreeSurfer `asegstats2table` | `subjects_dir`, `subject` | `aseg` (`core:tabular`) |
 
 Together with the Neurodesk SynthSeg tool and `label-volumes`, they make up
 `gallery/workflows/dicom-t1-mni-volumes.neuroflow.json`: DICOM series → NIfTI →
@@ -69,7 +73,12 @@ SynthSeg itself.
   value. Array inputs join with commas.
 - **Environment.** `clearEnv` optionally lists ambient variables withheld from
   both the probe and command. Use it only for a known conflict in a trusted
-  tool, such as brainchop/tinygrad's numeric `DEBUG` setting.
+  tool, such as brainchop/tinygrad's numeric `DEBUG` setting. `setEnv` sets
+  variables for both, with `{{exeDir}}` standing for the found executable's
+  directory: the FreeSurfer tools set `FREESURFER_HOME` to `{{exeDir}}/..`, so
+  they run without sourcing FreeSurfer and always against the binary found. A
+  value may also name an input (`"FS_LICENSE": "{{license}}"`); it is skipped
+  when that input has no value, leaving the ambient variable in place.
 - **Outputs.** Each declared output maps to a file name the command writes in the
   output directory, or to `{ "match": regex, "pick": "first" | "largest" }` when
   the name is not known ahead (dcm2niix appends echo and series suffixes). The

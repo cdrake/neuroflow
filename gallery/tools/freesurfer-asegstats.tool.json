@@ -1,0 +1,139 @@
+{
+  "$schema": "../../../neuroflow-spec/schemas/0.1/tool.schema.json",
+  "neuroflow": "0.1.0",
+  "kind": "tool",
+  "id": "neuroflow.gallery.tools/freesurfer-asegstats",
+  "version": "0.1.0",
+  "description": "Tabulate a FreeSurfer subject's subcortical segmentation volumes (stats/aseg.stats) with asegstats2table: one row for the subject, one column per structure, in mm3.",
+  "inputs": {
+    "subjects_dir": {
+      "type": "core:directory",
+      "description": "FreeSurfer SUBJECTS_DIR, e.g. the recon-all output."
+    },
+    "subject": {
+      "type": "core:string",
+      "description": "Subject id under subjects_dir."
+    }
+  },
+  "outputs": {
+    "aseg": {
+      "type": "core:tabular",
+      "description": "Tab-separated aseg volumes (mm3), one row per subject.",
+      "delivery": {
+        "mode": "core:result-dir",
+        "path": "aseg.tsv"
+      }
+    }
+  },
+  "outputDelivery": {
+    "default": "core:result-dir"
+  },
+  "extensions": {
+    "niivue/ui": {
+      "block": {
+        "id": "freesurfer-asegstats",
+        "label": "aseg stats table (FreeSurfer)",
+        "description": "Subcortical volumes from a recon-all subject.",
+        "category": "Output",
+        "stage": "publish",
+        "exposedFields": []
+      }
+    },
+    "neuroflow/launch": {
+      "kind": "script",
+      "interpreter": "node",
+      "script": "../scripts/cli_tool.mjs",
+      "completion": "exit",
+      "interactive": false,
+      "contract": "../../docs/neuroflow-session-contract.md",
+      "requirements": [
+        "FreeSurfer 7 or newer (asegstats2table); FREESURFER_HOME is set from the executable found"
+      ],
+      "description": "Runs asegstats2table --sd <subjects_dir> --subjects <subject> --meas volume --delimiter tab --tablefile aseg.tsv through the shared native CLI adapter."
+    },
+    "neuroflow/mcp": {
+      "title": "aseg volume table (FreeSurfer asegstats2table)",
+      "annotations": {
+        "idempotentHint": true
+      },
+      "maxWaitMs": 120000
+    },
+    "neuroflow/cli": {
+      "command": "asegstats2table",
+      "paths": [
+        "/Applications/freesurfer/*/bin/asegstats2table",
+        "/Applications/freesurfer/bin/asegstats2table",
+        "/usr/local/freesurfer/*/bin/asegstats2table",
+        "/usr/local/freesurfer/bin/asegstats2table"
+      ],
+      "env": "FREESURFER_ASEGSTATS2TABLE",
+      "setEnv": {
+        "FREESURFER_HOME": "{{exeDir}}/.."
+      },
+      "args": [
+        "--sd",
+        "{{subjects_dir}}",
+        "--subjects",
+        "{{subject}}",
+        "--meas",
+        "volume",
+        "--delimiter",
+        "tab",
+        "--tablefile",
+        "{{outputDir}}/aseg.tsv"
+      ],
+      "outputs": {
+        "aseg": "aseg.tsv"
+      },
+      "source": "https://surfer.nmr.mgh.harvard.edu/fswiki/asegstats2table"
+    },
+    "neuroflow/usage": {
+      "useWhen": [
+        "Turn a finished recon-all subject's aseg.stats into a table of structure volumes."
+      ],
+      "avoidWhen": [
+        {
+          "when": "You have a label map rather than a recon-all subject.",
+          "instead": "neuroflow.gallery.tools/label-volumes"
+        }
+      ],
+      "preconditions": [
+        "subjects_dir/<subject>/stats/aseg.stats exists (recon-all finished)."
+      ],
+      "effects": [
+        "Writes aseg.tsv to the output directory."
+      ],
+      "duration": {
+        "typicalSeconds": 1,
+        "basis": "One run on FreeSurfer's bert sample subject on an Apple-silicon Mac: 0.5 s."
+      },
+      "examples": [
+        {
+          "title": "Tabulate one subject",
+          "inputs": {
+            "subjects_dir": "<subjects dir>",
+            "subject": "sub-01"
+          }
+        }
+      ],
+      "failures": [
+        {
+          "match": {
+            "contains": "asegstats2table was not found"
+          },
+          "meaning": "No FreeSurfer install with asegstats2table was found.",
+          "remedy": "Install FreeSurfer, or set FREESURFER_ASEGSTATS2TABLE to its bin/asegstats2table.",
+          "retry": "after-fix"
+        },
+        {
+          "match": {
+            "contains": "asegstats2table exited with status"
+          },
+          "meaning": "The subject has no readable stats/aseg.stats.",
+          "remedy": "Check that recon-all finished for this subject (scripts/recon-all.log ends with 'finished without error').",
+          "retry": "after-fix"
+        }
+      ]
+    }
+  }
+}

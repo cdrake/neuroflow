@@ -1,0 +1,160 @@
+{
+  "$schema": "../../../neuroflow-spec/schemas/0.1/tool.schema.json",
+  "neuroflow": "0.1.0",
+  "kind": "tool",
+  "id": "neuroflow.gallery.tools/freesurfer-recon-all",
+  "version": "0.1.0",
+  "description": "Run the full FreeSurfer cortical reconstruction (recon-all -all) on one T1-weighted scan: surfaces, cortical parcellations, subcortical segmentation and their stats. A batch job of several hours. The step's output directory is the SUBJECTS_DIR and holds one subject folder named by the subject input.",
+  "inputs": {
+    "t1": {
+      "type": "neuro:volume",
+      "description": "T1-weighted NIfTI image, about 1 mm."
+    },
+    "subject": {
+      "type": "core:string",
+      "description": "Subject id: the folder name under the SUBJECTS_DIR, e.g. sub-01."
+    },
+    "threads": {
+      "type": "core:integer",
+      "description": "OpenMP threads (-openmp); hemispheres also run in parallel (-parallel).",
+      "optional": true,
+      "default": 4
+    },
+    "license": {
+      "type": "core:file",
+      "description": "FreeSurfer license.txt, set as FS_LICENSE. Leave unset when the install or the environment already provides one.",
+      "optional": true
+    }
+  },
+  "outputs": {
+    "subjects_dir": {
+      "type": "core:directory",
+      "description": "FreeSurfer SUBJECTS_DIR holding <subject>/ (mri, surf, label, stats, scripts).",
+      "delivery": {
+        "mode": "core:result-dir",
+        "path": "."
+      }
+    }
+  },
+  "outputDelivery": {
+    "default": "core:result-dir"
+  },
+  "extensions": {
+    "niivue/ui": {
+      "block": {
+        "id": "freesurfer-recon-all",
+        "label": "recon-all (FreeSurfer)",
+        "description": "Full cortical reconstruction; several hours.",
+        "category": "Processing",
+        "stage": "explore",
+        "exposedFields": [
+          "subject",
+          "threads"
+        ]
+      }
+    },
+    "neuroflow/launch": {
+      "kind": "script",
+      "interpreter": "node",
+      "script": "../scripts/cli_tool.mjs",
+      "completion": "exit",
+      "interactive": false,
+      "contract": "../../docs/neuroflow-session-contract.md",
+      "requirements": [
+        "FreeSurfer 7 or newer with a license (FREESURFER_HOME/license.txt, FS_LICENSE, or the license input); FREESURFER_HOME is set from the executable found"
+      ],
+      "description": "Runs recon-all -i <t1> -s <subject> -sd <output dir> -all -parallel -openmp <threads> through the shared native CLI adapter."
+    },
+    "neuroflow/mcp": {
+      "title": "Cortical reconstruction (FreeSurfer recon-all)",
+      "maxWaitMs": 60000
+    },
+    "neuroflow/cli": {
+      "command": "recon-all",
+      "paths": [
+        "/Applications/freesurfer/*/bin/recon-all",
+        "/Applications/freesurfer/bin/recon-all",
+        "/usr/local/freesurfer/*/bin/recon-all",
+        "/usr/local/freesurfer/bin/recon-all"
+      ],
+      "env": "FREESURFER_RECON_ALL",
+      "setEnv": {
+        "FREESURFER_HOME": "{{exeDir}}/..",
+        "FS_LICENSE": "{{license}}"
+      },
+      "probe": {
+        "args": [
+          "-version"
+        ],
+        "match": "freesurfer",
+        "version": "freesurfer-[^\\s]+",
+        "advice": "Install FreeSurfer 7 or newer (https://surfer.nmr.mgh.harvard.edu/fswiki/DownloadAndInstall), or set FREESURFER_RECON_ALL to its bin/recon-all."
+      },
+      "args": [
+        "-i",
+        "{{t1}}",
+        "-s",
+        "{{subject}}",
+        "-sd",
+        "{{outputDir}}",
+        "-all",
+        "-parallel",
+        "-openmp",
+        "{{threads}}"
+      ],
+      "outputs": {
+        "subjects_dir": "."
+      },
+      "source": "https://surfer.nmr.mgh.harvard.edu/fswiki/recon-all"
+    },
+    "neuroflow/usage": {
+      "useWhen": [
+        "Get FreeSurfer surfaces, cortical thickness and parcellations, and aseg/aparc stats for one T1-weighted scan.",
+        "Unattended batch processing on a workstation or compute node, where a run of several hours is acceptable."
+      ],
+      "avoidWhen": [
+        {
+          "when": "You only need subcortical structure volumes in minutes.",
+          "instead": "neuroflow.gallery.tools/freesurfer-synthseg"
+        }
+      ],
+      "preconditions": [
+        "FreeSurfer 7 or newer under /Applications/freesurfer or /usr/local/freesurfer, on PATH, or via FREESURFER_RECON_ALL.",
+        "A FreeSurfer license: in FREESURFER_HOME, in FS_LICENSE, or given as the license input.",
+        "t1 is a T1-weighted image of about 1 mm."
+      ],
+      "effects": [
+        "Writes <output dir>/<subject>/ with mri, surf, label, stats and scripts (recon-all.log), and an fsaverage link in the output dir."
+      ],
+      "examples": [
+        {
+          "title": "Reconstruct one subject",
+          "inputs": {
+            "t1": "<t1>",
+            "subject": "sub-01",
+            "threads": 8,
+            "license": "<license.txt>"
+          }
+        }
+      ],
+      "failures": [
+        {
+          "match": {
+            "contains": "recon-all was not found"
+          },
+          "meaning": "No FreeSurfer install with recon-all was found.",
+          "remedy": "Install FreeSurfer, or set FREESURFER_RECON_ALL to its bin/recon-all.",
+          "retry": "after-fix"
+        },
+        {
+          "match": {
+            "contains": "recon-all exited with status"
+          },
+          "meaning": "recon-all stopped on an error.",
+          "remedy": "Read <output dir>/<subject>/scripts/recon-all.log; a license error means set the license input.",
+          "retry": "after-fix"
+        }
+      ]
+    }
+  }
+}
