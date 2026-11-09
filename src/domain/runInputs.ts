@@ -2,10 +2,15 @@ import type { ParameterDef, WorkflowDocument } from './neuroflow'
 
 type Locked = Record<string, string> | undefined
 
+export function isLocked(locked: Locked, name: string): boolean {
+  return locked !== undefined && name in locked
+}
+
 /** `initial` wins over stored values for the keys it sets; non-strings are JSON-stringified. */
 export function seedValues(stored: Record<string, string>, initial?: Record<string, unknown>): Record<string, string> {
   const out = { ...stored }
   for (const [key, value] of Object.entries(initial ?? {})) {
+    if (value == null) continue
     out[key] = typeof value === 'string' ? value : JSON.stringify(value)
   }
   return out
@@ -13,14 +18,14 @@ export function seedValues(stored: Record<string, string>, initial?: Record<stri
 
 export function missingInputs(workflow: WorkflowDocument, values: Record<string, string>, locked?: Locked): string[] {
   return Object.entries(workflow.inputs)
-    .filter(([name, def]) => !locked?.[name] && def.optional !== true && def.default === undefined && !values[name]?.trim())
+    .filter(([name, def]) => !isLocked(locked, name) && def.optional !== true && def.default === undefined && !values[name]?.trim())
     .map(([name]) => name)
 }
 
 export function buildPayload(workflow: WorkflowDocument, values: Record<string, string>, locked?: Locked): Record<string, unknown> {
   const payload: Record<string, unknown> = {}
   for (const [name, def] of Object.entries(workflow.inputs)) {
-    if (locked && name in locked) continue
+    if (isLocked(locked, name)) continue
     const raw = values[name]
     if (raw === undefined || raw.trim() === '') continue
     payload[name] = coerce(raw, def)

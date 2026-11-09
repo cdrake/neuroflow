@@ -3,6 +3,10 @@ import { idTail } from './neuroflow'
 
 /** One-step workflow around a tool document: inputs bound by ref, every output exposed. */
 export function wrapToolAsWorkflow(toolDoc: unknown): WorkflowDocument {
+  const doc = toolDoc as { id?: unknown; kind?: unknown } | null
+  if (typeof doc !== 'object' || doc === null || typeof doc.id !== 'string' || (doc.kind !== undefined && doc.kind !== 'tool')) {
+    throw new Error('wrapToolAsWorkflow: expected a tool document with a string id')
+  }
   const tool = toolDoc as {
     neuroflow?: string
     id: string

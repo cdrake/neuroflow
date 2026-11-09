@@ -16,7 +16,7 @@ import type { ParameterDef, ValidationReport, WorkflowDocument } from '../domain
 import { idTail, shortType } from '../domain/neuroflow'
 import type { RunFinishedEvent, RunStepRecord } from '../domain/runTypes'
 import { isArtifactDescriptor } from '../domain/runTypes'
-import { buildPayload, missingInputs, seedValues } from '../domain/runInputs'
+import { buildPayload, isLocked, missingInputs, seedValues } from '../domain/runInputs'
 
 export type HostRunStatus = 'starting' | 'running' | 'completed' | 'failed' | 'cancelled' | 'rejected'
 
@@ -104,13 +104,13 @@ export function RunPanel({ workflow, available, report, runnable, environmentChe
 
       {inputs.length > 0 && (
         <div className="nf-run-inputs">
-          {inputs.map(([name, def]) => lockedInputs?.[name] !== undefined ? (
+          {inputs.map(([name, def]) => isLocked(lockedInputs, name) ? (
             <div className="nf-field" key={name}>
               <span>
                 {name}
                 <code>{shortType(def.type)}</code>
               </span>
-              <em className="nf-run-locked">{lockedInputs[name]}</em>
+              <em className="nf-run-locked">{lockedInputs?.[name]}</em>
             </div>
           ) : (
             <label className="nf-field" key={name}>

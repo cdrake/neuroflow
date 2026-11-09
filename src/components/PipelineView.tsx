@@ -1,5 +1,5 @@
 import type React from 'react'
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import type { ToolDefinition, WorkflowDocument, WorkflowLibraryItem } from '../domain/neuroflow'
 import type { NodePositionMap } from '../domain/graph'
 import { RunPanel, type HostRunState } from './RunPanel'
@@ -33,6 +33,11 @@ export function PipelineView(props: PipelineViewProps): React.JSX.Element {
   const { workflow } = props
   const [positions, setPositions] = useState<NodePositionMap>({})
   const [selectedStep, setSelectedStep] = useState<string | null>(null)
+
+  useEffect(() => {
+    setPositions({})
+    setSelectedStep(null)
+  }, [workflow?.id])
 
   return (
     <div className="nf-root nf-pipeline-view">

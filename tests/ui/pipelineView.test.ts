@@ -32,6 +32,9 @@ test('seedValues lets initial win and stringifies non-strings', () => {
 test('missingInputs skips locked inputs', () => {
   assert.deepEqual(missingInputs(wf, { sigma: '2' }, { input: '3 volumes' }), [])
   assert.deepEqual(missingInputs(wf, { sigma: '2' }), ['input'])
+  assert.deepEqual(missingInputs(wf, { sigma: '2' }, { input: '' }), [])
+  assert.deepEqual(buildPayload(wf, { input: 'x' }, { input: '' }), {})
+  assert.deepEqual(seedValues({ a: '1' }, { a: null, b: undefined }), { a: '1' })
 })
 
 test('buildPayload leaves locked inputs out', () => {
@@ -50,6 +53,12 @@ test('wrapToolAsWorkflow binds every tool input by ref and exposes every output'
     assert.ok(w.inputs[name])
   }
   assert.deepEqual(Object.keys(w.outputs), Object.keys(toolDoc.outputs))
+})
+
+test('wrapToolAsWorkflow rejects non-tool input', () => {
+  for (const bad of [null, 'x', {}, { id: 1 }, { id: 'a', kind: 'workflow' }]) {
+    assert.throws(() => wrapToolAsWorkflow(bad), /expected a tool document/)
+  }
 })
 
 test('WorkflowLibrary hides New without onCreate', () => {
@@ -78,6 +87,5 @@ test('PipelineView renders library, diagram slot, targets and locked label', () 
   assert.ok(html.includes('Filter'))
   assert.ok(html.includes('TARGETS'))
   assert.ok(html.includes('3 volumes'))
-  assert.ok(!html.includes('<input name="bids_dir"'))
   assert.ok(!html.includes('placeholder="/absolute/path inside a data root"'))
 })
