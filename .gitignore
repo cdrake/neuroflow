@@ -25,3 +25,4 @@ demos/crlab-ingest/launch.log
 
 packages/neuroflow-react/dist
 packages/neuroflow-react/test/consumer/node_modules
+*.tgz

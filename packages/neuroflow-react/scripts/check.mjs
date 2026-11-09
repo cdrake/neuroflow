@@ -13,7 +13,7 @@ const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
   e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)])
 
 if (!existsSync(dist)) fail('dist/ is missing (run npm run lib:build)')
-for (const f of ['index.js', 'index.d.ts', 'style.css']) {
+for (const f of ['index.js', 'lib.d.ts', 'style.css']) {
   if (!existsSync(join(dist, f))) fail(`dist/${f} is missing`)
 }
 const files = walk(dist)
@@ -23,18 +23,20 @@ for (const f of files) {
 }
 
 const tmp = mkdtempSync(join(tmpdir(), 'nf-check-'))
+let failure = null
 const run = (cmd, args, cwd) => execFileSync(cmd, args, { cwd, stdio: 'inherit' })
 try {
   const out = execFileSync('npm', ['pack', '--pack-destination', tmp, '--json'], { cwd: pkg }).toString()
-  const tgz = join(tmp, JSON.parse(out)[0].filename.replace(/^@/, '').replace('/', '-'))
+  const tgz = join(tmp, JSON.parse(out)[0].filename)
   const consumer = join(tmp, 'consumer')
   cpSync(join(pkg, 'test/consumer'), consumer, { recursive: true, filter: (s) => !s.includes('node_modules') })
   run('npm', ['install', '--no-audit', '--no-fund', tgz], consumer)
   run('npx', ['tsc', '--noEmit'], consumer)
   run('npx', ['vite', 'build'], consumer)
 } catch (e) {
-  fail(e.message)
+  failure = e.message
 } finally {
   rmSync(tmp, { recursive: true, force: true })
 }
+if (failure) fail(failure)
 console.log('lib:check OK')

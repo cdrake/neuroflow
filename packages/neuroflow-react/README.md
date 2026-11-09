@@ -58,3 +58,5 @@ The host owns the process and keeps one `HostRunState` per run:
 
 `neuroflow-mcp` exposes no `run.json` resource, so the host reads `<sessions>/<runId>/run.json` itself.
 Types (`RunFinishedEvent`, `RunRecord`, ...) are exported from the package.
+
+`npm run lib:check` needs network access (it installs the packed tarball and its peers from npm).
