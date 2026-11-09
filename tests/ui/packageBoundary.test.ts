@@ -11,7 +11,7 @@ test('runTypes.ts exists and is free of Tauri imports', () => {
   assert.ok(!readFileSync(src('domain/runTypes.ts'), 'utf8').includes('@tauri-apps'))
 })
 
-for (const file of ['components/PipelineView.tsx', 'domain/runInputs.ts', 'domain/wrapTool.ts', 'components/RunPanel.tsx', 'components/WorkflowDiagram.tsx', 'components/WorkflowLibrary.tsx', 'domain/graph.ts']) {
+for (const file of ['components/PipelineView.tsx', 'domain/runInputs.ts', 'domain/wrapTool.ts', 'components/RunPanel.tsx', 'components/WorkflowDiagram.tsx', 'components/WorkflowLibrary.tsx', 'domain/graph.ts', 'lib.ts']) {
   test(`${file} has no host/gallery/global-JSX leaks`, () => {
     const text = readFileSync(src(file), 'utf8')
     for (const banned of ["from '../domain/host'", "from './host'", "from '../data/gallery'"]) {

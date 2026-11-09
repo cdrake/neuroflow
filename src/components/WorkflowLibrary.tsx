@@ -2,7 +2,7 @@ import type React from 'react'
 import { Database, Plus, Workflow } from 'lucide-react'
 import type { WorkflowLibraryItem } from '../domain/neuroflow'
 
-interface WorkflowLibraryProps {
+export interface WorkflowLibraryProps {
   items: WorkflowLibraryItem[]
   activeId: string
   onSelect: (id: string) => void

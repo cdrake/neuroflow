@@ -33,7 +33,7 @@ export interface HostRunState {
   error: string | null
 }
 
-interface RunPanelProps {
+export interface RunPanelProps {
   workflow: WorkflowDocument
   available: boolean
   report: ValidationReport

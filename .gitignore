@@ -22,3 +22,6 @@ Claude outputs/
 # crlab-ingest demo deck output and launch log
 demos/crlab-ingest/slides.html
 demos/crlab-ingest/launch.log
+
+packages/neuroflow-react/dist
+packages/neuroflow-react/test/consumer/node_modules

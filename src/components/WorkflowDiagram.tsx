@@ -32,7 +32,7 @@ import type { ToolDefinition, WorkflowDocument } from '../domain/neuroflow'
 import type { ToolStatus } from '../domain/runTypes'
 import { shortType } from '../domain/neuroflow'
 
-interface WorkflowDiagramProps {
+export interface WorkflowDiagramProps {
   workflow: WorkflowDocument
   tools: Map<string, ToolDefinition>
   selectedStep: string | null
