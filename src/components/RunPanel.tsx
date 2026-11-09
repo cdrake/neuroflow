@@ -1,3 +1,4 @@
+import type React from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import {
   AlertTriangle,
@@ -12,10 +13,9 @@ import {
   XCircle
 } from 'lucide-react'
 import type { ParameterDef, ValidationReport, WorkflowDocument } from '../domain/neuroflow'
-import { shortType } from '../domain/neuroflow'
-import type { RunFinishedEvent, RunStepRecord } from '../domain/host'
-import { isArtifactDescriptor } from '../domain/host'
-import { idTail } from '../data/gallery'
+import { idTail, shortType } from '../domain/neuroflow'
+import type { RunFinishedEvent, RunStepRecord } from '../domain/runTypes'
+import { isArtifactDescriptor } from '../domain/runTypes'
 
 export type HostRunStatus = 'starting' | 'running' | 'completed' | 'failed' | 'cancelled' | 'rejected'
 
@@ -48,7 +48,7 @@ interface RunPanelProps {
 const RUN_INPUTS_STORAGE_KEY = 'neuroflow.runInputs.v1'
 
 /** Run monitor (design: RunMonitor artboard): inputs form, progress, steps, outputs. */
-export function RunPanel({ workflow, available, report, runnable, environmentChecked, run, onStart, onCancel, onOpen }: RunPanelProps): JSX.Element {
+export function RunPanel({ workflow, available, report, runnable, environmentChecked, run, onStart, onCancel, onOpen }: RunPanelProps): React.JSX.Element {
   const [values, setValues] = useState<Record<string, string>>(() => loadInputs(workflow))
 
   useEffect(() => {
@@ -229,7 +229,7 @@ export function RunPanel({ workflow, available, report, runnable, environmentChe
   )
 }
 
-function OutputRow({ name, value, onOpen }: { name: string; value: unknown; onOpen: (path: string) => void }): JSX.Element {
+function OutputRow({ name, value, onOpen }: { name: string; value: unknown; onOpen: (path: string) => void }): React.JSX.Element {
   const items = Array.isArray(value) ? value : [value]
   return (
     <li className="nf-env-item">
@@ -299,7 +299,7 @@ function stateClass(status: HostRunStatus): string {
   return ''
 }
 
-function stateIcon(status: HostRunStatus): JSX.Element {
+function stateIcon(status: HostRunStatus): React.JSX.Element {
   if (status === 'starting' || status === 'running') return <Loader2 className="nf-spin" size={14} />
   if (status === 'completed') return <CheckCircle2 size={14} />
   if (status === 'rejected') return <Ban size={14} />
@@ -324,7 +324,7 @@ function stateLabel(run: HostRunState): string {
   }
 }
 
-function stepIcon(status: StepRow['status']): JSX.Element {
+function stepIcon(status: StepRow['status']): React.JSX.Element {
   switch (status) {
     case 'running':
       return <Loader2 className="nf-spin" size={14} />

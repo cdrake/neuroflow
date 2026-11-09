@@ -1,3 +1,4 @@
+import type React from 'react'
 import { Database, Plus, Workflow } from 'lucide-react'
 import type { WorkflowLibraryItem } from '../domain/neuroflow'
 
@@ -13,7 +14,7 @@ export function WorkflowLibrary({
   activeId,
   onSelect,
   onCreate
-}: WorkflowLibraryProps): JSX.Element {
+}: WorkflowLibraryProps): React.JSX.Element {
   return (
     <section className="nf-panel">
       <header className="nf-panel-header">

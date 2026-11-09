@@ -1,3 +1,4 @@
+import type React from 'react'
 // Port of the NiiVue Desktop workflow diagram concepts:
 // source pools for inputs/context, one node per step, handles for each
 // typed input/output, visible edges for refs, and inline badges for constants.
@@ -28,7 +29,7 @@ import {
   type StepNodeData
 } from '../domain/graph'
 import type { ToolDefinition, WorkflowDocument } from '../domain/neuroflow'
-import type { ToolStatus } from '../domain/host'
+import type { ToolStatus } from '../domain/runTypes'
 import { shortType } from '../domain/neuroflow'
 
 interface WorkflowDiagramProps {
@@ -64,7 +65,7 @@ export function WorkflowDiagram({
   onBindInput,
   onMoveNode,
   onAddTool
-}: WorkflowDiagramProps): JSX.Element {
+}: WorkflowDiagramProps): React.JSX.Element {
   const graph = useMemo(
     () => buildWorkflowGraph(workflow, tools, selectedStep, onSelectStep, nodePositions, toolStatuses),
     [workflow, tools, selectedStep, onSelectStep, nodePositions, toolStatuses]
@@ -102,7 +103,7 @@ function WorkflowDiagramCanvas({
   onBindInput: (stepId: string, inputName: string, ref: string) => void
   onMoveNode: (nodeId: string, position: XYPosition) => void
   onAddTool: (toolId: string, blockId: string | undefined, position: XYPosition) => void
-}): JSX.Element {
+}): React.JSX.Element {
   const [nodes, setNodes, onNodesChange] = useNodesState(graphNodes)
   const { screenToFlowPosition } = useReactFlow()
   const hasSteps = graphNodes.some((node) => node.type === 'step')
@@ -212,7 +213,7 @@ function targetForInput(
   }
 }
 
-function SourcePoolNode({ data }: NodeProps): JSX.Element {
+function SourcePoolNode({ data }: NodeProps): React.JSX.Element {
   const source = data as SourceNodeData
   const isInput = source.title === 'Inputs'
   return (
@@ -240,7 +241,7 @@ function SourcePoolNode({ data }: NodeProps): JSX.Element {
   )
 }
 
-function StepNode({ data }: NodeProps): JSX.Element {
+function StepNode({ data }: NodeProps): React.JSX.Element {
   const step = data as StepNodeData
   return (
     <div

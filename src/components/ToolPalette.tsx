@@ -18,7 +18,7 @@ import { categoryColor } from '../domain/registry'
 import type { BlockCategory, ToolDefinition, WorkflowDocument, WorkflowStage } from '../domain/neuroflow'
 import { BLOCK_CATEGORIES, shortType, WORKFLOW_STAGES } from '../domain/neuroflow'
 import { isTypeCompatible } from '../domain/typeCompatibility'
-import type { ToolStatus } from '../domain/host'
+import type { ToolStatus } from '../domain/runTypes'
 import { resolveToolDefinition } from '../domain/registry'
 
 const PROVIDER_ICONS: Record<ToolProviderKind, typeof Wrench> = {
@@ -60,7 +60,7 @@ export function ToolPalette({
   toolStatuses,
   environmentChecked,
   onAddTool
-}: ToolPaletteProps): JSX.Element {
+}: ToolPaletteProps): React.JSX.Element {
   const [search, setSearch] = useState('')
   const [stage, setStage] = useState<WorkflowStage | 'all'>('all')
   const [collapsed, setCollapsed] = useState<Set<BlockCategory>>(() => new Set())
@@ -178,7 +178,7 @@ function PaletteBlock({
   badge: FitBadge | null
   status: ToolStatus | undefined
   onAddTool: (toolId: string, blockId?: string) => void
-}): JSX.Element {
+}): React.JSX.Element {
   const ProviderIcon = PROVIDER_ICONS[entry.provider.kind] ?? Wrench
   const color = categoryColor(entry.category)
   const title = status?.status === 'needsSetup' && status.fix
