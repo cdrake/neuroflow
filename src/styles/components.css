@@ -1,5 +1,6 @@
 /* Component tokens, scoped to .nf-root. Copied from bidsui.css so the package works
- * without it; the host app may override any of them on or above .nf-root. */
+ * without it. Values set on an ancestor are shadowed by these; to override, set them on
+ * .nf-root itself with a more specific selector, e.g. `.host-app .nf-root { --accent: ... }`. */
 .nf-root {
   --accent: var(--selection-bg);
   --accent-hover: var(--selection-bg-hover);
