@@ -651,7 +651,7 @@ export function App(): JSX.Element {
   const canExecute = report.ok && stepCount > 0 && !isExecuting
 
   return (
-    <main className="nf-shell">
+    <main className="nf-shell nf-root">
       <header className="nf-topbar">
         <div className="nf-brand">
           <div className="nf-brand-mark">
