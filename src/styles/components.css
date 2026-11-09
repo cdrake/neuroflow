@@ -971,3 +971,26 @@
   font-size: 10.5px;
   overflow-wrap: anywhere;
 }
+
+.nf-root .nf-pipeline-view {
+  display: grid;
+  grid-template-columns: minmax(200px, 260px) minmax(0, 1fr) minmax(280px, 360px);
+  gap: 12px;
+  align-items: start;
+}
+
+.nf-root .nf-pipeline-side {
+  display: grid;
+  gap: 12px;
+}
+
+.nf-root .nf-run-locked {
+  font-style: normal;
+  color: var(--nf-muted);
+}
+
+@media (max-width: 900px) {
+  .nf-root .nf-pipeline-view {
+    grid-template-columns: 1fr;
+  }
+}
