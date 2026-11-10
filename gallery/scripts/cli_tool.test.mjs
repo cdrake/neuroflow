@@ -23,6 +23,7 @@ if (a[0] === '--version') {
 }
 const fs = require('node:fs');
 for (let i = 0; i < a.length; i++) if (a[i] === '--out') fs.writeFileSync(a[i + 1], a.join(' '));
+const v = a.indexOf('--env'); if (v >= 0) fs.writeFileSync(a[v + 2], String(process.env[a[v + 1]]));
 const e = a.indexOf('--exit'); process.exit(e >= 0 ? Number(a[e + 1]) : 0);
 `);
 chmodSync(fake, 0o755);
@@ -132,6 +133,33 @@ test('clears template-selected variables for both probing and execution', () => 
     if (previous === undefined) delete process.env.FAKECLI_BLOCKED;
     else process.env.FAKECLI_BLOCKED = previous;
   }
+});
+
+test('homeEnv points an unset variable at the install root, and keeps a set one', () => {
+  const previous = process.env.FAKECLI_HOME;
+  delete process.env.FAKECLI_HOME;
+  try {
+    const cli = { homeEnv: 'FAKECLI_HOME', args: ['--env', 'FAKECLI_HOME', '{{outputDir}}/result.txt'], outputs: { result: 'result.txt' } };
+    const derived = run(cli, {});
+    assert.equal(derived.status, 0, derived.stderr);
+    assert.equal(readFileSync(join(derived.outputDir, 'result.txt'), 'utf8'), dirname(root));
+    process.env.FAKECLI_HOME = '/opt/kept';
+    const kept = run(cli, {});
+    assert.equal(readFileSync(join(kept.outputDir, 'result.txt'), 'utf8'), '/opt/kept');
+  } finally {
+    if (previous === undefined) delete process.env.FAKECLI_HOME;
+    else process.env.FAKECLI_HOME = previous;
+  }
+});
+
+test('labelTable writes a NiiVue colour table beside the label map', () => {
+  const lut = join(root, 'lut.txt');
+  writeFileSync(lut, '#No. Label R G B A\n0   Unknown  0 0 0 0\n\n17  Left-Hippocampus  220 216 20 0\n');
+  const r = run({ labelTable: { output: 'result', lut }, args: ['--out', '{{outputDir}}/result.txt'], outputs: { result: 'result.txt' } }, {},
+    { tool: { ...baseTool, outputs: { result: { type: 'neuro:label-map', delivery: { mode: 'core:result-dir', path: 'seg.nii.gz' } } } } });
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(JSON.parse(readFileSync(join(r.outputDir, 'seg.json'), 'utf8')),
+    { R: [0, 220], G: [0, 216], B: [0, 20], A: [0, 255], I: [0, 17], labels: ['Unknown', 'Left-Hippocampus'] });
 });
 
 test('accepts a probe that prints a matching banner but exits non-zero (dcm2niix -v returns 3)', () => {

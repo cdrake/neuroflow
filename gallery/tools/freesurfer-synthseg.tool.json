@@ -1,0 +1,196 @@
+{
+  "$schema": "../../../neuroflow-spec/schemas/0.1/tool.schema.json",
+  "neuroflow": "0.1.0",
+  "kind": "tool",
+  "id": "neuroflow.gallery.tools/freesurfer-synthseg",
+  "version": "0.1.0",
+  "description": "Segment a brain MRI of any contrast or resolution with FreeSurfer's SynthSeg (mri_synthseg): subcortical structures and, with parc, the Desikan-Killiany cortical parcels, as a FreeSurfer label map resampled to 1 mm, plus a CSV of structure volumes.",
+  "inputs": {
+    "t1": {
+      "type": "neuro:volume",
+      "description": "Brain MRI, any contrast or resolution; full head or skull-stripped."
+    },
+    "parc": {
+      "type": "core:boolean",
+      "description": "Also parcellate the cortex (Desikan-Killiany).",
+      "optional": true,
+      "default": true
+    },
+    "robust": {
+      "type": "core:boolean",
+      "description": "Use the robust model (for clinical or low-quality scans; slower).",
+      "optional": true,
+      "default": false
+    },
+    "threads": {
+      "type": "core:integer",
+      "description": "CPU threads (0 = all cores).",
+      "optional": true,
+      "default": 0
+    }
+  },
+  "outputs": {
+    "labels": {
+      "type": "neuro:label-map",
+      "description": "SynthSeg label map (FreeSurfer label ids), with its FreeSurferColorLUT colour table beside it as synthseg.json.",
+      "delivery": {
+        "mode": "core:result-dir",
+        "path": "synthseg.nii.gz"
+      }
+    },
+    "volumes": {
+      "type": "core:tabular",
+      "description": "Volume of each structure in mm³ (CSV).",
+      "delivery": {
+        "mode": "core:result-dir",
+        "path": "volumes.csv"
+      }
+    }
+  },
+  "outputDelivery": {
+    "default": "core:result-dir"
+  },
+  "extensions": {
+    "niivue/ui": {
+      "block": {
+        "id": "freesurfer-synthseg",
+        "label": "Segmentation (SynthSeg)",
+        "description": "Whole-brain segmentation with FreeSurfer SynthSeg.",
+        "category": "Processing",
+        "stage": "explore",
+        "exposedFields": [
+          "parc",
+          "robust"
+        ]
+      }
+    },
+    "neuroflow/launch": {
+      "kind": "script",
+      "interpreter": "node",
+      "script": "../scripts/cli_tool.mjs",
+      "completion": "exit",
+      "interactive": false,
+      "contract": "../../docs/neuroflow-session-contract.md",
+      "requirements": [
+        "FreeSurfer 7.3 or newer (no license needed for this tool); under /Applications/freesurfer/*, /usr/local/freesurfer*, or FREESURFER_HOME"
+      ],
+      "description": "Runs mri_synthseg --i <t1> --o synthseg.nii.gz --vol volumes.csv [--parc] [--robust] --threads <threads> through the shared native CLI adapter."
+    },
+    "neuroflow/mcp": {
+      "title": "Whole-brain segmentation (FreeSurfer SynthSeg)",
+      "annotations": {
+        "idempotentHint": true
+      },
+      "maxWaitMs": 900000
+    },
+    "neuroflow/cli": {
+      "command": "mri_synthseg",
+      "paths": [
+        "/Applications/freesurfer/*/bin/mri_synthseg",
+        "/usr/local/freesurfer/*/bin/mri_synthseg",
+        "/usr/local/freesurfer/bin/mri_synthseg",
+        "~/freesurfer/bin/mri_synthseg"
+      ],
+      "env": "MRI_SYNTHSEG",
+      "homeEnv": "FREESURFER_HOME",
+      "probe": {
+        "args": [
+          "--help"
+        ],
+        "match": "--parc",
+        "advice": "This FreeSurfer has no usable mri_synthseg; install FreeSurfer 7.3 or newer."
+      },
+      "args": [
+        "--i",
+        "{{t1}}",
+        "--o",
+        "{{outputDir}}/synthseg.nii.gz",
+        "--vol",
+        "{{outputDir}}/volumes.csv",
+        "--threads",
+        "{{threads}}",
+        {
+          "arg": "--parc",
+          "when": {
+            "parc": true
+          }
+        },
+        {
+          "arg": "--robust",
+          "when": {
+            "robust": true
+          }
+        }
+      ],
+      "outputs": {
+        "labels": "synthseg.nii.gz",
+        "volumes": "volumes.csv"
+      },
+      "source": "https://surfer.nmr.mgh.harvard.edu/fswiki/SynthSeg (Billot et al., Medical Image Analysis 2023; PNAS 2023)",
+      "labelTable": {
+        "output": "labels",
+        "lut": "FreeSurferColorLUT.txt"
+      }
+    },
+    "neuroflow/usage": {
+      "useWhen": [
+        "Segment a brain MRI of any contrast or resolution into FreeSurfer labels locally, with a table of structure volumes.",
+        "Show FreeSurfer's SynthSeg running on a volume in about a minute."
+      ],
+      "avoidWhen": [
+        {
+          "when": "FreeSurfer is not installed but the Neurodesk Webapps suite is.",
+          "instead": "neurodesk.webapps/synthseg"
+        },
+        {
+          "when": "You need cortical surfaces or thickness: that is recon-all, which takes hours."
+        }
+      ],
+      "preconditions": [
+        "FreeSurfer 7.3 or newer installed (mri_synthseg).",
+        "t1 is a NIfTI brain MRI."
+      ],
+      "effects": [
+        "Writes synthseg.nii.gz (1 mm, FreeSurfer label ids), its colour table synthseg.json, and volumes.csv to the output directory.",
+        "The label map is on a 1 mm grid aligned to the input, not the input's own grid."
+      ],
+      "duration": {
+        "typicalSeconds": 40,
+        "basis": "Apple-silicon Mac, CPU, all cores, FreeSurfer dev 2024-03, 0.88 mm T1: 38 s with parc; 68 s with parc and robust on 8 threads."
+      },
+      "examples": [
+        {
+          "title": "Segment and parcellate a T1",
+          "inputs": {
+            "t1": "<t1>"
+          }
+        },
+        {
+          "title": "Robust model for a clinical scan",
+          "inputs": {
+            "t1": "<t1>",
+            "robust": true
+          }
+        }
+      ],
+      "failures": [
+        {
+          "match": {
+            "contains": "mri_synthseg was not found"
+          },
+          "meaning": "No FreeSurfer install with this command was found.",
+          "remedy": "Install FreeSurfer 7.3 or newer, or set MRI_SYNTHSEG to the command's path.",
+          "retry": "after-fix"
+        },
+        {
+          "match": {
+            "contains": "mri_synthseg exited with status"
+          },
+          "meaning": "mri_synthseg failed on this image.",
+          "remedy": "Read the step log, and check that t1 is a readable NIfTI with neuroflow_inspect.",
+          "retry": "after-fix"
+        }
+      ]
+    }
+  }
+}

@@ -26,6 +26,8 @@ node gallery/validate.mjs        # or: npm run validate:gallery
 | `dcm2niix.tool.json` | `…tools/dcm2niix` | ingest | script → native CLI | `volume`, `sidecar` |
 | `mindgrab.tool.json` | `…tools/mindgrab` | explore | script → native CLI | `brain`, `brain_mask` |
 | `niimath-allineate.tool.json` | `…tools/niimath-allineate` | explore | script → native CLI | `registered`, `transform` (`neuro:transform`) |
+| `freesurfer-synthstrip.tool.json` | `…tools/freesurfer-synthstrip` | explore | script → native CLI | `brain`, `brain_mask` |
+| `freesurfer-synthseg.tool.json` | `…tools/freesurfer-synthseg` | explore | script → native CLI | `labels` (with `synthseg.json` colour table), `volumes` (CSV) |
 | `nifti-header-matlab.tool.json` | `…tools/nifti-header-matlab` | explore | script → MATLAB/Octave | `header` (JSON), `summary` (inline JSON) |
 | `dti-fit.tool.json` | `…tools/dti-fit` | explore | script → Python (DIPY) | `fa`, `md` (NIfTI), `summary` (inline JSON) |
 
@@ -34,7 +36,8 @@ launches them with a session context and they block until the user finishes. The
 **script** tools are headless. The **native CLI** tools share one adapter,
 `scripts/cli_tool.mjs`, and describe their command line under
 `extensions["neuroflow/cli"]`: dcm2niix, mindgrab via the brainchop CLI, and
-niimath `-allineate` (the lightNIIng tool set), plus HeuDiConv with its reproin
+niimath `-allineate` (the lightNIIng tool set), FreeSurfer's SynthStrip and
+SynthSeg from a local FreeSurfer install, plus HeuDiConv with its reproin
 heuristic. The **MATLAB/Octave** tool (a NIfTI header
 reader) runs through `scripts/matlab_tool.mjs` from
 `extensions["neuroflow/matlab"]`, which also covers SPM batches; see
