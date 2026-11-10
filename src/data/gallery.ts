@@ -6,7 +6,8 @@
 import type { ToolDefinition, WorkflowDocument, WorkflowLibraryItem } from '../domain/neuroflow'
 import { libraryItemFromWorkflow, toolFromDocument } from './documents'
 
-export { MCP_EXTENSION_KEY, humanize, idTail, libraryItemFromWorkflow, mcpTitle, toolFromDocument, workflowTitle } from './documents'
+export { idTail } from '../domain/neuroflow'
+export { MCP_EXTENSION_KEY, humanize, libraryItemFromWorkflow, mcpTitle, toolFromDocument, workflowTitle } from './documents'
 
 const toolDocs = import.meta.glob<Record<string, unknown>>('../../gallery/tools/*.tool.json', {
   eager: true,

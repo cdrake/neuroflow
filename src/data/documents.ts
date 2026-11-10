@@ -1,6 +1,7 @@
 // Pure helpers that turn NeuroFlow documents into the builder's palette and
 // library entries. Shared by the bundled gallery and run-time registries.
 import type { ToolDefinition, WorkflowDocument, WorkflowLibraryItem } from '../domain/neuroflow'
+import { idTail } from '../domain/neuroflow'
 
 export const MCP_EXTENSION_KEY = 'neuroflow/mcp'
 
@@ -17,10 +18,6 @@ export function libraryItemFromWorkflow(workflow: WorkflowDocument): WorkflowLib
     description: workflow.description,
     workflow
   }
-}
-
-export function idTail(id: string): string {
-  return id.split('/').pop() ?? id
 }
 
 export function workflowTitle(workflow: WorkflowDocument): string {

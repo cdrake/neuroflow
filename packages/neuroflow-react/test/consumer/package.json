@@ -1,0 +1,17 @@
+{
+  "name": "neuroflow-react-consumer",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@xyflow/react": "^12",
+    "react": "^19",
+    "react-dom": "^19"
+  },
+  "devDependencies": {
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^4",
+    "typescript": "^5.5",
+    "vite": "^5.4"
+  }
+}

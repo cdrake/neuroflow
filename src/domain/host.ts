@@ -3,26 +3,16 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import type { WorkflowDocument } from './neuroflow'
+import type { RunFinishedEvent, ToolStatus } from './runTypes'
+
+export type * from './runTypes'
+export { isArtifactDescriptor } from './runTypes'
 
 export interface HostSettings {
   registryDirs: string[]
   dataRoots: string[]
   sessionsRoot: string
   interpreters: Record<string, string>
-}
-
-export type ToolReadiness = 'ready' | 'needsSetup' | 'interactive' | 'unsupported'
-
-export interface ToolStatus {
-  id: string
-  adapter?: string | null
-  status: ToolReadiness
-  detail: string
-  fix?: string | null
-  executable?: string | null
-  version?: string | null
-  packages?: Record<string, string> | null
-  source: string
 }
 
 export interface InterpreterStatus {
@@ -55,61 +45,6 @@ export interface RunProgressEvent {
   total: number
   message: string
 }
-
-export interface ArtifactDescriptor {
-  uri: string
-  type: string
-  path: string
-  mediaType: string
-  bytes?: number
-}
-
-export interface RunStepRecord {
-  tool: string
-  toolVersion?: string
-  status: string
-  exitCode?: number | null
-  startedAt?: string
-  endedAt?: string
-  inputs?: Record<string, unknown>
-  outputs?: Record<string, unknown>
-  types?: Record<string, string>
-  error?: string | null
-}
-
-export interface RunRecord {
-  runId?: string
-  workflow?: string
-  status?: string
-  startedAt?: string
-  endedAt?: string
-  failedStep?: string
-  steps?: Record<string, RunStepRecord>
-  outputs?: Record<string, { type: string; step: string; output: string }>
-}
-
-export interface RunStructured {
-  runId: string
-  status: string
-  outputs: Record<string, unknown>
-  provenance: string
-  failedStep?: string
-  error?: string
-  logs?: { stdout: string; stderr: string }
-}
-
-export type RunFinishedEvent =
-  | { ticket: string; ok: false; error: string }
-  | {
-      ticket: string
-      ok: boolean
-      runId: string
-      status: string
-      structured: RunStructured
-      summary: string
-      sessionDir: string
-      record: RunRecord
-    }
 
 const SETTINGS_STORAGE_KEY = 'neuroflow.hostSettings.v1'
 
@@ -204,15 +139,6 @@ export function parseProgressMessage(message: string): { index: number; total: n
   const match = /^step (\d+)\/(\d+): (\S+)/.exec(message)
   if (!match) return null
   return { index: Number(match[1]), total: Number(match[2]), stepId: match[3] }
-}
-
-export function isArtifactDescriptor(value: unknown): value is ArtifactDescriptor {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    typeof (value as ArtifactDescriptor).path === 'string' &&
-    typeof (value as ArtifactDescriptor).uri === 'string'
-  )
 }
 
 export function toolStatusMap(report: EnvironmentReport | null): Map<string, ToolStatus> {

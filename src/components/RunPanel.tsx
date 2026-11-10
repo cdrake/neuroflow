@@ -1,3 +1,4 @@
+import type React from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import {
   AlertTriangle,
@@ -12,10 +13,10 @@ import {
   XCircle
 } from 'lucide-react'
 import type { ParameterDef, ValidationReport, WorkflowDocument } from '../domain/neuroflow'
-import { shortType } from '../domain/neuroflow'
-import type { RunFinishedEvent, RunStepRecord } from '../domain/host'
-import { isArtifactDescriptor } from '../domain/host'
-import { idTail } from '../data/gallery'
+import { idTail, shortType } from '../domain/neuroflow'
+import type { RunFinishedEvent, RunStepRecord } from '../domain/runTypes'
+import { isArtifactDescriptor } from '../domain/runTypes'
+import { buildPayload, isLocked, missingInputs, seedValues } from '../domain/runInputs'
 
 export type HostRunStatus = 'starting' | 'running' | 'completed' | 'failed' | 'cancelled' | 'rejected'
 
@@ -32,7 +33,7 @@ export interface HostRunState {
   error: string | null
 }
 
-interface RunPanelProps {
+export interface RunPanelProps {
   workflow: WorkflowDocument
   available: boolean
   report: ValidationReport
@@ -40,6 +41,10 @@ interface RunPanelProps {
   runnable: string | null | undefined
   environmentChecked: boolean
   run: HostRunState | null
+  /** Seeds the form when the workflow changes; wins over stored values. */
+  initialInputs?: Record<string, unknown>
+  /** Input name to a label shown instead of the field; the host fills these. */
+  lockedInputs?: Record<string, string>
   onStart: (inputs: Record<string, unknown>) => void
   onCancel: () => void
   onOpen: (path: string) => void
@@ -48,21 +53,19 @@ interface RunPanelProps {
 const RUN_INPUTS_STORAGE_KEY = 'neuroflow.runInputs.v1'
 
 /** Run monitor (design: RunMonitor artboard): inputs form, progress, steps, outputs. */
-export function RunPanel({ workflow, available, report, runnable, environmentChecked, run, onStart, onCancel, onOpen }: RunPanelProps): JSX.Element {
-  const [values, setValues] = useState<Record<string, string>>(() => loadInputs(workflow))
+export function RunPanel({ workflow, available, report, runnable, environmentChecked, run, initialInputs, lockedInputs, onStart, onCancel, onOpen }: RunPanelProps): React.JSX.Element {
+  const [values, setValues] = useState<Record<string, string>>(() => seedValues(loadInputs(workflow), initialInputs))
 
   useEffect(() => {
-    setValues(loadInputs(workflow))
-  }, [workflow.id])
+    setValues(seedValues(loadInputs(workflow), initialInputs))
+  }, [workflow.id, JSON.stringify(initialInputs ?? null)]) // by value: hosts may pass a fresh object each render
 
   useEffect(() => {
     storeInputs(workflow.id, values)
   }, [values, workflow.id])
 
   const inputs = useMemo(() => Object.entries(workflow.inputs), [workflow.inputs])
-  const missing = inputs
-    .filter(([name, def]) => def.optional !== true && def.default === undefined && !values[name]?.trim())
-    .map(([name]) => name)
+  const missing = missingInputs(workflow, values, lockedInputs)
   const isRunning = run?.status === 'starting' || run?.status === 'running'
 
   const blocker = !available
@@ -82,13 +85,7 @@ export function RunPanel({ workflow, available, report, runnable, environmentChe
                 : null
 
   function start(): void {
-    const payload: Record<string, unknown> = {}
-    for (const [name, def] of inputs) {
-      const raw = values[name]
-      if (raw === undefined || raw.trim() === '') continue
-      payload[name] = coerce(raw, def)
-    }
-    onStart(payload)
+    onStart(buildPayload(workflow, values, lockedInputs))
   }
 
   const steps = run ? stepRows(workflow, run) : []
@@ -107,7 +104,15 @@ export function RunPanel({ workflow, available, report, runnable, environmentChe
 
       {inputs.length > 0 && (
         <div className="nf-run-inputs">
-          {inputs.map(([name, def]) => (
+          {inputs.map(([name, def]) => isLocked(lockedInputs, name) ? (
+            <div className="nf-field" key={name}>
+              <span>
+                {name}
+                <code>{shortType(def.type)}</code>
+              </span>
+              <em className="nf-run-locked">{lockedInputs?.[name]}</em>
+            </div>
+          ) : (
             <label className="nf-field" key={name}>
               <span>
                 {name}
@@ -229,7 +234,7 @@ export function RunPanel({ workflow, available, report, runnable, environmentChe
   )
 }
 
-function OutputRow({ name, value, onOpen }: { name: string; value: unknown; onOpen: (path: string) => void }): JSX.Element {
+function OutputRow({ name, value, onOpen }: { name: string; value: unknown; onOpen: (path: string) => void }): React.JSX.Element {
   const items = Array.isArray(value) ? value : [value]
   return (
     <li className="nf-env-item">
@@ -299,7 +304,7 @@ function stateClass(status: HostRunStatus): string {
   return ''
 }
 
-function stateIcon(status: HostRunStatus): JSX.Element {
+function stateIcon(status: HostRunStatus): React.JSX.Element {
   if (status === 'starting' || status === 'running') return <Loader2 className="nf-spin" size={14} />
   if (status === 'completed') return <CheckCircle2 size={14} />
   if (status === 'rejected') return <Ban size={14} />
@@ -324,7 +329,7 @@ function stateLabel(run: HostRunState): string {
   }
 }
 
-function stepIcon(status: StepRow['status']): JSX.Element {
+function stepIcon(status: StepRow['status']): React.JSX.Element {
   switch (status) {
     case 'running':
       return <Loader2 className="nf-spin" size={14} />
@@ -345,6 +350,7 @@ function loadInputs(workflow: WorkflowDocument): Record<string, string> {
     if (def.default !== undefined && def.default !== null) defaults[name] = String(def.default)
   }
   try {
+    if (typeof localStorage === 'undefined') return defaults
     const raw = window.localStorage.getItem(RUN_INPUTS_STORAGE_KEY)
     const all = raw ? (JSON.parse(raw) as Record<string, Record<string, string>>) : {}
     return { ...defaults, ...(all[workflow.id] ?? {}) }
@@ -362,23 +368,6 @@ function storeInputs(workflowId: string, values: Record<string, string>): void {
   } catch {
     // storage is a convenience only
   }
-}
-
-function coerce(raw: string, def: ParameterDef): unknown {
-  const value = raw.trim()
-  if (def.type === 'core:number' || def.type === 'core:integer') {
-    const n = Number(value)
-    return Number.isFinite(n) ? n : value
-  }
-  if (def.type === 'core:boolean') return value === 'true' || value === '1' || value === 'yes'
-  if (def.type === 'core:json' || def.type === 'core:object') {
-    try {
-      return JSON.parse(value)
-    } catch {
-      return value
-    }
-  }
-  return value
 }
 
 function placeholderFor(def: ParameterDef): string {

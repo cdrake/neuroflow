@@ -18,6 +18,13 @@ conversion, brain extraction and registration:
 | `gallery/tools/mindgrab.tool.json` | `brainchop --skull-strip` | `t1`, `border` | `brain`, `brain_mask` |
 | `gallery/tools/niimath-allineate.tool.json` | `niimath -allineate` | `moving`, `template`, `cost`, `interpolation`, optional `weight` | `registered`, `transform` (`neuro:transform`) |
 
+Two more wrap a local FreeSurfer (7.3 or newer; neither needs a license):
+
+| Document | Command | Inputs | Outputs |
+| --- | --- | --- | --- |
+| `gallery/tools/freesurfer-synthstrip.tool.json` | `mri_synthstrip` | `t1`, `border`, `no_csf`, optional `threads` | `brain`, `brain_mask` |
+| `gallery/tools/freesurfer-synthseg.tool.json` | `mri_synthseg` | `t1`, `parc`, `robust`, `threads` | `labels` (`neuro:label-map`), `volumes` (`core:tabular`) |
+
 Together with the Neurodesk SynthSeg tool and `label-volumes`, they make up
 `gallery/workflows/dicom-t1-mni-volumes.neuroflow.json`: DICOM series → NIfTI →
 brain → brain in MNI space, and SynthSeg structure volumes in native space. The
@@ -69,7 +76,14 @@ SynthSeg itself.
   value. Array inputs join with commas.
 - **Environment.** `clearEnv` optionally lists ambient variables withheld from
   both the probe and command. Use it only for a known conflict in a trusted
-  tool, such as brainchop/tinygrad's numeric `DEBUG` setting.
+  tool, such as brainchop/tinygrad's numeric `DEBUG` setting. `homeEnv` names a
+  variable the command needs pointing at its install root (FreeSurfer's
+  wrappers refuse to run without `FREESURFER_HOME`); when it is unset, the
+  adapter sets it to the parent of the executable's directory.
+- **Label tables.** `labelTable: { "output": "labels", "lut": "FreeSurferColorLUT.txt" }`
+  writes `<stem>.json` beside that output from a FreeSurfer-format LUT (relative
+  paths resolve against the install root), in NiiVue's label-map form
+  (`R`, `G`, `B`, `A`, `I`, `labels`), so viewers show named, coloured labels.
 - **Outputs.** Each declared output maps to a file name the command writes in the
   output directory, or to `{ "match": regex, "pick": "first" | "largest" }` when
   the name is not known ahead (dcm2niix appends echo and series suffixes). The
@@ -94,6 +108,10 @@ the one in [python-tools.md](python-tools.md).
 - mindgrab: `pip install brainchop` into the Python the MCP server uses
   (`--interpreter python3=...`); the first run downloads the model. Set
   `BRAINCHOP` if the CLI is not on `PATH`.
+- FreeSurfer (SynthStrip, SynthSeg): install FreeSurfer 7.3 or newer; the
+  tools look in `/Applications/freesurfer/*` and `/usr/local/freesurfer*`, or set
+  `MRI_SYNTHSTRIP` / `MRI_SYNTHSEG` to the command. No `SetUpFreeSurfer.sh` is
+  needed.
 - SynthSeg: the native `synthseg` CLI from neurodesk/webapps `exes/`, or the
   Neurodesk Webapps desktop suite (see [neurodesk-webapps.md](neurodesk-webapps.md)).
 

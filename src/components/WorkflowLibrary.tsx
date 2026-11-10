@@ -1,11 +1,12 @@
+import type React from 'react'
 import { Database, Plus, Workflow } from 'lucide-react'
 import type { WorkflowLibraryItem } from '../domain/neuroflow'
 
-interface WorkflowLibraryProps {
+export interface WorkflowLibraryProps {
   items: WorkflowLibraryItem[]
   activeId: string
   onSelect: (id: string) => void
-  onCreate: () => void
+  onCreate?: () => void
 }
 
 export function WorkflowLibrary({
@@ -13,7 +14,7 @@ export function WorkflowLibrary({
   activeId,
   onSelect,
   onCreate
-}: WorkflowLibraryProps): JSX.Element {
+}: WorkflowLibraryProps): React.JSX.Element {
   return (
     <section className="nf-panel">
       <header className="nf-panel-header">
@@ -22,10 +23,12 @@ export function WorkflowLibrary({
           <h2>Workflows</h2>
         </div>
         <div className="nf-panel-actions">
-          <button className="nf-mini-action" onClick={onCreate} title="New workflow" type="button">
-            <Plus size={14} />
-            New
-          </button>
+          {onCreate && (
+            <button className="nf-mini-action" onClick={onCreate} title="New workflow" type="button">
+              <Plus size={14} />
+              New
+            </button>
+          )}
           <Database size={16} />
         </div>
       </header>

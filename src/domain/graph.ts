@@ -2,7 +2,7 @@ import type { Edge, Node, XYPosition } from '@xyflow/react'
 import type { BlockCategory, ToolDefinition, WorkflowDocument } from './neuroflow'
 import { isConstantBinding, isRefBinding, stableToolName } from './neuroflow'
 import { categoryColor, getToolBlocks, resolveToolDefinition } from './registry'
-import type { ToolStatus } from './host'
+import type { ToolStatus } from './runTypes'
 
 export interface SourceNodeData extends Record<string, unknown> {
   title: string

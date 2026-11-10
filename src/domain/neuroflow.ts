@@ -272,3 +272,7 @@ export function parseToolRef(toolRef: string): { id: string; version?: string } 
 
   return { id, version }
 }
+
+export function idTail(id: string): string {
+  return id.split('/').pop() ?? id
+}

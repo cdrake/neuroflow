@@ -29,13 +29,20 @@
  *                        declared delivery.path.
  *   cwd (optional)       "outputDir" | "workDir" (default workDir)
  *   clearEnv (optional)  environment-variable names withheld from the command
+ *   homeEnv (optional)   variable the command needs pointing at its install root
+ *                        (e.g. FREESURFER_HOME); when unset it becomes the parent
+ *                        of the executable's directory
+ *   labelTable (optional) { output, lut }: write a label colour table beside that
+ *                        output as <stem>.json ({R,G,B,A,I,labels}, the NiiVue
+ *                        label-map form) from a FreeSurfer-format LUT; a relative
+ *                        lut is read from the install root
  *
  * Env: NEUROFLOW_SESSION / _OUTPUT_DIR / _WORK_DIR / _STEP (session contract),
  * plus the template's own override variable.
  */
 import { spawn } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   appendProvenance, checkInputsExist, failer, findExecutable, findToolDoc, hasValue, mapOutputs, readSession, runProbe,
@@ -65,6 +72,8 @@ if (!exe) {
 // ambient environment of the runtime or other tools.
 const childEnv = { ...process.env };
 for (const name of template.clearEnv ?? []) delete childEnv[name];
+if (template.homeEnv && !childEnv[template.homeEnv]) childEnv[template.homeEnv] = dirname(dirname(exe));
+const installRoot = template.homeEnv ? childEnv[template.homeEnv] : dirname(dirname(exe));
 
 // Probe the release before running.
 let version = null;
@@ -117,6 +126,30 @@ if (status !== 0) fail(`${template.command} exited with status ${status}`);
 
 // Map what the command wrote to the declared outputs.
 const produced = mapOutputs(tool, template.outputs, outputDir, fail, { label: template.command });
+
+// A label map gets its colour table as a sidecar, so viewers show named, coloured labels.
+if (template.labelTable && produced[template.labelTable.output]) {
+  const lut = isAbsolute(template.labelTable.lut) ? template.labelTable.lut : join(installRoot, template.labelTable.lut);
+  if (existsSync(lut)) {
+    const sidecar = join(outputDir, produced[template.labelTable.output]).replace(/\.nii(\.gz)?$/, '') + '.json';
+    writeFileSync(sidecar, JSON.stringify(labelTableFromLut(readFileSync(lut, 'utf8'))));
+  } else {
+    console.error(`cli_tool: label table ${lut} not found; ${template.labelTable.output} has no colour table`);
+  }
+}
+
+/** FreeSurfer LUT lines ("id name R G B A") to NiiVue's label colormap; label 0 is transparent. */
+function labelTableFromLut(text) {
+  const t = { R: [], G: [], B: [], A: [], I: [], labels: [] };
+  for (const line of text.split('\n')) {
+    const f = line.trim().split(/\s+/);
+    if (f.length < 5 || !/^\d+$/.test(f[0])) continue;
+    const id = Number(f[0]);
+    t.I.push(id); t.labels.push(f[1]);
+    t.R.push(Number(f[2])); t.G.push(Number(f[3])); t.B.push(Number(f[4])); t.A.push(id === 0 ? 0 : 255);
+  }
+  return t;
+}
 
 appendProvenance(session, {
   step, tool: tool.id, agent: version ? `${template.command} ${version}` : template.command,
