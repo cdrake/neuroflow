@@ -1,5 +1,5 @@
 {
-  "name": "@cdrake/neuroflow-react",
+  "name": "@medview/neuroflow-react",
   "version": "0.1.0",
   "description": "Read-only NeuroFlow pipeline view (library, diagram, run panel) for React hosts.",
   "type": "module",

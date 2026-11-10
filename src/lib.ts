@@ -1,4 +1,4 @@
-// Entry of the @cdrake/neuroflow-react package. Must not reach host.ts, execution.ts, gallery.ts or Tauri.
+// Entry of the @medview/neuroflow-react package. Must not reach host.ts, execution.ts, gallery.ts or Tauri.
 import './styles/components.css'
 
 export { PipelineView, type PipelineViewProps } from './components/PipelineView'

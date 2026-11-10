@@ -1,4 +1,4 @@
-# @cdrake/neuroflow-react
+# @medview/neuroflow-react
 
 Read-only NeuroFlow pipeline view for React hosts: workflow library, diagram, and run panel.
 It knows nothing about datasets, Tauri or MCP; the host supplies documents and run state.
@@ -6,7 +6,7 @@ It knows nothing about datasets, Tauri or MCP; the host supplies documents and r
 ## Install
 
 ```sh
-npm install @cdrake/neuroflow-react @xyflow/react react react-dom
+npm install @medview/neuroflow-react @xyflow/react react react-dom
 ```
 
 Peers: `react` and `react-dom` `^18.3 || ^19`, `@xyflow/react` `^12`.
@@ -17,13 +17,13 @@ Import both files once, and put `nf-root` on an ancestor of the view (styles are
 
 ```ts
 import '@xyflow/react/dist/style.css'
-import '@cdrake/neuroflow-react/style.css'
+import '@medview/neuroflow-react/style.css'
 ```
 
 ## Example
 
 ```tsx
-import { PipelineView, toolFromDocument, wrapToolAsWorkflow } from '@cdrake/neuroflow-react'
+import { PipelineView, toolFromDocument, wrapToolAsWorkflow } from '@medview/neuroflow-react'
 
 const toolDoc = { kind: 'tool', id: 'example/tools/echo', inputs: { text: { type: 'string' } }, outputs: { out: { type: 'string' } } }
 const workflow = wrapToolAsWorkflow(toolDoc)

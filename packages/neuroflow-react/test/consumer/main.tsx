@@ -1,7 +1,7 @@
 import { createRoot } from 'react-dom/client'
 import '@xyflow/react/dist/style.css'
-import '@cdrake/neuroflow-react/style.css'
-import { PipelineView, toolFromDocument, wrapToolAsWorkflow } from '@cdrake/neuroflow-react'
+import '@medview/neuroflow-react/style.css'
+import { PipelineView, toolFromDocument, wrapToolAsWorkflow } from '@medview/neuroflow-react'
 
 const toolDoc = {
   kind: 'tool',
