@@ -32,4 +32,9 @@ pub struct Config {
     /// cannot, because a client's request would block on a window nobody is
     /// watching. Such tools are listed but not runnable on a non-interactive host.
     pub interactive: bool,
+    /// Let a run finish when the client cancels its request (for example a
+    /// client whose call timeout is shorter than the step). No response is
+    /// sent for the cancelled request, but the completed run is kept, so the
+    /// same call made again returns it instead of running a second time.
+    pub finish_on_cancel: bool,
 }

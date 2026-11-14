@@ -87,6 +87,13 @@ In `~/Library/Application Support/Claude/claude_desktop_config.json`:
 }
 ```
 
+Some MCP clients give up on a call after a fixed time (a minute or two) and
+send `notifications/cancelled`, which normally stops the run. For long steps
+(FSL eddy, SynthSeg on CPU) pass `--finish-on-cancel`: the run goes on, its
+result is kept, and the same call made again returns it. While it runs the
+server answers nothing else, so check progress in the run's folder under
+`~/.neuroflow/runs`.
+
 GUI apps on macOS start with a minimal `PATH`, so pass `--interpreter` for any
 interpreter a script tool launches with; every gallery adapter (native CLI,
 MATLAB, Python) launches with `node`. Adjust the paths above to match `which

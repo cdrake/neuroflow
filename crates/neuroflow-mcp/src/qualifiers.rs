@@ -439,6 +439,7 @@ mod tests {
             step_timeout: None,
             summary_max_bytes: 1024,
             interactive: false,
+            finish_on_cancel: false,
         };
         let path = root.join("labels.json");
         let value = json!(path);

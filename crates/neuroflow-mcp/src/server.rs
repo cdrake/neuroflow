@@ -605,6 +605,10 @@ impl Server {
                 );
             }
         };
+        // With finish_on_cancel a client's cancel only drops the response; the
+        // run goes on and call_workflow keeps it for the next identical call.
+        let never = AtomicBool::new(false);
+        let cancel_flag: &AtomicBool = if self.cfg.finish_on_cancel { &never } else { &self.active };
         match runtime::run_workflow_with_cancel(
             &self.cfg,
             &self.registry,
@@ -612,7 +616,7 @@ impl Server {
             inputs,
             &self.client,
             &mut progress,
-            &self.active,
+            cancel_flag,
         ) {
             Err(e) => tool_error(format!("Run rejected before any step started: {e}")),
             Ok(outcome) => {
@@ -944,6 +948,7 @@ mod tests {
             step_timeout: None,
             summary_max_bytes: 1024,
             interactive: false,
+            finish_on_cancel: false,
         };
         let registry =
             Registry::load(&cfg.registry_dirs, &cfg.interpreters, cfg.interactive).unwrap();

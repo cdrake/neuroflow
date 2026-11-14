@@ -160,6 +160,7 @@ fn build_config(settings: &HostSettings) -> Result<Config, String> {
         step_timeout: None,
         summary_max_bytes: SUMMARY_MAX_BYTES,
         interactive: true,
+        finish_on_cancel: false,
     })
 }
 

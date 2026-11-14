@@ -22,6 +22,7 @@ OPTIONS:
     --interpreter <NAME=PATH> Interpreter location, e.g. node=/opt/homebrew/bin/node (repeatable).
     --step-timeout <SECS>     Kill a step that runs longer than this.
     --summary-max-mb <MB>     Largest voxel block to scan for intensity stats. Default: 512
+    --finish-on-cancel        Let a run finish when the client cancels it; calling again returns the result.
     --check                   Load the registry, print what would be exposed, and exit.
     -h, --help                Show this help.
 ";
@@ -36,6 +37,7 @@ fn main() {
     let mut step_timeout = None;
     let mut summary_max_bytes = 512 * 1024 * 1024;
     let mut check = false;
+    let mut finish_on_cancel = false;
 
     let mut it = args.into_iter();
     while let Some(arg) = it.next() {
@@ -74,6 +76,7 @@ fn main() {
                 summary_max_bytes = mb * 1024 * 1024;
             }
             "--check" => check = true,
+            "--finish-on-cancel" => finish_on_cancel = true,
             "-h" | "--help" => {
                 print!("{USAGE}");
                 return;
@@ -118,6 +121,7 @@ fn main() {
         step_timeout,
         summary_max_bytes,
         interactive: false,
+        finish_on_cancel,
     };
     let registry = registry::Registry::load(&cfg.registry_dirs, &cfg.interpreters, cfg.interactive)
         .unwrap_or_else(|e| fail(&e));

@@ -51,6 +51,7 @@ with open(pathlib.Path(os.environ['NEUROFLOW_SESSION'])/'provenance.jsonl', 'a')
             step_timeout: None,
             summary_max_bytes: 1024 * 1024,
             interactive: false,
+            finish_on_cancel: false,
         };
         Self { root, cfg }
     }
