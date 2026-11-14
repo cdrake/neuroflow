@@ -1,0 +1,215 @@
+{
+  "$schema": "../../../neuroflow-spec/schemas/0.1/tool.schema.json",
+  "neuroflow": "0.1.0",
+  "kind": "tool",
+  "id": "neuroflow.gallery.tools/fsl-eddy",
+  "version": "0.1.0",
+  "description": "Correct a diffusion series for eddy currents and head motion with FSL eddy (Apple GPU through eddy_metal when available, else CUDA or CPU), applying a topup field when given. Writes the corrected series with its rotated gradient table, ready for dti-fit, plus eddy's movement and outlier reports.",
+  "inputs": {
+    "dwi": {
+      "type": "neuro:volume",
+      "description": "4-D diffusion series (NIfTI with its dcm2niix JSON sidecar beside it)."
+    },
+    "gradients": {
+      "type": "neuro:gradient-table",
+      "description": "FSL .bval or .bvec of the series (the sibling with the same stem is read too)."
+    },
+    "mask": {
+      "type": "neuro:mask",
+      "description": "Brain mask on the dwi grid, e.g. fsl-topup's brain_mask."
+    },
+    "topup_fieldcoef": {
+      "type": "neuro:volume",
+      "description": "fsl-topup's fieldcoef output (topup_movpar.txt must sit beside it).",
+      "optional": true
+    },
+    "acqparams": {
+      "type": "core:file",
+      "description": "fsl-topup's acqparams output; required with topup_fieldcoef.",
+      "optional": true
+    },
+    "engine": {
+      "type": "core:string",
+      "description": "auto (FSL's eddy dispatcher: Metal, then CUDA, then CPU), metal, or cpu.",
+      "optional": true,
+      "default": "auto",
+      "enum": [
+        "auto",
+        "metal",
+        "cpu"
+      ]
+    },
+    "repol": {
+      "type": "core:boolean",
+      "description": "Replace outlier slices (eddy --repol).",
+      "optional": true,
+      "default": true
+    },
+    "readout_time": {
+      "type": "core:number",
+      "description": "Total readout time in seconds, overriding the sidecar (used without topup).",
+      "optional": true
+    }
+  },
+  "outputs": {
+    "dwi": {
+      "type": "neuro:volume",
+      "description": "Corrected 4-D series on the input grid.",
+      "delivery": {
+        "mode": "core:result-dir",
+        "path": "dwi_eddy.nii.gz"
+      }
+    },
+    "gradients": {
+      "type": "neuro:gradient-table",
+      "description": "dwi_eddy.bval; its sibling dwi_eddy.bvec holds eddy's rotated vectors, so pass this straight to dti-fit.",
+      "delivery": {
+        "mode": "core:result-dir",
+        "path": "dwi_eddy.bval"
+      }
+    },
+    "bvec": {
+      "type": "core:file",
+      "description": "dwi_eddy.bvec: gradient directions rotated by eddy's motion estimates.",
+      "delivery": {
+        "mode": "core:result-dir",
+        "path": "dwi_eddy.bvec"
+      }
+    },
+    "summary": {
+      "type": "core:json",
+      "description": "volumes, shells, whether topup was applied, engine, repol, movement RMS (mm), outlier slice count.",
+      "delivery": {
+        "mode": "core:result-file"
+      }
+    }
+  },
+  "outputDelivery": {
+    "default": "core:result-dir"
+  },
+  "extensions": {
+    "niivue/ui": {
+      "block": {
+        "id": "fsl-eddy",
+        "label": "Eddy/motion correction (FSL eddy)",
+        "description": "Correct eddy currents and motion, with the topup field.",
+        "category": "Processing",
+        "stage": "explore",
+        "exposedFields": [
+          "engine",
+          "repol"
+        ]
+      }
+    },
+    "neuroflow/launch": {
+      "kind": "script",
+      "interpreter": "node",
+      "script": "../scripts/python_tool.mjs",
+      "completion": "exit",
+      "interactive": false,
+      "contract": "../../docs/neuroflow-session-contract.md",
+      "requirements": [
+        "FSL 6.0.6 or newer (topup, bet, fslmaths; eddy with eddy_metal, eddy_cuda or eddy_cpu) under FSLDIR, ~/fsl, /usr/local/fsl or /opt/fsl",
+        "Python 3.10+ with nibabel and numpy; set NEUROFLOW_PYTHON to the environment"
+      ],
+      "description": "python_tool.mjs calls nf_fsl_dwi.eddy(...): writes index.txt (and acqparams.txt when there is no topup), runs $FSLDIR/bin/eddy (or eddy_metal / eddy_cpu) with --topup, --repol and --data_is_shelled as they apply, then delivers the series as dwi_eddy.nii.gz with dwi_eddy.bval and the rotated dwi_eddy.bvec."
+    },
+    "neuroflow/python": {
+      "interpreter": {
+        "env": "NEUROFLOW_PYTHON",
+        "paths": [
+          "{{toolDir}}/.venv/bin/python",
+          "~/.venvs/neuroflow/bin/python"
+        ],
+        "minVersion": "3.10"
+      },
+      "requirements": [
+        "nibabel",
+        "numpy"
+      ],
+      "singleThread": true,
+      "entry": {
+        "kind": "function",
+        "module": "nf_fsl_dwi",
+        "name": "eddy",
+        "args": [
+          "{{dwi}}",
+          "{{gradients}}",
+          "{{mask}}",
+          "{{topup_fieldcoef}}",
+          "{{acqparams}}",
+          "{{engine}}",
+          "{{repol}}",
+          "{{readout_time}}"
+        ],
+        "result": "summary"
+      },
+      "outputs": {
+        "dwi": "dwi_eddy.nii.gz",
+        "gradients": "dwi_eddy.bval",
+        "bvec": "dwi_eddy.bvec"
+      }
+    },
+    "neuroflow/mcp": {
+      "title": "Eddy-current and motion correction (FSL eddy)",
+      "annotations": {
+        "idempotentHint": true
+      },
+      "maxWaitMs": 7200000
+    },
+    "neuroflow/usage": {
+      "useWhen": [
+        "Correct a diffusion series for eddy currents and head motion before fitting tensors.",
+        "Apply a topup field to the whole diffusion series."
+      ],
+      "avoidWhen": [
+        {
+          "when": "You only need distortion correction of b0 images.",
+          "instead": "neuroflow.gallery.tools/fsl-topup"
+        }
+      ],
+      "preconditions": [
+        "FSL 6.0.6 or newer installed.",
+        "dwi has a JSON sidecar with PhaseEncodingDirection; with topup_fieldcoef, pass the acqparams from the same fsl-topup run.",
+        "mask is on the dwi grid."
+      ],
+      "effects": [
+        "Writes dwi_eddy.nii.gz, dwi_eddy.bval and the rotated dwi_eddy.bvec, plus eddy.eddy_movement_rms, eddy.eddy_outlier_map and eddy.eddy_parameters."
+      ],
+      "duration": {
+        "typicalSeconds": 1800,
+        "basis": "Estimate, not measured in the gallery: eddy takes tens of minutes for ~140 volumes on CPU and several times less on a GPU."
+      },
+      "examples": [
+        {
+          "title": "With a topup field",
+          "inputs": {
+            "dwi": "<dwi.nii.gz>",
+            "gradients": "<dwi.bval>",
+            "mask": "<topup brain_mask>",
+            "topup_fieldcoef": "<topup fieldcoef>",
+            "acqparams": "<topup acqparams>"
+          }
+        }
+      ],
+      "failures": [
+        {
+          "match": {
+            "contains": "FSL was not found"
+          },
+          "meaning": "No FSL install was found.",
+          "remedy": "Install FSL or set FSLDIR.",
+          "retry": "after-fix"
+        },
+        {
+          "match": {
+            "contains": "exited with status"
+          },
+          "meaning": "FSL eddy failed.",
+          "remedy": "Read the step log; try engine cpu if the GPU build failed.",
+          "retry": "after-fix"
+        }
+      ]
+    }
+  }
+}

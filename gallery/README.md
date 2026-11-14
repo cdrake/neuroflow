@@ -31,6 +31,8 @@ node gallery/validate.mjs        # or: npm run validate:gallery
 | `freesurfer-synthseg.tool.json` | `…tools/freesurfer-synthseg` | explore | script → native CLI | `labels` (with `synthseg.json` colour table), `volumes` (CSV) |
 | `nifti-header-matlab.tool.json` | `…tools/nifti-header-matlab` | explore | script → MATLAB/Octave | `header` (JSON), `summary` (inline JSON) |
 | `dti-fit.tool.json` | `…tools/dti-fit` | explore | script → Python (DIPY) | `fa`, `md` (NIfTI), `summary` (inline JSON) |
+| `fsl-topup.tool.json` | `…tools/fsl-topup` | explore | script → Python (FSL) | `fieldcoef`, `movpar`, `acqparams`, `b0_corrected(_mean)`, `field_hz`, `brain_mask`, `summary` |
+| `fsl-eddy.tool.json` | `…tools/fsl-eddy` | explore | script → Python (FSL) | `dwi`, `gradients` (`.bval` beside rotated `.bvec`), `summary` |
 
 The two **uiApp** tools (BIDSvue, NeuroVue) are interactive: a NeuroFlow runtime
 launches them with a session context and they block until the user finishes. The
@@ -42,8 +44,8 @@ SynthSeg from a local FreeSurfer install, plus HeuDiConv with its reproin
 heuristic. The **MATLAB/Octave** tool (a NIfTI header
 reader) runs through `scripts/matlab_tool.mjs` from
 `extensions["neuroflow/matlab"]`, which also covers SPM batches; see
-`../docs/matlab-tools.md`. The four **Python** tools (BIDS name tidy, volume
-filter, label volumes, DTI fit) run through `scripts/python_tool.mjs` from
+`../docs/matlab-tools.md`. The **Python** tools (BIDS name tidy, volume
+filter, label volumes, DTI fit, FSL topup and eddy) run through `scripts/python_tool.mjs` from
 `extensions["neuroflow/python"]`, which checks the declared packages before
 launch; see `../docs/python-tools.md`. **bidsvue-ingest** is BIDSvue's import pipeline without the
 window: `scripts/app_cli.mjs` runs `bun run neuroflow-ingest` (BIDSvue's package
