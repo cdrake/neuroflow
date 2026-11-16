@@ -33,6 +33,7 @@ node gallery/validate.mjs        # or: npm run validate:gallery
 | `dti-fit.tool.json` | `…tools/dti-fit` | explore | script → Python (DIPY) | `fa`, `md` (NIfTI), `summary` (inline JSON) |
 | `fsl-topup.tool.json` | `…tools/fsl-topup` | explore | script → Python (FSL) | `fieldcoef`, `movpar`, `acqparams`, `b0_corrected(_mean)`, `field_hz`, `brain_mask`, `summary` |
 | `fsl-eddy.tool.json` | `…tools/fsl-eddy` | explore | script → Python (FSL) | `dwi`, `gradients` (`.bval` beside rotated `.bvec`), `summary` |
+| `dipy-tracking.tool.json` | `…tools/dipy-tracking` | explore | script → Python (DIPY) | `tractogram` (`.trk`), `fa`, `summary` |
 
 The two **uiApp** tools (BIDSvue, NeuroVue) are interactive: a NeuroFlow runtime
 launches them with a session context and they block until the user finishes. The
@@ -45,7 +46,7 @@ heuristic. The **MATLAB/Octave** tool (a NIfTI header
 reader) runs through `scripts/matlab_tool.mjs` from
 `extensions["neuroflow/matlab"]`, which also covers SPM batches; see
 `../docs/matlab-tools.md`. The **Python** tools (BIDS name tidy, volume
-filter, label volumes, DTI fit, FSL topup and eddy) run through `scripts/python_tool.mjs` from
+filter, label volumes, DTI fit, FSL topup and eddy, DIPY tractography) run through `scripts/python_tool.mjs` from
 `extensions["neuroflow/python"]`, which checks the declared packages before
 launch; see `../docs/python-tools.md`. **bidsvue-ingest** is BIDSvue's import pipeline without the
 window: `scripts/app_cli.mjs` runs `bun run neuroflow-ingest` (BIDSvue's package
