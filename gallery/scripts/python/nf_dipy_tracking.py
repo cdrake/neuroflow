@@ -14,7 +14,6 @@ MRtrix-style table).
 """
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import nibabel as nib
@@ -85,7 +84,8 @@ def run(dwi: Path, gradients: Path, mask: Path | None = None, shell: float | Non
     tsel = b0 | (np.abs(bvals - tshell) <= 100)
     gt = gradient_table(bvals[tsel], bvecs=bvecs[tsel], b0_threshold=b0_threshold)
     s.log(f"tensor fit on b0 + b={tshell:g} for FA ({int(mask_arr.sum())} voxels)")
-    fa = TensorModel(gt).fit(data[..., tsel], mask=mask_arr).fa
+    with np.errstate(all="ignore"):  # WLS overflows harmlessly in near-empty voxels
+        fa = TensorModel(gt).fit(data[..., tsel], mask=mask_arr).fa
     fa = np.nan_to_num(fa).astype(np.float32)
     fa[~mask_arr] = 0
 
@@ -98,10 +98,12 @@ def run(dwi: Path, gradients: Path, mask: Path | None = None, shell: float | Non
     s.log(f"CSD on b0 + b={cshell:g} ({int((~b0[csel]).sum())} directions), sh_order {sh_order}, "
           f"response eigenvalues {np.round(response[0], 6).tolist()}, ratio {ratio:.3f}")
     model = ConstrainedSphericalDeconvModel(gc, response, sh_order_max=sh_order)
-    nproc = max(1, (os.cpu_count() or 2) - 1)
+    # One process: DIPY's parallel peaks spawn workers that re-import the
+    # adapter's generated driver on macOS, which re-runs this whole step.
     peaks = peaks_from_model(model, dc, default_sphere, relative_peak_threshold=0.5,
                              min_separation_angle=25, mask=mask_arr & (fa > stop_fa),
-                             return_sh=False, parallel=nproc > 1, num_processes=nproc)
+                             return_sh=False, parallel=False)
+    s.log("CSD peaks done")
 
     seeds = utils.seeds_from_mask(mask_arr & (fa > seed_fa), affine=img.affine,
                                   density=seeds_per_voxel)
