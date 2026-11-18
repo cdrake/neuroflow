@@ -1,0 +1,202 @@
+{
+  "$schema": "../../../neuroflow-spec/schemas/0.1/tool.schema.json",
+  "neuroflow": "0.1.0",
+  "kind": "tool",
+  "id": "neuroflow.gallery.tools/neurovue-review",
+  "version": "0.1.0",
+  "description": "Write NeuroVue's review outputs without a window: opens a BIDS dataset and/or volumes, applies the given view and clip planes, and writes the same correction patch and review state the interactive neurovue tool saves, plus an optional .nvbundle.",
+  "inputs": {
+    "bids_dir": {
+      "type": "neuro:bids-dataset",
+      "description": "BIDS dataset to review.",
+      "optional": true
+    },
+    "volumes": {
+      "type": "core:array<neuro:volume>",
+      "description": "NIfTI volumes to review instead of, or in addition to, a dataset.",
+      "optional": true
+    },
+    "match": {
+      "type": "core:string",
+      "description": "Glob on file names (e.g. *_T1w.nii.gz); only matching volumes are reviewed.",
+      "optional": true
+    },
+    "view": {
+      "type": "core:json",
+      "description": "A NeuroVue BundleViewState (src/domain/bundle.ts), passed through verbatim. Default: the first volume as the base, the rest as overlays, multiplanar.",
+      "optional": true
+    },
+    "clip_planes": {
+      "type": "core:json",
+      "description": "Clip planes for the default view, as NeuroVue saves them. Ignored when view is given.",
+      "optional": true
+    },
+    "bundle": {
+      "type": "core:boolean",
+      "description": "Also write review.nvbundle (the volumes and the view in one file; can be large).",
+      "optional": true,
+      "default": false
+    }
+  },
+  "outputs": {
+    "correction_patch": {
+      "type": "neurovue:correction-patch",
+      "description": "The patch NeuroVue's Save writes, with backend \"headless\".",
+      "delivery": {
+        "mode": "core:result-file",
+        "path": "correction.patch.json"
+      }
+    },
+    "review_state": {
+      "type": "core:json",
+      "description": "The dataset, the reviewed volumes and the view.",
+      "delivery": {
+        "mode": "core:result-file",
+        "path": "review.state.json"
+      }
+    },
+    "review_bundle": {
+      "type": "core:file",
+      "description": "The volumes and the view as a NeuroVue bundle; only when bundle is true.",
+      "optional": true,
+      "delivery": {
+        "mode": "core:result-file",
+        "path": "review.nvbundle"
+      }
+    }
+  },
+  "outputDelivery": {
+    "default": "core:result-file"
+  },
+  "extensions": {
+    "niivue/ui": {
+      "block": {
+        "id": "review-neurovue-headless",
+        "label": "Review in NeuroVue (no window)",
+        "description": "Record a NeuroVue review (view, clip planes, optional bundle) with fixed settings.",
+        "category": "Quality",
+        "stage": "explore",
+        "exposedFields": ["bids_dir", "volumes", "match", "bundle"]
+      }
+    },
+    "neuroflow/launch": {
+      "kind": "script",
+      "interpreter": "node",
+      "script": "../scripts/app_cli.mjs",
+      "completion": "exit",
+      "interactive": false,
+      "contract": "../../docs/neuroflow-session-contract.md",
+      "requirements": [
+        "NeuroVue checkout (cdrake/neurovue, main) beside NeuroFlow or via NEUROFLOW_UI_APP_NEUROVUE",
+        "cargo (rustup), with neurovue-cli built once: `cargo build --release --features cli --bin neurovue-cli` in src-tauri"
+      ],
+      "description": "Runs `cargo run --release --features cli --bin neurovue-cli -- --neuroflow-session $NEUROFLOW_SESSION` in the NeuroVue checkout, after `--check` confirms it is ready. neurovue-cli opens inputs.bids_dir / inputs.volumes without a window and writes correction.patch.json, review.state.json (and review.nvbundle when inputs.bundle is true) to $NEUROFLOW_OUTPUT_DIR, with one review.headless provenance line."
+    },
+    "neuroflow/mcp": {
+      "title": "Review in NeuroVue (headless)",
+      "annotations": {
+        "idempotentHint": true,
+        "readOnlyHint": false
+      },
+      "maxWaitMs": 600000
+    },
+    "neuroflow/app-cli": {
+      "app": "neurovue",
+      "repo": "neurovue",
+      "branch": "main",
+      "entry": "src-tauri/src/bin/neurovue-cli.rs",
+      "command": "cargo",
+      "paths": ["~/.cargo/bin/cargo", "/opt/homebrew/bin/cargo", "/usr/local/bin/cargo"],
+      "env": "CARGO",
+      "args": [
+        "run", "--quiet", "--release", "--manifest-path", "src-tauri/Cargo.toml",
+        "--features", "cli", "--bin", "neurovue-cli", "--",
+        "--neuroflow-session", "{{session}}"
+      ],
+      "probe": {
+        "args": [
+          "run", "--quiet", "--release", "--manifest-path", "src-tauri/Cargo.toml",
+          "--features", "cli", "--bin", "neurovue-cli", "--", "--check"
+        ],
+        "match": "\"ready\":\\s*true",
+        "version": "v\\d+\\.\\d+\\.\\d+",
+        "advice": "build neurovue-cli once (the probe allows 60 s): `cargo build --release --features cli --bin neurovue-cli` in the checkout's src-tauri"
+      },
+      "source": "https://github.com/cdrake/neurovue"
+    },
+    "neuroflow/usage": {
+      "useWhen": [
+        "An agent or unattended workflow needs NeuroVue's review record (correction patch, review state) for a dataset with nobody at the machine.",
+        "Package reviewed volumes and a fixed view as a .nvbundle for someone to open in NeuroVue later."
+      ],
+      "avoidWhen": [
+        {
+          "when": "A person should look at the data and set the view or clip planes themselves.",
+          "instead": "neuroflow.gallery.tools/neurovue"
+        },
+        {
+          "when": "You need a shareable web page of the volumes, not a NeuroVue review record.",
+          "instead": "neuroflow.gallery.tools/niivue-qa-page"
+        }
+      ],
+      "preconditions": [
+        "A NeuroVue checkout beside NeuroFlow or via NEUROFLOW_UI_APP_NEUROVUE, cargo on PATH or via CARGO, and neurovue-cli built once in release mode. The step runs `neurovue-cli --check` first and stops if it is not ready.",
+        "At least one of bids_dir or volumes is given, and match (if any) leaves at least one volume."
+      ],
+      "effects": [
+        "Writes correction.patch.json and review.state.json to the output directory, review.nvbundle when bundle is true, and one review.headless provenance line.",
+        "Renders nothing: no screenshots or slice previews."
+      ],
+      "duration": {
+        "typicalSeconds": 5,
+        "basis": "Estimate for a built neurovue-cli: it only reads NIfTI headers unless bundle is true, which copies the volumes. The first run after a source change rebuilds in release mode (minutes)."
+      },
+      "examples": [
+        {
+          "title": "Record a review of a dataset's T1w images",
+          "inputs": {
+            "bids_dir": "<bids_dir>",
+            "match": "*_T1w.nii.gz"
+          },
+          "outputs": {
+            "correction_patch": "<output dir>/correction.patch.json",
+            "review_state": "<output dir>/review.state.json"
+          }
+        },
+        {
+          "title": "Bundle two volumes for later review",
+          "inputs": {
+            "volumes": ["<volume_1>", "<volume_2>"],
+            "bundle": true
+          }
+        }
+      ],
+      "failures": [
+        {
+          "match": {
+            "contains": "is not ready"
+          },
+          "meaning": "neurovue-cli --check did not answer: usually it is not built yet, so the probe timed out compiling.",
+          "remedy": "Run `cargo build --release --features cli --bin neurovue-cli` in the checkout's src-tauri, then retry.",
+          "retry": "after-fix"
+        },
+        {
+          "match": {
+            "contains": "checkout not found"
+          },
+          "meaning": "No NeuroVue checkout was found.",
+          "remedy": "Clone cdrake/neurovue beside NeuroFlow, or set NEUROFLOW_UI_APP_NEUROVUE to the checkout.",
+          "retry": "after-fix"
+        },
+        {
+          "match": {
+            "contains": "no volumes to review"
+          },
+          "meaning": "Neither bids_dir nor volumes gave a readable NIfTI volume, or match filtered them all out.",
+          "remedy": "Check the paths and the match glob.",
+          "retry": "after-fix"
+        }
+      ]
+    }
+  }
+}
