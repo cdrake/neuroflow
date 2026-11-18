@@ -608,7 +608,11 @@ impl Server {
         // With finish_on_cancel a client's cancel only drops the response; the
         // run goes on and call_workflow keeps it for the next identical call.
         let never = AtomicBool::new(false);
-        let cancel_flag: &AtomicBool = if self.cfg.finish_on_cancel { &never } else { &self.active };
+        let cancel_flag: &AtomicBool = if self.cfg.finish_on_cancel {
+            &never
+        } else {
+            &self.active
+        };
         match runtime::run_workflow_with_cancel(
             &self.cfg,
             &self.registry,
