@@ -17,6 +17,7 @@ node gallery/validate.mjs        # or: npm run validate:gallery
 | `heudiconv-reproin.tool.json` | `…tools/heudiconv-reproin` | ingest | script → native CLI | `bids_dir` (result-dir) |
 | `bids-tidy-names.tool.json` | `…tools/bids-tidy-names` | ingest | script → Python | `bids_dir` (result-dir), `summary` (JSON) |
 | `neurovue.tool.json` | `…tools/neurovue` | explore | uiApp | `correction_patch`, `review_state` (result-file) |
+| `neurovue-review.tool.json` | `…tools/neurovue-review` | explore | script → app CLI (NeuroVue) | `correction_patch`, `review_state`, `review_bundle` (result-file) |
 | `python-volume-filter.tool.json` | `…tools/python-volume-filter` | explore | script → Python | `filtered_volumes` (result-dir) |
 | `niivue-qa-page.tool.json` | `…tools/niivue-qa-page` | publish | script | `qa_html` (result-file `index.html`) |
 | `provenance-fold.tool.json` | `…tools/provenance-fold` | publish | script | `run_record` (`prov:run-record`, `run.provenance.json`) |
@@ -50,7 +51,10 @@ script, which runs `svelte-kit sync` and then `scripts/neuroflow-ingest.ts`) in 
 BIDSvue checkout (found like a uiApp's: `NEUROFLOW_UI_APP_BIDSVUE`, else `bidsui`
 beside this checkout) from `extensions["neuroflow/app-cli"]`, after BIDSvue's
 `--check` probe confirms dcm2niix, so the same ingest runs over MCP
-with its settings taken from the step inputs. Launch details (command, completion, env) live
+with its settings taken from the step inputs. **neurovue-review** is NeuroVue's review
+without the window, through the same adapter: `cargo run --release --features cli --bin
+neurovue-cli` in the NeuroVue checkout, which writes the correction patch, the review state
+and (if asked) a `.nvbundle`. Launch details (command, completion, env) live
 in each tool's `extensions["neuroflow/launch"]`, and the runtime handoff format
 is defined in `../docs/neuroflow-session-contract.md`.
 
@@ -169,9 +173,9 @@ The uiApp tools are served by NeuroFlow-aware builds of the reference apps:
   `bidsvue` window needs `neuroflow/window-ingest`, which has both the window mode
   and the CLI.
 - NeuroVue — a `neurovue` checkout of [cdrake/neurovue](https://github.com/cdrake/neurovue)
-  on `main` (the NeuroFlow session support is merged there). It has no headless
-  mode yet, so it only runs as the interactive uiApp; see
-  [neurovue#13](https://github.com/cdrake/neurovue/issues/13).
+  on `main` (the NeuroFlow session support is merged there). `neurovue-review` runs its
+  headless `neurovue-cli` through `cargo`; build it once with
+  `cargo build --release --features cli --bin neurovue-cli` in `src-tauri`.
 
 Both honor the session contract: read `$NEUROFLOW_SESSION/context.json`, write
 outputs to `$NEUROFLOW_OUTPUT_DIR`, and append to `provenance.jsonl`.
