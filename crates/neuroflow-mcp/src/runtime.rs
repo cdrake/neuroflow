@@ -1841,6 +1841,7 @@ mod tests {
             step_timeout: None,
             summary_max_bytes: 1024,
             interactive: true,
+            finish_on_cancel: false,
         };
         let registry =
             Registry::load(&cfg.registry_dirs, &cfg.interpreters, cfg.interactive).unwrap();
@@ -1899,6 +1900,7 @@ mod tests {
             step_timeout: None,
             summary_max_bytes: 1024,
             interactive: false,
+            finish_on_cancel: false,
         };
         let registry =
             Registry::load(&cfg.registry_dirs, &cfg.interpreters, cfg.interactive).unwrap();

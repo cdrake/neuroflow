@@ -1,0 +1,233 @@
+{
+  "$schema": "../../../neuroflow-spec/schemas/0.1/tool.schema.json",
+  "neuroflow": "0.1.0",
+  "kind": "tool",
+  "id": "neuroflow.gallery.tools/dipy-tracking",
+  "version": "0.1.0",
+  "description": "Whole-brain deterministic tractography with DIPY: single-shell constrained spherical deconvolution (CSD) on the b0s and one diffusion shell (the highest by default), seeded where FA is above seed_fa and stopped where FA falls below stop_fa. Writes the tractogram as .trk in the DWI's world space, the FA map it used, and an inline summary.",
+  "inputs": {
+    "dwi": {
+      "type": "neuro:volume",
+      "description": "Preprocessed 4-D diffusion series (e.g. fsl-eddy's dwi), one volume per gradient-table entry."
+    },
+    "gradients": {
+      "type": "neuro:gradient-table",
+      "description": "FSL .bval or .bvec (the sibling with the same stem is read too), e.g. fsl-eddy's gradients with its rotated .bvec."
+    },
+    "mask": {
+      "type": "neuro:mask",
+      "description": "Brain mask on the dwi grid, e.g. fsl-topup's brain_mask; defaults to voxels with a non-zero mean b0.",
+      "optional": true
+    },
+    "shell": {
+      "type": "core:number",
+      "description": "b-value of the shell for CSD; the highest shell when unset.",
+      "optional": true
+    },
+    "sh_order": {
+      "type": "core:integer",
+      "description": "Maximum spherical-harmonic order of the CSD fit (even).",
+      "optional": true,
+      "default": 8
+    },
+    "seed_fa": {
+      "type": "core:number",
+      "description": "Seed in voxels with FA above this.",
+      "optional": true,
+      "default": 0.3
+    },
+    "stop_fa": {
+      "type": "core:number",
+      "description": "Stop a streamline where FA falls below this.",
+      "optional": true,
+      "default": 0.15
+    },
+    "seeds_per_voxel": {
+      "type": "core:integer",
+      "description": "Seed density per dimension in each seed voxel (n gives n^3 seeds).",
+      "optional": true,
+      "default": 2
+    },
+    "step_mm": {
+      "type": "core:number",
+      "description": "Tracking step in mm.",
+      "optional": true,
+      "default": 0.5
+    },
+    "min_length": {
+      "type": "core:number",
+      "description": "Drop streamlines shorter than this, in mm.",
+      "optional": true,
+      "default": 20
+    },
+    "b0_threshold": {
+      "type": "core:number",
+      "description": "b-values at or below this count as b0.",
+      "optional": true,
+      "default": 50
+    }
+  },
+  "outputs": {
+    "tractogram": {
+      "type": "neuro:tract",
+      "description": "Whole-brain streamlines, TrackVis .trk, RAS mm in the DWI's world space.",
+      "delivery": {
+        "mode": "core:result-dir",
+        "path": "tractogram.trk"
+      }
+    },
+    "fa": {
+      "type": "neuro:volume",
+      "description": "FA from a tensor fit on b0 + the shell nearest b=1000, used for seeding and stopping.",
+      "delivery": {
+        "mode": "core:result-dir",
+        "path": "fa.nii.gz"
+      }
+    },
+    "summary": {
+      "type": "core:json",
+      "description": "streamlines, seeds, length_mm {mean, median, max}, csd_shell, sh_order, response_ratio and the tracking parameters.",
+      "delivery": {
+        "mode": "core:result-file"
+      }
+    }
+  },
+  "outputDelivery": {
+    "default": "core:result-dir"
+  },
+  "extensions": {
+    "niivue/ui": {
+      "block": {
+        "id": "dipy-tracking",
+        "label": "Tractography (DIPY CSD)",
+        "description": "Whole-brain deterministic CSD tractography.",
+        "category": "Processing",
+        "stage": "explore",
+        "exposedFields": [
+          "seed_fa",
+          "stop_fa",
+          "seeds_per_voxel"
+        ]
+      }
+    },
+    "neuroflow/launch": {
+      "kind": "script",
+      "interpreter": "node",
+      "script": "../scripts/python_tool.mjs",
+      "completion": "exit",
+      "interactive": false,
+      "contract": "../../docs/neuroflow-session-contract.md",
+      "requirements": [
+        "Python 3.10+ with dipy 1.9+, nibabel and numpy; set NEUROFLOW_PYTHON to the environment"
+      ],
+      "description": "python_tool.mjs checks the Python environment, then calls nf_dipy_tracking.run(...): tensor FA, auto_response_ssst, CSD peaks (multi-process), LocalTracking; tractogram.trk and fa.nii.gz land in the output dir and the summary in $NEUROFLOW_OUTPUT_FILE."
+    },
+    "neuroflow/python": {
+      "interpreter": {
+        "env": "NEUROFLOW_PYTHON",
+        "paths": [
+          "{{toolDir}}/.venv/bin/python",
+          "~/.venvs/neuroflow/bin/python"
+        ],
+        "minVersion": "3.10"
+      },
+      "requirements": [
+        "nibabel",
+        "numpy",
+        {
+          "import": "dipy",
+          "package": "dipy",
+          "minVersion": "1.9",
+          "advice": "pip install dipy into that environment, or point NEUROFLOW_PYTHON at one that has it"
+        }
+      ],
+      "singleThread": false,
+      "entry": {
+        "kind": "function",
+        "module": "nf_dipy_tracking",
+        "name": "run",
+        "args": [
+          "{{dwi}}",
+          "{{gradients}}",
+          "{{mask}}",
+          "{{shell}}",
+          "{{sh_order}}",
+          "{{seed_fa}}",
+          "{{stop_fa}}",
+          "{{seeds_per_voxel}}",
+          "{{step_mm}}",
+          "{{min_length}}",
+          "{{b0_threshold}}"
+        ],
+        "result": "summary"
+      },
+      "outputs": {
+        "tractogram": "tractogram.trk",
+        "fa": "fa.nii.gz"
+      }
+    },
+    "neuroflow/mcp": {
+      "title": "Whole-brain tractography (DIPY CSD)",
+      "annotations": {
+        "readOnlyHint": false,
+        "idempotentHint": true
+      },
+      "maxWaitMs": 3600000
+    },
+    "neuroflow/usage": {
+      "useWhen": [
+        "Make a whole-brain tractogram from a preprocessed diffusion series to view or to feed tract and connectivity tools.",
+        "Show the major white-matter tracts of one subject in NiiVue."
+      ],
+      "avoidWhen": [
+        {
+          "when": "The diffusion series has not been corrected for distortion and eddy currents.",
+          "instead": "neuroflow.gallery.tools/fsl-eddy"
+        },
+        {
+          "when": "You need only scalar maps such as FA and MD.",
+          "instead": "neuroflow.gallery.tools/dti-fit"
+        }
+      ],
+      "preconditions": [
+        "Python with dipy 1.9+ (NEUROFLOW_PYTHON).",
+        "dwi has b0 volumes and at least one shell with enough directions for the CSD order (45 for order 8)."
+      ],
+      "effects": [
+        "Writes tractogram.trk and fa.nii.gz to the output directory."
+      ],
+      "duration": {
+        "typicalSeconds": 600,
+        "basis": "Estimate, not measured in the gallery: minutes for a 2 mm whole-brain series, dominated by the CSD fit and tracking."
+      },
+      "examples": [
+        {
+          "title": "From fsl-eddy outputs with the topup mask",
+          "inputs": {
+            "dwi": "<dwi_eddy.nii.gz>",
+            "gradients": "<dwi_eddy.bval>",
+            "mask": "<brain_mask.nii.gz>"
+          }
+        }
+      ],
+      "failures": [
+        {
+          "match": {
+            "contains": "no streamlines survived"
+          },
+          "meaning": "Nothing passed the FA and length thresholds.",
+          "remedy": "Check the mask and gradients; lower seed_fa or min_length.",
+          "retry": "after-fix"
+        },
+        {
+          "match": {
+            "contains": "no shell near"
+          },
+          "meaning": "The requested shell is not in the data.",
+          "remedy": "Leave shell unset or pick one the error lists.",
+          "retry": "after-fix"
+        }
+      ]
+    }
+  }
+}

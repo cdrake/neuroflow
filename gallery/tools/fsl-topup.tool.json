@@ -1,0 +1,239 @@
+{
+  "$schema": "../../../neuroflow-spec/schemas/0.1/tool.schema.json",
+  "neuroflow": "0.1.0",
+  "kind": "tool",
+  "id": "neuroflow.gallery.tools/fsl-topup",
+  "version": "0.1.0",
+  "description": "Estimate the susceptibility field of a diffusion series with FSL topup, from b0 volumes of the main series and of a short series with the opposite phase encoding. Reads PhaseEncodingDirection and TotalReadoutTime from the dcm2niix sidecars, writes acqparams.txt, the field coefficients for eddy, the corrected b0s and their mean, the field in Hz, and a brain mask (FSL bet) on the DWI grid.",
+  "inputs": {
+    "dwi": {
+      "type": "neuro:volume",
+      "description": "Main 4-D diffusion series (NIfTI with its dcm2niix JSON sidecar beside it)."
+    },
+    "gradients": {
+      "type": "neuro:gradient-table",
+      "description": "The main series' FSL .bval (or .bvec); picks its b0 volumes."
+    },
+    "reverse": {
+      "type": "neuro:volume",
+      "description": "Series with the opposite phase encoding on the same grid (b0s, possibly with a few diffusion-weighted volumes), with its JSON sidecar."
+    },
+    "reverse_gradients": {
+      "type": "neuro:gradient-table",
+      "description": "The reverse series' .bval; defaults to the .bval beside it, else every volume counts as a b0.",
+      "optional": true
+    },
+    "max_b0": {
+      "type": "core:integer",
+      "description": "Most b0 volumes taken from each series, evenly spaced (0 = all).",
+      "optional": true,
+      "default": 3
+    },
+    "b0_threshold": {
+      "type": "core:number",
+      "description": "b-values at or below this count as b0.",
+      "optional": true,
+      "default": 50
+    },
+    "readout_time": {
+      "type": "core:number",
+      "description": "Total readout time in seconds, overriding the sidecars.",
+      "optional": true
+    }
+  },
+  "outputs": {
+    "fieldcoef": {
+      "type": "neuro:volume",
+      "description": "topup_fieldcoef.nii.gz: spline coefficients of the field; pass to fsl-eddy as topup_fieldcoef (topup_movpar.txt stays beside it).",
+      "delivery": {
+        "mode": "core:result-dir",
+        "path": "topup_fieldcoef.nii.gz"
+      }
+    },
+    "movpar": {
+      "type": "core:file",
+      "description": "topup_movpar.txt: rigid motion of each b0.",
+      "delivery": {
+        "mode": "core:result-dir",
+        "path": "topup_movpar.txt"
+      }
+    },
+    "acqparams": {
+      "type": "core:file",
+      "description": "acqparams.txt: one row per b0 (phase-encode vector and readout time), as topup and eddy read it.",
+      "delivery": {
+        "mode": "core:result-dir",
+        "path": "acqparams.txt"
+      }
+    },
+    "b0_corrected": {
+      "type": "neuro:volume",
+      "description": "The b0 volumes after distortion correction (4-D).",
+      "delivery": {
+        "mode": "core:result-dir",
+        "path": "b0_corrected.nii.gz"
+      }
+    },
+    "b0_corrected_mean": {
+      "type": "neuro:volume",
+      "description": "Mean of the corrected b0s.",
+      "delivery": {
+        "mode": "core:result-dir",
+        "path": "b0_corrected_mean.nii.gz"
+      }
+    },
+    "field_hz": {
+      "type": "neuro:volume",
+      "description": "Estimated off-resonance field in Hz.",
+      "delivery": {
+        "mode": "core:result-dir",
+        "path": "field_hz.nii.gz"
+      }
+    },
+    "brain_mask": {
+      "type": "neuro:mask",
+      "description": "Brain mask from FSL bet (-f 0.2) on the mean corrected b0; the mask fsl-eddy wants.",
+      "delivery": {
+        "mode": "core:result-dir",
+        "path": "brain_mask.nii.gz"
+      }
+    },
+    "summary": {
+      "type": "core:json",
+      "description": "b0 counts, phase encodings, readout time, config, field percentiles in the mask, mask volume, largest b0 translation.",
+      "delivery": {
+        "mode": "core:result-file"
+      }
+    }
+  },
+  "outputDelivery": {
+    "default": "core:result-dir"
+  },
+  "extensions": {
+    "niivue/ui": {
+      "block": {
+        "id": "fsl-topup",
+        "label": "Distortion field (FSL topup)",
+        "description": "Estimate the EPI distortion field from reversed phase-encode b0s.",
+        "category": "Processing",
+        "stage": "explore",
+        "exposedFields": [
+          "max_b0"
+        ]
+      }
+    },
+    "neuroflow/launch": {
+      "kind": "script",
+      "interpreter": "node",
+      "script": "../scripts/python_tool.mjs",
+      "completion": "exit",
+      "interactive": false,
+      "contract": "../../docs/neuroflow-session-contract.md",
+      "requirements": [
+        "FSL 6.0.6 or newer (topup, bet, fslmaths; eddy with eddy_metal, eddy_cuda or eddy_cpu) under FSLDIR, ~/fsl, /usr/local/fsl or /opt/fsl",
+        "Python 3.10+ with nibabel and numpy; set NEUROFLOW_PYTHON to the environment"
+      ],
+      "description": "python_tool.mjs calls nf_fsl_dwi.topup(...): merges the selected b0s, writes acqparams.txt from the sidecars, runs topup (b02b0.cnf, or b02b0_1.cnf when a dimension is odd), then fslmaths -Tmean and bet -m on the corrected b0s."
+    },
+    "neuroflow/python": {
+      "interpreter": {
+        "env": "NEUROFLOW_PYTHON",
+        "paths": [
+          "{{toolDir}}/.venv/bin/python",
+          "~/.venvs/neuroflow/bin/python"
+        ],
+        "minVersion": "3.10"
+      },
+      "requirements": [
+        "nibabel",
+        "numpy"
+      ],
+      "singleThread": true,
+      "entry": {
+        "kind": "function",
+        "module": "nf_fsl_dwi",
+        "name": "topup",
+        "args": [
+          "{{dwi}}",
+          "{{gradients}}",
+          "{{reverse}}",
+          "{{reverse_gradients}}",
+          "{{b0_threshold}}",
+          "{{max_b0}}",
+          "{{readout_time}}"
+        ],
+        "result": "summary"
+      },
+      "outputs": {
+        "fieldcoef": "topup_fieldcoef.nii.gz",
+        "movpar": "topup_movpar.txt",
+        "acqparams": "acqparams.txt",
+        "b0_corrected": "b0_corrected.nii.gz",
+        "b0_corrected_mean": "b0_corrected_mean.nii.gz",
+        "field_hz": "field_hz.nii.gz",
+        "brain_mask": "brain_mask.nii.gz"
+      }
+    },
+    "neuroflow/mcp": {
+      "title": "Distortion field from reversed phase encoding (FSL topup)",
+      "annotations": {
+        "idempotentHint": true
+      },
+      "maxWaitMs": 1800000
+    },
+    "neuroflow/usage": {
+      "useWhen": [
+        "Correct EPI susceptibility distortion of a diffusion series that has a short reverse phase-encode (e.g. PA) b0 acquisition.",
+        "Get the field and mask that fsl-eddy needs before eddy-current correction."
+      ],
+      "avoidWhen": [
+        {
+          "when": "There is no series with the opposite phase encoding: run fsl-eddy without topup_fieldcoef."
+        }
+      ],
+      "preconditions": [
+        "FSL 6.0.6 or newer installed.",
+        "Both series come from dcm2niix with JSON sidecars (PhaseEncodingDirection, TotalReadoutTime), share one voxel grid, and have opposite phase encodings."
+      ],
+      "effects": [
+        "Writes topup_fieldcoef.nii.gz and topup_movpar.txt (fsl-eddy needs both, side by side), acqparams.txt, the corrected b0s, their mean, field_hz.nii.gz and brain_mask.nii.gz."
+      ],
+      "examples": [
+        {
+          "title": "AP diffusion series with a PA b0 series",
+          "inputs": {
+            "dwi": "<dwi.nii.gz>",
+            "gradients": "<dwi.bval>",
+            "reverse": "<dwi_pa.nii.gz>"
+          }
+        }
+      ],
+      "failures": [
+        {
+          "match": {
+            "contains": "FSL was not found"
+          },
+          "meaning": "No FSL install was found.",
+          "remedy": "Install FSL or set FSLDIR.",
+          "retry": "after-fix"
+        },
+        {
+          "match": {
+            "contains": "not opposite phase encodings"
+          },
+          "meaning": "The two series share a phase-encode direction.",
+          "remedy": "Pass the series acquired with the reversed phase encoding as reverse.",
+          "retry": "after-fix"
+        },
+        {
+          "match": {
+            "contains": "topup exited with status"
+          },
+          "meaning": "FSL topup failed.",
+          "remedy": "Read the step log; check that both series are on one grid with neuroflow_inspect.",
+          "retry": "after-fix"
+        }
+      ]
+    }
+  }
+}
