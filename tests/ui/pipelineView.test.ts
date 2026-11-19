@@ -7,8 +7,8 @@ import { renderToStaticMarkup } from 'react-dom/server.browser'
 import { buildPayload, missingInputs, seedValues } from '../../src/domain/runInputs'
 import { wrapToolAsWorkflow } from '../../src/domain/wrapTool'
 import { PipelineView, type PipelineViewProps } from '../../src/components/PipelineView'
-import type { HostRunState } from '../../src/components/RunPanel'
 import { WorkflowLibrary } from '../../src/components/WorkflowLibrary'
+import { RunPanel, type HostRunState, type RunPanelProps } from '../../src/components/RunPanel'
 import type { WorkflowDocument } from '../../src/domain/neuroflow'
 
 const toolDoc = JSON.parse(
@@ -144,4 +144,48 @@ test('RunPanel says a reused run ran nothing and offers Run anew with rerun', ()
   const fresh = render(false)
   assert.ok(fresh.includes('Completed · 0 steps'))
   assert.ok(!fresh.includes('Run anew'))
+})
+
+const runState = (over: Partial<HostRunState>): HostRunState => ({
+  ticket: null,
+  workflowId: 'w',
+  status: 'running',
+  progress: 0,
+  total: 0,
+  message: '',
+  currentStep: null,
+  finished: null,
+  stderrTail: null,
+  error: null,
+  ...over
+})
+const panel = (run: HostRunState, extra: Partial<RunPanelProps> = {}) =>
+  renderToStaticMarkup(
+    createElement(RunPanel, {
+      workflow: wf,
+      available: true,
+      report: { ok: true, issues: [] } as unknown as RunPanelProps['report'],
+      runnable: null,
+      environmentChecked: true,
+      run,
+      onStart: () => {},
+      onCancel: () => {},
+      onOpen: () => {},
+      ...extra
+    })
+  )
+const done = (structured: Record<string, unknown>, record: Record<string, unknown> = {}) =>
+  ({ ticket: 't', ok: true, runId: 'r1', status: 'completed', summary: '', sessionDir: '/s', record,
+     structured: { runId: 'r1', status: 'completed', outputs: {}, provenance: '', ...structured } }) as HostRunState['finished']
+
+test('RunPanel counts completed steps from the run record when progress gave none', () => {
+  const html = panel(runState({ status: 'completed', finished: done({}, { steps: { a: { tool: 't', status: 'completed' } } }) }))
+  assert.match(html, /Completed · 1 step</)
+})
+
+test('RunPanel lets the host name the output action', () => {
+  const out = { o: { uri: 'u', type: 'neuro:volume', path: '/x/a.nii.gz', mediaType: 'application/x-nifti' } }
+  const html = panel(runState({ status: 'completed', finished: done({ outputs: out }) }), { openLabel: () => 'Load' })
+  assert.match(html, /title="Load \/x\/a.nii.gz"/)
+  assert.match(html, />Load<\/button>/)
 })

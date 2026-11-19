@@ -51,12 +51,14 @@ export interface RunPanelProps {
   /** Whether onCancel can act on the current run; defaults to true while a run is in progress. */
   canCancel?: boolean
   onOpen: (path: string) => void
+  /** Names the action for an output path (default "Open"), e.g. "Load" or "Reveal". */
+  openLabel?: (path: string) => string
 }
 
 const RUN_INPUTS_STORAGE_KEY = 'neuroflow.runInputs.v1'
 
 /** Run monitor (design: RunMonitor artboard): inputs form, progress, steps, outputs. */
-export function RunPanel({ workflow, available, report, runnable, environmentChecked, run, initialInputs, lockedInputs, onStart, onCancel, canCancel = true, onOpen }: RunPanelProps): React.JSX.Element {
+export function RunPanel({ workflow, available, report, runnable, environmentChecked, run, initialInputs, lockedInputs, onStart, onCancel, canCancel = true, onOpen, openLabel }: RunPanelProps): React.JSX.Element {
   const [values, setValues] = useState<Record<string, string>>(() => seedValues(loadInputs(workflow), initialInputs))
 
   useEffect(() => {
@@ -222,7 +224,7 @@ export function RunPanel({ workflow, available, report, runnable, environmentChe
               <p className="nf-eyebrow nf-env-heading">Outputs</p>
               <ul className="nf-env-list nf-run-outputs">
                 {outputs.map(([name, value]) => (
-                  <OutputRow key={name} name={name} value={value} onOpen={onOpen} />
+                  <OutputRow key={name} name={name} value={value} onOpen={onOpen} openLabel={openLabel} />
                 ))}
               </ul>
             </>
@@ -247,7 +249,7 @@ export function RunPanel({ workflow, available, report, runnable, environmentChe
   )
 }
 
-function OutputRow({ name, value, onOpen }: { name: string; value: unknown; onOpen: (path: string) => void }): React.JSX.Element {
+function OutputRow({ name, value, onOpen, openLabel }: { name: string; value: unknown; onOpen: (path: string) => void; openLabel?: (path: string) => string }): React.JSX.Element {
   const items = Array.isArray(value) ? value : [value]
   return (
     <li className="nf-env-item">
@@ -259,9 +261,9 @@ function OutputRow({ name, value, onOpen }: { name: string; value: unknown; onOp
             <small className="nf-run-output" key={index}>
               <code title={item.path}>{item.path.split('/').pop()}</code>
               <em>{shortType(item.type)}{item.bytes !== undefined ? ` · ${formatBytes(item.bytes)}` : ''}</em>
-              <button className="nf-mini-action" onClick={() => onOpen(item.path)} title={`Reveal ${item.path}`} type="button">
+              <button className="nf-mini-action" onClick={() => onOpen(item.path)} title={`${openLabel?.(item.path) ?? 'Reveal'} ${item.path}`} type="button">
                 <FolderOpen size={12} />
-                Open
+                {openLabel?.(item.path) ?? 'Open'}
               </button>
             </small>
           ) : (
@@ -329,6 +331,13 @@ function isReused(run: HostRunState): boolean {
   return Boolean(run.finished && 'structured' in run.finished && run.finished.structured?.reused)
 }
 
+// Progress may never report a total (a fast or single-step run); run.json still lists the steps.
+function completedLabel(run: HostRunState): string {
+  const record = run.finished && 'record' in run.finished ? run.finished.record : null
+  const total = run.total || Object.keys(record?.steps ?? {}).length
+  return `Completed · ${total} step${total === 1 ? '' : 's'}`
+}
+
 function stateLabel(run: HostRunState): string {
   switch (run.status) {
     case 'starting':
@@ -340,7 +349,7 @@ function stateLabel(run: HostRunState): string {
         const runId = run.finished && 'runId' in run.finished ? run.finished.runId : ''
         return `Reused ${runId || 'an earlier run'} · inputs unchanged, nothing ran`
       }
-      return `Completed · ${run.total} step${run.total === 1 ? '' : 's'}`
+      return completedLabel(run)
     case 'failed':
       return run.currentStep ? `Failed at ${run.currentStep}` : 'Failed'
     case 'cancelled':
