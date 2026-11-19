@@ -1,6 +1,6 @@
 {
   "name": "@medview/neuroflow-react",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Read-only NeuroFlow pipeline view (library, diagram, run panel) for React hosts.",
   "type": "module",
   "types": "./dist/lib.d.ts",

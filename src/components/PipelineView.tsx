@@ -21,6 +21,7 @@ export interface PipelineViewProps {
   onStart: (inputs: Record<string, unknown>) => void
   onCancel: () => void
   onOpen: (path: string) => void
+  openLabel?: (path: string) => string
   /** host slot, rendered above RunPanel */
   targets?: ReactNode
 }
@@ -71,6 +72,7 @@ export function PipelineView(props: PipelineViewProps): React.JSX.Element {
             onStart={props.onStart}
             onCancel={props.onCancel}
             onOpen={props.onOpen}
+            openLabel={props.openLabel}
           />
         )}
       </div>

@@ -46,14 +46,17 @@ export interface RunPanelProps {
   /** Input name to a label shown instead of the field; the host fills these. */
   lockedInputs?: Record<string, string>
   onStart: (inputs: Record<string, unknown>) => void
+  /** Called while a run is starting or running; the host maps it to its own cancel. */
   onCancel: () => void
   onOpen: (path: string) => void
+  /** Names the action for an output path (default "Open"), e.g. "Load" or "Reveal". */
+  openLabel?: (path: string) => string
 }
 
 const RUN_INPUTS_STORAGE_KEY = 'neuroflow.runInputs.v1'
 
 /** Run monitor (design: RunMonitor artboard): inputs form, progress, steps, outputs. */
-export function RunPanel({ workflow, available, report, runnable, environmentChecked, run, initialInputs, lockedInputs, onStart, onCancel, onOpen }: RunPanelProps): React.JSX.Element {
+export function RunPanel({ workflow, available, report, runnable, environmentChecked, run, initialInputs, lockedInputs, onStart, onCancel, onOpen, openLabel }: RunPanelProps): React.JSX.Element {
   const [values, setValues] = useState<Record<string, string>>(() => seedValues(loadInputs(workflow), initialInputs))
 
   useEffect(() => {
@@ -155,7 +158,7 @@ export function RunPanel({ workflow, available, report, runnable, environmentChe
           {isRunning ? <Loader2 className="nf-spin" size={15} /> : <CirclePlay size={15} />}
           {isRunning ? 'Running' : 'Run'}
         </button>
-        <button className="nf-action" disabled={!isRunning || !run?.ticket} onClick={onCancel} title="Stop the current run" type="button">
+        <button className="nf-action" disabled={!isRunning} onClick={onCancel} title="Stop the current run" type="button">
           <Ban size={15} />
           Cancel
         </button>
@@ -209,7 +212,7 @@ export function RunPanel({ workflow, available, report, runnable, environmentChe
               <p className="nf-eyebrow nf-env-heading">Outputs</p>
               <ul className="nf-env-list nf-run-outputs">
                 {outputs.map(([name, value]) => (
-                  <OutputRow key={name} name={name} value={value} onOpen={onOpen} />
+                  <OutputRow key={name} name={name} value={value} onOpen={onOpen} openLabel={openLabel} />
                 ))}
               </ul>
             </>
@@ -234,7 +237,7 @@ export function RunPanel({ workflow, available, report, runnable, environmentChe
   )
 }
 
-function OutputRow({ name, value, onOpen }: { name: string; value: unknown; onOpen: (path: string) => void }): React.JSX.Element {
+function OutputRow({ name, value, onOpen, openLabel }: { name: string; value: unknown; onOpen: (path: string) => void; openLabel?: (path: string) => string }): React.JSX.Element {
   const items = Array.isArray(value) ? value : [value]
   return (
     <li className="nf-env-item">
@@ -246,9 +249,9 @@ function OutputRow({ name, value, onOpen }: { name: string; value: unknown; onOp
             <small className="nf-run-output" key={index}>
               <code title={item.path}>{item.path.split('/').pop()}</code>
               <em>{shortType(item.type)}{item.bytes !== undefined ? ` · ${formatBytes(item.bytes)}` : ''}</em>
-              <button className="nf-mini-action" onClick={() => onOpen(item.path)} title={`Reveal ${item.path}`} type="button">
+              <button className="nf-mini-action" onClick={() => onOpen(item.path)} title={`${openLabel?.(item.path) ?? 'Reveal'} ${item.path}`} type="button">
                 <FolderOpen size={12} />
-                Open
+                {openLabel?.(item.path) ?? 'Open'}
               </button>
             </small>
           ) : (
@@ -318,8 +321,13 @@ function stateLabel(run: HostRunState): string {
       return 'Starting…'
     case 'running':
       return run.message || `Step ${run.progress} of ${run.total}`
-    case 'completed':
-      return `Completed · ${run.total} step${run.total === 1 ? '' : 's'}`
+    case 'completed': {
+      const f = run.finished && 'record' in run.finished ? run.finished : null
+      // NeuroFlow answers a repeat with identical inputs from the earlier run instead of running it.
+      if (f?.structured.reused) return `Reused run ${f.runId} · inputs unchanged`
+      const total = run.total || Object.keys(f?.record.steps ?? {}).length
+      return `Completed · ${total} step${total === 1 ? '' : 's'}`
+    }
     case 'failed':
       return run.currentStep ? `Failed at ${run.currentStep}` : 'Failed'
     case 'cancelled':
