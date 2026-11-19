@@ -18,8 +18,11 @@ export interface PipelineViewProps {
   lockedInputs?: Record<string, string>
   /** forwarded to RunPanel */
   runnable?: string | null
-  onStart: (inputs: Record<string, unknown>) => void
+  /** `rerun` is set by the reused-run "Run anew" action; pass it to neuroflow-mcp as the `rerun` argument. */
+  onStart: (inputs: Record<string, unknown>, options?: { rerun?: boolean }) => void
   onCancel: () => void
+  /** forwarded to RunPanel */
+  canCancel?: boolean
   onOpen: (path: string) => void
   /** host slot, rendered above RunPanel */
   targets?: ReactNode
@@ -70,6 +73,7 @@ export function PipelineView(props: PipelineViewProps): React.JSX.Element {
             lockedInputs={props.lockedInputs}
             onStart={props.onStart}
             onCancel={props.onCancel}
+            canCancel={props.canCancel}
             onOpen={props.onOpen}
           />
         )}

@@ -55,6 +55,8 @@ export interface RunStructured {
   failedStep?: string
   error?: string
   logs?: { stdout: string; stderr: string }
+  /** neuroflow-mcp returned an earlier completed run with identical, unchanged inputs; nothing ran. */
+  reused?: boolean
 }
 
 export type RunFinishedEvent =
