@@ -825,6 +825,7 @@ export function App(): JSX.Element {
               run={hostRun && hostRun.workflowId === activeWorkflow.id ? hostRun : null}
               onStart={(inputs) => void startHostRun(inputs)}
               onCancel={cancelHostRun}
+              canCancel={Boolean(hostRun?.ticket)}
               onOpen={revealPath}
             />
           ) : (

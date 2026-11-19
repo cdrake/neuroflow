@@ -6,7 +6,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server.browser'
 import { buildPayload, missingInputs, seedValues } from '../../src/domain/runInputs'
 import { wrapToolAsWorkflow } from '../../src/domain/wrapTool'
-import { PipelineView } from '../../src/components/PipelineView'
+import { PipelineView, type PipelineViewProps } from '../../src/components/PipelineView'
 import { WorkflowLibrary } from '../../src/components/WorkflowLibrary'
 import { RunPanel, type HostRunState, type RunPanelProps } from '../../src/components/RunPanel'
 import type { WorkflowDocument } from '../../src/domain/neuroflow'
@@ -91,6 +91,61 @@ test('PipelineView renders library, diagram slot, targets and locked label', () 
   assert.ok(!html.includes('placeholder="/absolute/path inside a data root"'))
 })
 
+test('RunPanel Cancel follows the run status, not a host ticket', () => {
+  const w = wrapToolAsWorkflow(toolDoc)
+  const run = (status: HostRunState['status'], ticket: string | null): HostRunState => ({
+    ticket, workflowId: w.id, status, progress: 0, total: 1, message: '', currentStep: null,
+    finished: null, stderrTail: null, error: null
+  })
+  const cancel = (props: Record<string, unknown>): boolean => {
+    const html = renderToStaticMarkup(
+      createElement(PipelineView, {
+        items: [], activeId: w.id, onSelect: () => {}, workflow: w, tools: new Map(),
+        onStart: () => {}, onCancel: () => {}, onOpen: () => {}, run: null, ...props
+      } as PipelineViewProps)
+    )
+    const button = html.match(/<button[^>]*title="Stop the current run"[^>]*>/)?.[0]
+    assert.ok(button, 'Cancel button rendered')
+    return !button.includes('disabled')
+  }
+  // A host without tickets (a batch runner) can still cancel a running run.
+  assert.equal(cancel({ run: run('running', null) }), true)
+  assert.equal(cancel({ run: run('starting', null) }), true)
+  // A host can hold Cancel back until it can act, as the desktop does before its ticket arrives.
+  assert.equal(cancel({ run: run('running', null), canCancel: false }), false)
+  assert.equal(cancel({ run: run('running', 't1'), canCancel: true }), true)
+  // Nothing to cancel once the run has ended, or before one starts.
+  assert.equal(cancel({ run: run('completed', '') }), false)
+  assert.equal(cancel({ run: null }), false)
+})
+
+test('RunPanel says a reused run ran nothing and offers Run anew with rerun', () => {
+  const w = wrapToolAsWorkflow(toolDoc)
+  const finished = (reused: boolean): HostRunState['finished'] => ({
+    ticket: '', ok: true, runId: 'run-1', status: 'completed', summary: '', sessionDir: '',
+    structured: { runId: 'run-1', status: 'completed', outputs: {}, provenance: '', ...(reused ? { reused: true } : {}) },
+    record: {}
+  })
+  const render = (reused: boolean): string =>
+    renderToStaticMarkup(
+      createElement(PipelineView, {
+        items: [], activeId: w.id, onSelect: () => {}, workflow: w, tools: new Map(),
+        onStart: () => {}, onCancel: () => {}, onOpen: () => {},
+        run: {
+          ticket: '', workflowId: w.id, status: 'completed', progress: 0, total: 0, message: '', currentStep: null,
+          finished: finished(reused), stderrTail: null, error: null
+        }
+      } as PipelineViewProps)
+    )
+  const reused = render(true)
+  assert.ok(reused.includes('Reused run-1 · inputs unchanged, nothing ran'))
+  assert.ok(reused.includes('Run anew'))
+  assert.ok(!reused.includes('Completed · 0 steps'))
+  const fresh = render(false)
+  assert.ok(fresh.includes('Completed · 0 steps'))
+  assert.ok(!fresh.includes('Run anew'))
+})
+
 const runState = (over: Partial<HostRunState>): HostRunState => ({
   ticket: null,
   workflowId: 'w',
@@ -119,28 +174,18 @@ const panel = (run: HostRunState, extra: Partial<RunPanelProps> = {}) =>
       ...extra
     })
   )
-const finished = (structured: Record<string, unknown>, record: Record<string, unknown> = {}) =>
+const done = (structured: Record<string, unknown>, record: Record<string, unknown> = {}) =>
   ({ ticket: 't', ok: true, runId: 'r1', status: 'completed', summary: '', sessionDir: '/s', record,
      structured: { runId: 'r1', status: 'completed', outputs: {}, provenance: '', ...structured } }) as HostRunState['finished']
 
-test('RunPanel enables Stop while running even before a ticket arrives', () => {
-  const html = panel(runState({ status: 'running' }))
-  assert.match(html, /<button class="nf-action" title="Stop the current run"/)
-})
-
-test('RunPanel says a reused run reused an earlier one', () => {
-  const html = panel(runState({ status: 'completed', finished: finished({ reused: true }) }))
-  assert.match(html, /Reused run r1 · inputs unchanged/)
-})
-
 test('RunPanel counts completed steps from the run record when progress gave none', () => {
-  const html = panel(runState({ status: 'completed', finished: finished({}, { steps: { a: { tool: 't', status: 'completed' } } }) }))
+  const html = panel(runState({ status: 'completed', finished: done({}, { steps: { a: { tool: 't', status: 'completed' } } }) }))
   assert.match(html, /Completed · 1 step</)
 })
 
 test('RunPanel lets the host name the output action', () => {
   const out = { o: { uri: 'u', type: 'neuro:volume', path: '/x/a.nii.gz', mediaType: 'application/x-nifti' } }
-  const html = panel(runState({ status: 'completed', finished: finished({ outputs: out }) }), { openLabel: () => 'Load' })
+  const html = panel(runState({ status: 'completed', finished: done({ outputs: out }) }), { openLabel: () => 'Load' })
   assert.match(html, /title="Load \/x\/a.nii.gz"/)
   assert.match(html, />Load<\/button>/)
 })

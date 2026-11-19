@@ -40,6 +40,7 @@ const tool = toolFromDocument(toolDoc)
     lockedInputs={{ text: 'Chosen by the host' }}
     onStart={(inputs) => start(inputs)}
     onCancel={cancel}
+    canCancel={true}                   // optional; false holds Cancel back while a run is in progress
     onOpen={(path) => reveal(path)}
     targets={<MyTargetPicker />}       // host slot above the run panel
   />
@@ -50,10 +51,16 @@ const tool = toolFromDocument(toolDoc)
 
 The host owns the process and keeps one `HostRunState` per run:
 
-- `starting`: when you send `tools/call` for the workflow's MCP tool name. Set `workflowId`, keep `ticket` for cancel.
+- `starting`: when you send `tools/call` for the workflow's MCP tool name. Set `workflowId`. `ticket` is
+  the host's own run handle; the panel doesn't read it. Cancel is enabled while the run is `starting` or `running`;
+  pass `canCancel={false}` until `onCancel` can act (the desktop app does this until its ticket arrives).
 - `running`: on each MCP progress notification set `progress`, `total`, `message`, and `currentStep`.
 - `completed`: on the result, set `finished` from `structuredContent`; add `sessionDir` and the `run.json` record
   (`record.steps` gives per-step status). Set `stderrTail` from `structured.logs?.stderr ?? null`.
+- Reused runs: `neuroflow-mcp` answers a repeat call with identical, unchanged inputs by returning the earlier
+  completed run with `structuredContent.reused: true`, and nothing executes. Keep that flag in `finished.structured`:
+  the panel then says the run was reused and offers "Run anew", which calls `onStart(inputs, { rerun: true })`. Send
+  `rerun: true` alongside the inputs in that `tools/call` to force a fresh run.
 - `failed` / `rejected` / `cancelled`: set `error` (for a JSON-RPC error or a process exit, include the stderr tail).
 
 `neuroflow-mcp` exposes no `run.json` resource, so the host reads `<sessions>/<runId>/run.json` itself.

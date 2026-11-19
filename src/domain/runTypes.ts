@@ -54,9 +54,9 @@ export interface RunStructured {
   provenance: string
   failedStep?: string
   error?: string
-  /** True when the server answered with an earlier run's result (identical inputs). */
-  reused?: boolean
   logs?: { stdout: string; stderr: string }
+  /** neuroflow-mcp returned an earlier completed run with identical, unchanged inputs; nothing ran. */
+  reused?: boolean
 }
 
 export type RunFinishedEvent =
