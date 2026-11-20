@@ -406,7 +406,11 @@ pub fn run_workflow_with_cancel(
         // A stage the tool reports from inside the step (NEUROFLOW_PROGRESS_FILE)
         // moves progress within [index, index + 1) and is named after the step label.
         let mut on_stage = |fraction: f64, stage: &str| {
-            let message = if stage.is_empty() { label.clone() } else { format!("{label}: {stage}") };
+            let message = if stage.is_empty() {
+                label.clone()
+            } else {
+                format!("{label}: {stage}")
+            };
             progress(index as f64 + fraction, total, &message);
         };
 
@@ -807,7 +811,12 @@ struct StageTail {
 
 impl StageTail {
     fn new(path: PathBuf) -> Self {
-        StageTail { path, read: 0, fraction: 0.0, stage: String::new() }
+        StageTail {
+            path,
+            read: 0,
+            fraction: 0.0,
+            stage: String::new(),
+        }
     }
 
     fn poll(&mut self) -> Option<(f64, String)> {
@@ -825,8 +834,14 @@ impl StageTail {
         self.read += complete as u64;
         let mut changed = false;
         for line in chunk[..complete].lines() {
-            let Ok(entry) = serde_json::from_str::<Value>(line) else { continue };
-            let stage = entry.get("stage").and_then(Value::as_str).unwrap_or("").trim();
+            let Ok(entry) = serde_json::from_str::<Value>(line) else {
+                continue;
+            };
+            let stage = entry
+                .get("stage")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .trim();
             let fraction = entry
                 .get("fraction")
                 .and_then(Value::as_f64)
@@ -985,7 +1000,10 @@ fn run_step(
 
     let stdout_path = paths.session.join("logs").join(format!("{step_id}.stdout"));
     let stderr_path = paths.session.join("logs").join(format!("{step_id}.stderr"));
-    let progress_path = paths.session.join("logs").join(format!("{step_id}.progress.jsonl"));
+    let progress_path = paths
+        .session
+        .join("logs")
+        .join(format!("{step_id}.progress.jsonl"));
     let mut stages = StageTail::new(progress_path.clone());
     let (Ok(stdout), Ok(stderr)) = (
         fs::File::create(&stdout_path),
@@ -1934,23 +1952,42 @@ mod tests {
 
     #[test]
     fn stage_tail_reads_whole_lines_and_never_goes_backwards() {
-        let path = std::env::temp_dir().join(format!("neuroflow-stages-{}.jsonl", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("neuroflow-stages-{}.jsonl", std::process::id()));
         let _ = fs::remove_file(&path);
         let mut tail = StageTail::new(path.clone());
         assert_eq!(tail.poll(), None, "no file yet");
         let append = |text: &str| {
             use std::io::Write;
-            fs::OpenOptions::new().create(true).append(true).open(&path).unwrap().write_all(text.as_bytes()).unwrap();
+            fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&path)
+                .unwrap()
+                .write_all(text.as_bytes())
+                .unwrap();
         };
         append("{\"stage\": \"MotionCor\", \"fraction\": 0.003}\n{\"stage\": \"Nu Intensity");
-        assert_eq!(tail.poll(), Some((0.003, "MotionCor".into())), "the partial line waits");
+        assert_eq!(
+            tail.poll(),
+            Some((0.003, "MotionCor".into())),
+            "the partial line waits"
+        );
         append(" Correction\", \"fraction\": 0.172}\n");
         assert_eq!(tail.poll(), Some((0.172, "Nu Intensity Correction".into())));
         assert_eq!(tail.poll(), None, "nothing new");
         append("not json\n{\"stage\": \"Fill\", \"fraction\": 0.1}\n");
-        assert_eq!(tail.poll(), Some((0.172, "Fill".into())), "bad lines are skipped; fractions only rise");
+        assert_eq!(
+            tail.poll(),
+            Some((0.172, "Fill".into())),
+            "bad lines are skipped; fractions only rise"
+        );
         append("{\"stage\": \"Done-ish\", \"fraction\": 7}\n{\"stage\": \"Unknown\"}\n");
-        assert_eq!(tail.poll(), Some((0.999, "Unknown".into())), "capped below 1; a stage alone keeps the fraction");
+        assert_eq!(
+            tail.poll(),
+            Some((0.999, "Unknown".into())),
+            "capped below 1; a stage alone keeps the fraction"
+        );
         let _ = fs::remove_file(&path);
     }
 
@@ -1993,9 +2030,14 @@ mod tests {
             Registry::load(&cfg.registry_dirs, &cfg.interpreters, cfg.interactive).unwrap();
         let workflow = wrap_tool(registry.tool("test/stages").unwrap());
         let mut seen: Vec<(f64, f64, String)> = Vec::new();
-        let outcome = run_workflow(&cfg, &registry, &workflow, &Map::new(), &json!({}), &mut |done, total, message| {
-            seen.push((done, total, message.to_string()))
-        })
+        let outcome = run_workflow(
+            &cfg,
+            &registry,
+            &workflow,
+            &Map::new(),
+            &json!({}),
+            &mut |done, total, message| seen.push((done, total, message.to_string())),
+        )
         .unwrap();
         let _ = fs::remove_dir_all(&root);
         assert_eq!(outcome.status, "completed", "{}", outcome.summary);
