@@ -13,7 +13,8 @@ const adapter = join(here, 'cli_tool.mjs');
 const root = mkdtempSync(join(tmpdir(), 'cli-tool-'));
 
 // A fake CLI: `fakecli --version` prints a version; otherwise it writes each
-// `--out <file>` argument (content: the full argv), makes `--link <target> <path>`,
+// `--out <file>` argument (content: the full argv), prints each `--say <line>`,
+// makes `--link <target> <path>`,
 // and exits with `--exit <n>`.
 const fake = join(root, 'fakecli');
 writeFileSync(fake, `#!${process.execPath}
@@ -24,6 +25,7 @@ if (a[0] === '--version') {
 }
 const fs = require('node:fs');
 for (let i = 0; i < a.length; i++) if (a[i] === '--out') fs.writeFileSync(a[i + 1], a.join(' '));
+for (let i = 0; i < a.length; i++) if (a[i] === '--say') console.log(a[i + 1]);
 const l = a.indexOf('--link'); if (l >= 0) fs.symlinkSync(a[l + 1], a[l + 2]);
 const v = a.indexOf('--env'); if (v >= 0) fs.writeFileSync(a[v + 2], String(process.env[a[v + 1]]));
 const e = a.indexOf('--exit'); process.exit(e >= 0 ? Number(a[e + 1]) : 0);
@@ -48,10 +50,14 @@ function run(cli, inputs, { tool = baseTool } = {}) {
   writeFileSync(join(session, 'context.json'), JSON.stringify({ tool: 'test/fake', step: 'step', inputs, outputDir, workDir: join(session, 'work') }));
   const r = spawnSync(process.execPath, [adapter], {
     encoding: 'utf8',
-    env: { ...process.env, NEUROFLOW_SESSION: session, NEUROFLOW_OUTPUT_DIR: outputDir, NEUROFLOW_STEP: 'step', NEUROFLOW_TOOL_DOC: join(session, 'tool.json') },
+    env: { ...process.env, NEUROFLOW_SESSION: session, NEUROFLOW_OUTPUT_DIR: outputDir, NEUROFLOW_STEP: 'step', NEUROFLOW_TOOL_DOC: join(session, 'tool.json'),
+      NEUROFLOW_PROGRESS_FILE: join(session, 'progress.jsonl') },
   });
   const prov = existsSync(join(session, 'provenance.jsonl')) ? JSON.parse(readFileSync(join(session, 'provenance.jsonl'), 'utf8').trim()) : null;
-  return { ...r, outputDir, prov };
+  const stages = existsSync(join(session, 'progress.jsonl'))
+    ? readFileSync(join(session, 'progress.jsonl'), 'utf8').trim().split('\n').map((line) => JSON.parse(line))
+    : [];
+  return { ...r, outputDir, prov, stages };
 }
 
 test('fills placeholders, conditional groups, and records provenance', () => {
@@ -98,6 +104,25 @@ test('a dangling link in the output dir is skipped, not a failure', () => {
   }, {});
   assert.equal(r.status, 0, r.stderr);
   assert.ok(existsSync(join(r.outputDir, 'result.txt')));
+});
+
+test('progress turns matching stdout lines into stages, and still logs stdout', () => {
+  const say = (line) => ['--say', line];
+  const r = run({
+    args: [...say('#@# MotionCor Fri Nov 20 05:38:41 PM UTC 2026'), ...say('#@#% fs-check-version match = 1'),
+      ...say('#@# Tessellate lh Fri Nov 20 06:05:20 PM UTC 2026'), ...say('#@# Unlisted Fri Nov 20 06:06:00 PM UTC 2026'),
+      '--out', '{{outputDir}}/result.txt'],
+    outputs: { result: 'result.txt' },
+    progress: { match: '^#@# (.+?) +\\w{3} \\w{3} +\\d+ \\d\\d:\\d\\d:\\d\\d', stages: { MotionCor: 0.003, Tessellate: 0.378, 'Tessellate lh extra': 0.9 } },
+  }, {});
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(r.stages, [
+    { stage: 'MotionCor', fraction: 0.003 },
+    { stage: 'Tessellate lh', fraction: 0.378 },
+    { stage: 'Unlisted' },
+  ]);
+  assert.match(r.stdout, /#@#% fs-check-version/);
+  assert.match(r.stdout, /#@# Tessellate lh/);
 });
 
 test('an ambiguous regex fails unless pick is set', () => {

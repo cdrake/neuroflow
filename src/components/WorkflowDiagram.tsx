@@ -20,7 +20,7 @@ import {
   type NodeTypes,
   type XYPosition
 } from '@xyflow/react'
-import { AlertTriangle, Box, Circle, Database, FileInput, Sigma } from 'lucide-react'
+import { AlertTriangle, Box, CheckCircle2, Circle, Database, FileInput, Loader2, Sigma, XCircle } from 'lucide-react'
 import {
   buildWorkflowGraph,
   type NeuroflowNode,
@@ -29,6 +29,7 @@ import {
   type StepNodeData
 } from '../domain/graph'
 import type { ToolDefinition, WorkflowDocument } from '../domain/neuroflow'
+import type { StepRunState } from '../domain/progress'
 import type { ToolStatus } from '../domain/runTypes'
 import { shortType } from '../domain/neuroflow'
 
@@ -43,6 +44,8 @@ export interface WorkflowDiagramProps {
   }
   nodePositions: NodePositionMap
   toolStatuses?: Map<string, ToolStatus>
+  /** Per-step state of the run being shown (see stepRunStates); marks the running, finished and failed steps. */
+  runStates?: Record<string, StepRunState>
   onSelectStep: (id: string) => void
   onBindInput: (stepId: string, inputName: string, ref: string) => void
   onMoveNode: (nodeId: string, position: XYPosition) => void
@@ -61,14 +64,15 @@ export function WorkflowDiagram({
   emptyAction,
   nodePositions,
   toolStatuses,
+  runStates,
   onSelectStep,
   onBindInput,
   onMoveNode,
   onAddTool
 }: WorkflowDiagramProps): React.JSX.Element {
   const graph = useMemo(
-    () => buildWorkflowGraph(workflow, tools, selectedStep, onSelectStep, nodePositions, toolStatuses),
-    [workflow, tools, selectedStep, onSelectStep, nodePositions, toolStatuses]
+    () => buildWorkflowGraph(workflow, tools, selectedStep, onSelectStep, nodePositions, toolStatuses, runStates),
+    [workflow, tools, selectedStep, onSelectStep, nodePositions, toolStatuses, runStates]
   )
 
   return (
@@ -243,9 +247,12 @@ function SourcePoolNode({ data }: NodeProps): React.JSX.Element {
 
 function StepNode({ data }: NodeProps): React.JSX.Element {
   const step = data as StepNodeData
+  const run = step.run
+  const classes = ['nf-step-node', step.selected && 'is-selected', run && `is-run-${run.status}`].filter(Boolean).join(' ')
   return (
     <div
-      className={step.selected ? 'nf-step-node is-selected' : 'nf-step-node'}
+      className={classes}
+      aria-current={run?.status === 'running' ? 'step' : undefined}
       onClick={() => step.onSelect(step.id)}
       onKeyDown={(event) => {
         if (event.key === 'Enter' || event.key === ' ') {
@@ -272,8 +279,17 @@ function StepNode({ data }: NodeProps): React.JSX.Element {
             {step.readiness.status === 'needsSetup' ? 'setup' : step.readiness.status === 'interactive' ? 'interactive' : 'no runner'}
           </i>
         )}
+        {run?.status === 'succeeded' && <CheckCircle2 className="nf-node-run-icon" size={14} aria-label="finished" />}
+        {run?.status === 'failed' && <XCircle className="nf-node-run-icon" size={14} aria-label="failed" />}
         <em>{step.index + 1}</em>
       </header>
+
+      {run?.status === 'running' && (
+        <footer className="nf-node-run" title={run.stage ? `Running: ${run.stage}` : 'Running'}>
+          <Loader2 className="nf-spin" size={13} />
+          <span>{run.stage ?? 'Running'}</span>
+        </footer>
+      )}
 
       <div className="nf-node-io">
         <div className="nf-io-column">

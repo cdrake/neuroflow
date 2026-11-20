@@ -90,6 +90,15 @@ SynthSeg itself.
   writes `<stem>.json` beside that output from a FreeSurfer-format LUT (relative
   paths resolve against the install root), in NiiVue's label-map form
   (`R`, `G`, `B`, `A`, `I`, `labels`), so viewers show named, coloured labels.
+- **Stages.** `progress: { "match": regex, "stages": { name: fraction } }` reports
+  what a long command is doing. Each stdout line matching `match` starts a stage
+  named by its first group; `stages` gives the fraction of the step at which a
+  stage starts (a name also covers `"<name> <more>"`, so `Tessellate` covers
+  `Tessellate lh`). The adapter appends them to `NEUROFLOW_PROGRESS_FILE`, and
+  the run panel and diagram show the stage while the bar moves within the step;
+  stdout is still logged in full. recon-all uses its dated `#@# <stage>` lines,
+  with each stage's start measured on a full run. See
+  [run monitoring](run-monitoring.md).
 - **Outputs.** Each declared output maps to a file name the command writes in the
   output directory, or to `{ "match": regex, "pick": "first" | "largest" }` when
   the name is not known ahead (dcm2niix appends echo and series suffixes). The

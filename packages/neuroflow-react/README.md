@@ -55,6 +55,10 @@ The host owns the process and keeps one `HostRunState` per run:
   the host's own run handle; the panel doesn't read it. Cancel is enabled while the run is `starting` or `running`;
   pass `canCancel={false}` until `onCancel` can act (the desktop app does this until its ticket arrives).
 - `running`: on each MCP progress notification set `progress`, `total`, `message`, and `currentStep`.
+- Stages and the diagram: a progress `message` of `step i/n: <step> (<tool>): <stage>` puts the stage under the
+  running step. `PipelineView` rings each diagram node by its state (running, finished, failed). If you draw
+  `WorkflowDiagram` yourself, pass `runStates={stepRunStates(workflow, run)}`. Screenshots and the tool side:
+  [run monitoring](https://github.com/cdrake/neuroflow/blob/main/docs/run-monitoring.md).
 - Elapsed time: the panel shows how long the run, and its current step, have been going, ticking each second. It
   times both from when it first sees them, so set the optional `startedAt` (when you send `tools/call`),
   `stepStartedAt` (when `currentStep` changes) and `endedAt` (on the result), all epoch ms, if the panel can remount

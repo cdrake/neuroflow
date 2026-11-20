@@ -17,6 +17,8 @@ import { idTail, shortType } from '../domain/neuroflow'
 import type { RunFinishedEvent, RunStepRecord } from '../domain/runTypes'
 import { isArtifactDescriptor } from '../domain/runTypes'
 import { buildPayload, isLocked, missingInputs, seedValues } from '../domain/runInputs'
+import { parseProgressMessage, type StepRunState, type StepRunStatus } from '../domain/progress'
+export type { StepRunState, StepRunStatus } from '../domain/progress'
 
 export type HostRunStatus = 'starting' | 'running' | 'completed' | 'failed' | 'cancelled' | 'rejected'
 
@@ -210,6 +212,7 @@ export function RunPanel({ workflow, available, report, runnable, environmentChe
                   <div className="nf-run-step-main">
                     <strong>{step.id}</strong>
                     <small>{step.detail}</small>
+                    {step.stage && <small className="nf-run-stage" title="Current stage">{step.stage}</small>}
                   </div>
                 </li>
               ))}
@@ -290,38 +293,71 @@ function OutputRow({ name, value, onOpen, openLabel }: { name: string; value: un
   )
 }
 
+/**
+ * Each step's state in a run, in run order: from run.json once the run is over,
+ * else from progress (steps before the current one have finished). Feeds the
+ * run panel's step list and the diagram's step nodes.
+ */
+export function stepRunStates(workflow: WorkflowDocument, run: HostRunState | null): Record<string, StepRunState> {
+  if (!run) return {}
+  const record = run.finished && run.finished.ok !== false && 'record' in run.finished ? run.finished.record : null
+  const stepIds = record?.steps ? Object.keys(record.steps) : Object.keys(workflow.steps)
+  const currentIndex = run.currentStep ? stepIds.indexOf(run.currentStep) : -1
+  const active = run.status === 'starting' || run.status === 'running'
+  const progress = parseProgressMessage(run.message)
+  const states: Record<string, StepRunState> = {}
+
+  stepIds.forEach((id, index) => {
+    const rec: RunStepRecord | undefined = record?.steps?.[id]
+    if (rec) {
+      states[id] = {
+        status: rec.status === 'completed' || rec.status === 'succeeded'
+          ? 'succeeded'
+          : rec.status === 'failed'
+            ? 'failed'
+            : rec.status === 'skipped'
+              ? 'skipped'
+              : 'pending'
+      }
+    } else if (run.status === 'rejected') {
+      states[id] = { status: 'skipped' }
+    } else if (currentIndex >= 0 && index < currentIndex) {
+      states[id] = { status: 'succeeded' }
+    } else if (index === currentIndex) {
+      const stage = active && progress?.stepId === id ? progress.stage : undefined
+      states[id] = {
+        status: active ? 'running' : run.status === 'failed' ? 'failed' : run.status === 'cancelled' ? 'skipped' : 'pending',
+        ...(stage ? { stage } : {})
+      }
+    } else {
+      states[id] = { status: 'pending' }
+    }
+  })
+  return states
+}
+
 interface StepRow {
   id: string
-  status: 'pending' | 'running' | 'succeeded' | 'failed' | 'skipped'
+  status: StepRunStatus
   detail: string
+  stage?: string
 }
 
 function stepRows(workflow: WorkflowDocument, run: HostRunState, clock: RunClock): StepRow[] {
   const record = run.finished && run.finished.ok !== false && 'record' in run.finished ? run.finished.record : null
-  const stepIds = record?.steps ? Object.keys(record.steps) : Object.keys(workflow.steps)
-  const currentIndex = run.currentStep ? stepIds.indexOf(run.currentStep) : -1
-
-  return stepIds.map((id, index) => {
+  return Object.entries(stepRunStates(workflow, run)).map(([id, state]) => {
     const rec: RunStepRecord | undefined = record?.steps?.[id]
     if (rec) {
-      const status = rec.status === 'completed' || rec.status === 'succeeded'
-        ? 'succeeded'
-        : rec.status === 'failed'
-          ? 'failed'
-          : rec.status === 'skipped'
-            ? 'skipped'
-            : 'pending'
       const duration = rec.startedAt && rec.endedAt ? formatDuration(rec.startedAt, rec.endedAt) : ''
       const detail = rec.error ? rec.error : [idTail(rec.tool), duration].filter(Boolean).join(' · ')
-      return { id, status, detail }
+      return { id, status: state.status, detail }
     }
-    if (run.status === 'rejected') return { id, status: 'skipped', detail: idTail(workflow.steps[id]?.tool ?? '') }
-    if (currentIndex >= 0 && index < currentIndex) return { id, status: 'succeeded', detail: idTail(workflow.steps[id]?.tool ?? '') }
-    if (index === currentIndex) {
-      const detail = [idTail(workflow.steps[id]?.tool ?? ''), clock.step !== null ? formatElapsed(clock.step) : ''].filter(Boolean).join(' · ')
-      return { id, status: run.status === 'failed' ? 'failed' : 'running', detail }
+    const tool = idTail(workflow.steps[id]?.tool ?? '')
+    if (state.status === 'running') {
+      const detail = [tool, clock.step !== null ? formatElapsed(clock.step) : ''].filter(Boolean).join(' · ')
+      return { id, status: state.status, detail, stage: state.stage }
     }
-    return { id, status: 'pending', detail: idTail(workflow.steps[id]?.tool ?? '') }
+    return { id, status: state.status, detail: tool }
   })
 }
 
@@ -356,8 +392,11 @@ function stateLabel(run: HostRunState): string {
   switch (run.status) {
     case 'starting':
       return 'Starting…'
-    case 'running':
+    case 'running': {
+      const progress = parseProgressMessage(run.message)
+      if (progress) return `Step ${progress.index} of ${progress.total}: ${progress.stepId}`
       return run.message || `Step ${run.progress} of ${run.total}`
+    }
     case 'completed':
       if (isReused(run)) {
         const runId = run.finished && 'runId' in run.finished ? run.finished.runId : ''

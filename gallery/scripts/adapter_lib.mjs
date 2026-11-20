@@ -173,6 +173,35 @@ export function mapOutputs(tool, spec, outputDir, fail, { label = 'the program',
   return produced;
 }
 
+/**
+ * Turn a program's output lines into stage reports for the engine (session
+ * contract: NEUROFLOW_PROGRESS_FILE, JSON lines `{ stage, fraction }`).
+ * `spec.match` is a regex whose first group (else the whole match) names the
+ * stage; `spec.stages` maps a name to the fraction of the step where it starts,
+ * the longest name that equals the stage or begins it ("Tessellate" for
+ * "Tessellate lh"). Without a file (an older engine) nothing is written.
+ */
+export function stageReporter(spec, file) {
+  const re = new RegExp(spec.match);
+  const known = Object.entries(spec.stages ?? {}).sort((a, b) => b[0].length - a[0].length);
+  let pending = '';
+  const report = (line) => {
+    const m = re.exec(line);
+    if (!m) return;
+    const stage = (m[1] ?? m[0]).trim();
+    const hit = known.find(([name]) => stage === name || stage.startsWith(`${name} `));
+    const entry = hit ? { stage, fraction: hit[1] } : { stage };
+    if (file) appendFileSync(file, `${JSON.stringify(entry)}\n`);
+  };
+  return {
+    feed(chunk) {
+      const lines = (pending + chunk.toString()).split(/\r?\n/);
+      pending = lines.pop();
+      lines.forEach(report);
+    },
+  };
+}
+
 /** Append one provenance line to <session>/provenance.jsonl. */
 export function appendProvenance(session, record) {
   appendFileSync(join(session, 'provenance.jsonl'), JSON.stringify({

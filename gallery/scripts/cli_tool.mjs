@@ -40,6 +40,14 @@
  *                        output as <stem>.json ({R,G,B,A,I,labels}, the NiiVue
  *                        label-map form) from a FreeSurfer-format LUT; a relative
  *                        lut is read from the install root
+ *   progress (optional)  { match, stages }: report the command's stages while it
+ *                        runs. Each stdout line matching the `match` regex starts
+ *                        a stage named by its first group (else the whole match);
+ *                        `stages` maps a stage name to the fraction of the step
+ *                        at which it starts (a name also covers "<name> <more>",
+ *                        e.g. "Tessellate" covers "Tessellate lh"). Stages go to
+ *                        NEUROFLOW_PROGRESS_FILE (session contract); stdout is
+ *                        still logged in full
  *
  * Env: NEUROFLOW_SESSION / _OUTPUT_DIR / _WORK_DIR / _STEP (session contract),
  * plus the template's own override variable.
@@ -50,6 +58,7 @@ import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   appendProvenance, checkInputsExist, failer, findExecutable, findToolDoc, hasValue, mapOutputs, readSession, runProbe,
+  stageReporter,
 } from './adapter_lib.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -127,8 +136,13 @@ const cwd = template.cwd === 'outputDir' ? outputDir : workDir;
 mkdirSync(cwd, { recursive: true });
 console.log(`cli_tool: running ${exe} ${args.join(' ')}`);
 const started = Date.now();
+const stages = template.progress ? stageReporter(template.progress, process.env.NEUROFLOW_PROGRESS_FILE) : null;
 const status = await new Promise((resolve) => {
-  const child = spawn(exe, args, { cwd, env: childEnv, stdio: ['ignore', 'inherit', 'inherit'] });
+  const child = spawn(exe, args, { cwd, env: childEnv, stdio: ['ignore', stages ? 'pipe' : 'inherit', 'inherit'] });
+  child.stdout?.on('data', (chunk) => {
+    process.stdout.write(chunk);
+    stages.feed(chunk);
+  });
   child.on('error', (err) => { console.error(`cli_tool: ${err.message}`); resolve(127); });
   child.on('exit', (c, signal) => resolve(c ?? (signal ? 128 : 1)));
 });

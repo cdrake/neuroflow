@@ -8,7 +8,9 @@ import { buildPayload, missingInputs, seedValues } from '../../src/domain/runInp
 import { wrapToolAsWorkflow } from '../../src/domain/wrapTool'
 import { PipelineView, type PipelineViewProps } from '../../src/components/PipelineView'
 import { WorkflowLibrary } from '../../src/components/WorkflowLibrary'
-import { RunPanel, formatElapsed, type HostRunState, type RunPanelProps } from '../../src/components/RunPanel'
+import { RunPanel, formatElapsed, stepRunStates, type HostRunState, type RunPanelProps } from '../../src/components/RunPanel'
+import { parseProgressMessage } from '../../src/domain/progress'
+import { buildWorkflowGraph } from '../../src/domain/graph'
 import type { WorkflowDocument } from '../../src/domain/neuroflow'
 
 const toolDoc = JSON.parse(
@@ -216,4 +218,57 @@ test('RunPanel shows a finished run\'s duration from run.json, and none it canno
   assert.ok(!panel(runState({ status: 'completed', finished: done({}) })).includes('nf-run-elapsed'))
   // A reused run ran nothing, so it has no duration of its own.
   assert.ok(!panel(runState({ status: 'completed', finished: done({ reused: true }, record) })).includes('nf-run-elapsed'))
+})
+
+test('parseProgressMessage reads the step, tool and stage', () => {
+  assert.deepEqual(parseProgressMessage('step 1/2: recon (neuroflow.gallery.tools/freesurfer-recon-all)'),
+    { index: 1, total: 2, stepId: 'recon', toolId: 'neuroflow.gallery.tools/freesurfer-recon-all' })
+  assert.deepEqual(parseProgressMessage('step 1/2: recon (neuroflow.gallery.tools/freesurfer-recon-all): Curv .H and .K lh'),
+    { index: 1, total: 2, stepId: 'recon', toolId: 'neuroflow.gallery.tools/freesurfer-recon-all', stage: 'Curv .H and .K lh' })
+  assert.deepEqual(parseProgressMessage('step 2/3: aseg'), { index: 2, total: 3, stepId: 'aseg' })
+  assert.equal(parseProgressMessage('done'), null)
+})
+
+const twoSteps = {
+  ...wf,
+  steps: { recon: { tool: 'x/freesurfer-recon-all', inputs: {} }, aseg: { tool: 'x/freesurfer-asegstats', inputs: {} } }
+} as unknown as WorkflowDocument
+const reconRunning = runState({
+  status: 'running', progress: 0.38, total: 2, currentStep: 'recon',
+  message: 'step 1/2: recon (x/freesurfer-recon-all): Tessellate lh'
+})
+
+test('stepRunStates marks the running step with its stage and the rest by progress or run.json', () => {
+  assert.deepEqual(stepRunStates(twoSteps, reconRunning), {
+    recon: { status: 'running', stage: 'Tessellate lh' },
+    aseg: { status: 'pending' }
+  })
+  assert.deepEqual(stepRunStates(twoSteps, { ...reconRunning, currentStep: 'aseg', message: 'step 2/2: aseg (x/freesurfer-asegstats)' }), {
+    recon: { status: 'succeeded' },
+    aseg: { status: 'running' }
+  })
+  const record = { steps: { recon: { tool: 'x', status: 'completed' }, aseg: { tool: 'x', status: 'failed' } } }
+  assert.deepEqual(stepRunStates(twoSteps, runState({ status: 'failed', finished: done({}, record) })), {
+    recon: { status: 'succeeded' },
+    aseg: { status: 'failed' }
+  })
+  // Cancelled mid-step with no record: the step was stopped, not left "running".
+  assert.deepEqual(stepRunStates(twoSteps, { ...reconRunning, status: 'cancelled' }).recon, { status: 'skipped' })
+  assert.deepEqual(stepRunStates(twoSteps, null), {})
+})
+
+test('RunPanel shows the running step and its stage', () => {
+  const html = panel(reconRunning, { workflow: twoSteps })
+  assert.match(html, /<span>Step 1 of 2: recon<\/span>/)
+  assert.match(html, /class="nf-run-stage" title="Current stage">Tessellate lh</)
+  assert.equal(html.match(/nf-run-stage/g)?.length, 1, 'only the running step shows a stage')
+})
+
+test('the diagram graph carries each step\'s run state', () => {
+  const graph = buildWorkflowGraph(twoSteps, new Map(), null, () => {}, {}, new Map(), stepRunStates(twoSteps, reconRunning))
+  const data = (id: string) => graph.nodes.find((n) => n.id === `step:${id}`)?.data as { run?: unknown }
+  assert.deepEqual(data('recon').run, { status: 'running', stage: 'Tessellate lh' })
+  assert.deepEqual(data('aseg').run, { status: 'pending' })
+  const idle = buildWorkflowGraph(twoSteps, new Map(), null, () => {})
+  assert.equal((idle.nodes.find((n) => n.id === 'step:recon')?.data as { run?: unknown }).run, undefined)
 })

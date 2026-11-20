@@ -401,11 +401,14 @@ pub fn run_workflow_with_cancel(
         let tool = registry
             .tool(tool_id)
             .ok_or_else(|| format!("tool {tool_id} disappeared"))?;
-        progress(
-            index as f64,
-            total,
-            &format!("step {}/{}: {step_id} ({tool_id})", index + 1, order.len()),
-        );
+        let label = format!("step {}/{}: {step_id} ({tool_id})", index + 1, order.len());
+        progress(index as f64, total, &label);
+        // A stage the tool reports from inside the step (NEUROFLOW_PROGRESS_FILE)
+        // moves progress within [index, index + 1) and is named after the step label.
+        let mut on_stage = |fraction: f64, stage: &str| {
+            let message = if stage.is_empty() { label.clone() } else { format!("{label}: {stage}") };
+            progress(index as f64 + fraction, total, &message);
+        };
 
         let mut result = run_step(
             cfg,
@@ -420,6 +423,7 @@ pub fn run_workflow_with_cancel(
             &step_outputs,
             &mut known_evidence,
             cancelled,
+            &mut on_stage,
         );
         if let Some(mappings) = step
             .get("outputMappings")
@@ -790,6 +794,54 @@ fn terminate(child: &mut Child) {
 }
 
 #[allow(clippy::too_many_arguments)]
+/// Follows a step's NEUROFLOW_PROGRESS_FILE: JSON lines of
+/// `{ "stage": "<label>", "fraction": <0..1 of the step> }`, appended by the
+/// tool. `poll` returns the newest stage when it changed. Fractions never go
+/// backwards and stay below 1, so the step's own end is what completes it.
+struct StageTail {
+    path: PathBuf,
+    read: u64,
+    fraction: f64,
+    stage: String,
+}
+
+impl StageTail {
+    fn new(path: PathBuf) -> Self {
+        StageTail { path, read: 0, fraction: 0.0, stage: String::new() }
+    }
+
+    fn poll(&mut self) -> Option<(f64, String)> {
+        use std::io::{Read, Seek, SeekFrom};
+        let len = fs::metadata(&self.path).ok()?.len();
+        if len <= self.read {
+            return None;
+        }
+        let mut file = fs::File::open(&self.path).ok()?;
+        file.seek(SeekFrom::Start(self.read)).ok()?;
+        let mut chunk = String::new();
+        file.take(len - self.read).read_to_string(&mut chunk).ok()?;
+        // Only whole lines; a partly written last line is read on the next poll.
+        let complete = chunk.rfind('\n').map(|i| i + 1)?;
+        self.read += complete as u64;
+        let mut changed = false;
+        for line in chunk[..complete].lines() {
+            let Ok(entry) = serde_json::from_str::<Value>(line) else { continue };
+            let stage = entry.get("stage").and_then(Value::as_str).unwrap_or("").trim();
+            let fraction = entry
+                .get("fraction")
+                .and_then(Value::as_f64)
+                .filter(|f| f.is_finite())
+                .map_or(self.fraction, |f| f.clamp(0.0, 0.999).max(self.fraction));
+            if stage != self.stage || fraction != self.fraction {
+                self.stage = stage.chars().take(120).collect();
+                self.fraction = fraction;
+                changed = true;
+            }
+        }
+        changed.then(|| (self.fraction, self.stage.clone()))
+    }
+}
+
 fn run_step(
     cfg: &Config,
     paths: &Paths,
@@ -803,6 +855,7 @@ fn run_step(
     step_outputs: &HashMap<String, Map<String, Value>>,
     known_evidence: &mut HashMap<String, Value>,
     cancelled: &AtomicBool,
+    on_stage: &mut dyn FnMut(f64, &str),
 ) -> StepRecord {
     let started_at = now_rfc3339();
     let mut rec = StepRecord {
@@ -932,6 +985,8 @@ fn run_step(
 
     let stdout_path = paths.session.join("logs").join(format!("{step_id}.stdout"));
     let stderr_path = paths.session.join("logs").join(format!("{step_id}.stderr"));
+    let progress_path = paths.session.join("logs").join(format!("{step_id}.progress.jsonl"));
+    let mut stages = StageTail::new(progress_path.clone());
     let (Ok(stdout), Ok(stderr)) = (
         fs::File::create(&stdout_path),
         fs::File::create(&stderr_path),
@@ -958,6 +1013,7 @@ fn run_step(
         .env("NEUROFLOW_STEP", step_id)
         .env("NEUROFLOW_STEP_ID", step_id)
         .env("NEUROFLOW_RUN_ID", run_id)
+        .env("NEUROFLOW_PROGRESS_FILE", &progress_path)
         .env(
             "NEUROFLOW_WORKFLOW_ID",
             workflow.get("id").and_then(Value::as_str).unwrap_or(""),
@@ -1001,6 +1057,9 @@ fn run_step(
                 if cancelled.load(Ordering::SeqCst) {
                     terminate(&mut child);
                     return fail(rec, CANCELLED.into());
+                }
+                if let Some((fraction, stage)) = stages.poll() {
+                    on_stage(fraction, &stage);
                 }
                 if output_watch.as_mut().is_some_and(OutputWatch::ready) {
                     // Detached: the Child is dropped without a kill and the app stays open.
@@ -1870,6 +1929,86 @@ mod tests {
             json!(true),
             "{}",
             outcome.structured
+        );
+    }
+
+    #[test]
+    fn stage_tail_reads_whole_lines_and_never_goes_backwards() {
+        let path = std::env::temp_dir().join(format!("neuroflow-stages-{}.jsonl", std::process::id()));
+        let _ = fs::remove_file(&path);
+        let mut tail = StageTail::new(path.clone());
+        assert_eq!(tail.poll(), None, "no file yet");
+        let append = |text: &str| {
+            use std::io::Write;
+            fs::OpenOptions::new().create(true).append(true).open(&path).unwrap().write_all(text.as_bytes()).unwrap();
+        };
+        append("{\"stage\": \"MotionCor\", \"fraction\": 0.003}\n{\"stage\": \"Nu Intensity");
+        assert_eq!(tail.poll(), Some((0.003, "MotionCor".into())), "the partial line waits");
+        append(" Correction\", \"fraction\": 0.172}\n");
+        assert_eq!(tail.poll(), Some((0.172, "Nu Intensity Correction".into())));
+        assert_eq!(tail.poll(), None, "nothing new");
+        append("not json\n{\"stage\": \"Fill\", \"fraction\": 0.1}\n");
+        assert_eq!(tail.poll(), Some((0.172, "Fill".into())), "bad lines are skipped; fractions only rise");
+        append("{\"stage\": \"Done-ish\", \"fraction\": 7}\n{\"stage\": \"Unknown\"}\n");
+        assert_eq!(tail.poll(), Some((0.999, "Unknown".into())), "capped below 1; a stage alone keeps the fraction");
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_step_reports_its_stages_as_progress_within_the_step() {
+        let root = std::env::temp_dir().join(format!("neuroflow-stage-run-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("registry")).unwrap();
+        fs::create_dir_all(root.join("runs")).unwrap();
+        fs::write(
+            root.join("registry/stages.py"),
+            "import json, os, time\n\
+             for i, name in enumerate(['first', 'second']):\n\
+             \x20   with open(os.environ['NEUROFLOW_PROGRESS_FILE'], 'a') as f:\n\
+             \x20       f.write(json.dumps({'stage': name, 'fraction': i / 2}) + '\\n')\n\
+             \x20   time.sleep(0.3)\n",
+        )
+        .unwrap();
+        let tool = json!({
+            "neuroflow": "0.1.1", "kind": "tool", "id": "test/stages", "version": "1.0.0",
+            "description": "Reports two stages.",
+            "inputs": {}, "outputs": {},
+            "extensions": { "neuroflow/launch": {
+                "kind": "script", "interpreter": "python3", "script": "stages.py", "completion": "exit"
+            } }
+        });
+        fs::write(root.join("registry/stages.json"), tool.to_string()).unwrap();
+        let cfg = Config {
+            registry_dirs: vec![root.join("registry")],
+            spec_dir: None,
+            data_roots: vec![root.clone()],
+            sessions_root: root.join("runs"),
+            interpreters: HashMap::new(),
+            step_timeout: None,
+            summary_max_bytes: 1024,
+            interactive: false,
+            finish_on_cancel: false,
+        };
+        let registry =
+            Registry::load(&cfg.registry_dirs, &cfg.interpreters, cfg.interactive).unwrap();
+        let workflow = wrap_tool(registry.tool("test/stages").unwrap());
+        let mut seen: Vec<(f64, f64, String)> = Vec::new();
+        let outcome = run_workflow(&cfg, &registry, &workflow, &Map::new(), &json!({}), &mut |done, total, message| {
+            seen.push((done, total, message.to_string()))
+        })
+        .unwrap();
+        let _ = fs::remove_dir_all(&root);
+        assert_eq!(outcome.status, "completed", "{}", outcome.summary);
+        let step = seen[0].2.clone();
+        assert!(step.starts_with("step 1/1: "), "{seen:?}");
+        assert_eq!(
+            seen,
+            vec![
+                (0.0, 1.0, step.clone()),
+                (0.0, 1.0, format!("{step}: first")),
+                (0.5, 1.0, format!("{step}: second")),
+                (1.0, 1.0, "done".into()),
+            ]
         );
     }
 
