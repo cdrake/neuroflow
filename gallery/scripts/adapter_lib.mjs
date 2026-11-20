@@ -137,9 +137,13 @@ export const hasValue = (inputs, name) => inputs[name] !== undefined && inputs[n
  */
 export function mapOutputs(tool, spec, outputDir, fail, { label = 'the program', log = console.log } = {}) {
   const produced = {};
-  const written = existsSync(outputDir)
-    ? readdirSync(outputDir).filter((f) => statSync(join(outputDir, f)).isFile())
-    : [];
+  // A link that resolves only inside a container (recon-all's fsaverage ->
+  // $FREESURFER_HOME/subjects/fsaverage) dangles on the host; it is not a file
+  // the program wrote, so skip it rather than fail the step after the work is done.
+  const isFile = (f) => {
+    try { return statSync(join(outputDir, f)).isFile(); } catch { return false; }
+  };
+  const written = existsSync(outputDir) ? readdirSync(outputDir).filter(isFile) : [];
   for (const [name, rule] of Object.entries(spec ?? {})) {
     const decl = tool.outputs?.[name];
     let file = null;

@@ -13,7 +13,8 @@ const adapter = join(here, 'cli_tool.mjs');
 const root = mkdtempSync(join(tmpdir(), 'cli-tool-'));
 
 // A fake CLI: `fakecli --version` prints a version; otherwise it writes each
-// `--out <file>` argument (content: the full argv) and exits with `--exit <n>`.
+// `--out <file>` argument (content: the full argv), makes `--link <target> <path>`,
+// and exits with `--exit <n>`.
 const fake = join(root, 'fakecli');
 writeFileSync(fake, `#!${process.execPath}
 const a = process.argv.slice(2);
@@ -23,6 +24,7 @@ if (a[0] === '--version') {
 }
 const fs = require('node:fs');
 for (let i = 0; i < a.length; i++) if (a[i] === '--out') fs.writeFileSync(a[i + 1], a.join(' '));
+const l = a.indexOf('--link'); if (l >= 0) fs.symlinkSync(a[l + 1], a[l + 2]);
 const v = a.indexOf('--env'); if (v >= 0) fs.writeFileSync(a[v + 2], String(process.env[a[v + 1]]));
 const e = a.indexOf('--exit'); process.exit(e >= 0 ? Number(a[e + 1]) : 0);
 `);
@@ -86,6 +88,16 @@ test('finds outputs by regex and renames them to the declared delivery path', ()
   assert.ok(existsSync(join(r.outputDir, 'extra.txt')));
   assert.ok(!existsSync(join(r.outputDir, 'sub_T1w.nii.gz')));
   assert.deepEqual(r.prov.outputs, { result: 'result.txt', extra: 'extra.txt' });
+});
+
+test('a dangling link in the output dir is skipped, not a failure', () => {
+  // recon-all links fsaverage to $FREESURFER_HOME inside its container, which the host can't resolve.
+  const r = run({
+    args: ['--link', '/nonexistent/subjects/fsaverage', '{{outputDir}}/fsaverage', '--out', '{{outputDir}}/sub_T1w.nii.gz'],
+    outputs: { result: { match: '' } },
+  }, {});
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(existsSync(join(r.outputDir, 'result.txt')));
 });
 
 test('an ambiguous regex fails unless pick is set', () => {
