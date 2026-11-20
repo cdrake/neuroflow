@@ -8,7 +8,7 @@ import { buildPayload, missingInputs, seedValues } from '../../src/domain/runInp
 import { wrapToolAsWorkflow } from '../../src/domain/wrapTool'
 import { PipelineView, type PipelineViewProps } from '../../src/components/PipelineView'
 import { WorkflowLibrary } from '../../src/components/WorkflowLibrary'
-import { RunPanel, type HostRunState, type RunPanelProps } from '../../src/components/RunPanel'
+import { RunPanel, formatElapsed, type HostRunState, type RunPanelProps } from '../../src/components/RunPanel'
 import type { WorkflowDocument } from '../../src/domain/neuroflow'
 
 const toolDoc = JSON.parse(
@@ -188,4 +188,32 @@ test('RunPanel lets the host name the output action', () => {
   const html = panel(runState({ status: 'completed', finished: done({ outputs: out }) }), { openLabel: () => 'Load' })
   assert.match(html, /title="Load \/x\/a.nii.gz"/)
   assert.match(html, />Load<\/button>/)
+})
+
+test('formatElapsed uses seconds, then minutes, then hours', () => {
+  assert.equal(formatElapsed(0), '0 s')
+  assert.equal(formatElapsed(42_900), '42 s')
+  assert.equal(formatElapsed(125_000), '2 min 05 s')
+  assert.equal(formatElapsed(4_270_000), '1 h 11 min')
+})
+
+test('RunPanel shows how long the run and its current step have been going', () => {
+  const steps = { recon: { tool: 'x/freesurfer-recon-all', inputs: {} }, aseg: { tool: 'x/freesurfer-asegstats', inputs: {} } }
+  const now = Date.now()
+  const html = panel(
+    runState({ status: 'running', progress: 0, total: 2, message: 'step 1/2: recon', currentStep: 'recon', startedAt: now - 125_000, stepStartedAt: now - 65_000 }),
+    { workflow: { ...wf, steps } as unknown as WorkflowDocument }
+  )
+  assert.match(html, /class="nf-run-elapsed" title="Elapsed">.*2 min 0\d s<\/span>/)
+  assert.match(html, /freesurfer-recon-all · 1 min 0\d s/)
+})
+
+test('RunPanel shows a finished run\'s duration from run.json, and none it cannot know', () => {
+  const record = { startedAt: '2026-11-20T17:38:28Z', endedAt: '2026-11-20T18:49:38Z' }
+  const timed = panel(runState({ status: 'completed', finished: done({}, record) }))
+  assert.match(timed, /title="Duration">.*1 h 11 min<\/span>/)
+  // First seen already over, with no times: no clock rather than "0 s".
+  assert.ok(!panel(runState({ status: 'completed', finished: done({}) })).includes('nf-run-elapsed'))
+  // A reused run ran nothing, so it has no duration of its own.
+  assert.ok(!panel(runState({ status: 'completed', finished: done({ reused: true }, record) })).includes('nf-run-elapsed'))
 })

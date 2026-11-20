@@ -201,7 +201,8 @@ export function App(): JSX.Element {
           progress: event.progress,
           total: event.total,
           message: event.message,
-          currentStep: parsed ? parsed.stepId : event.message === 'done' ? null : current.currentStep
+          currentStep: parsed ? parsed.stepId : event.message === 'done' ? null : current.currentStep,
+          stepStartedAt: parsed && parsed.stepId !== current.currentStep ? Date.now() : current.stepStartedAt
         }
       })
     }).then((unlisten) => (disposed ? unlisten() : unlisteners.push(unlisten)))
@@ -209,7 +210,7 @@ export function App(): JSX.Element {
       setHostRun((current) => {
         if (!current || (current.ticket !== null && current.ticket !== event.ticket)) return current
         if (event.ok === false && !('record' in event)) {
-          return { ...current, ticket: current.ticket ?? event.ticket, status: 'rejected', finished: event, error: event.error }
+          return { ...current, ticket: current.ticket ?? event.ticket, status: 'rejected', finished: event, error: event.error, endedAt: Date.now() }
         }
         const done = event as Extract<typeof event, { record: unknown }>
         const failed = done.status !== 'completed'
@@ -221,6 +222,7 @@ export function App(): JSX.Element {
           progress: current.total,
           finished: done,
           currentStep: done.record.failedStep ?? current.currentStep,
+          endedAt: Date.now(),
           error: failed ? done.structured.error ?? done.summary : null
         }
       })
@@ -262,7 +264,8 @@ export function App(): JSX.Element {
       currentStep: null,
       finished: null,
       stderrTail: null,
-      error: null
+      error: null,
+      startedAt: Date.now()
     }
     setHostRun(pending)
     try {
