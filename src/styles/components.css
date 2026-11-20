@@ -525,6 +525,30 @@
   font-size: 11px;
 }
 
+/* The minimap and zoom controls follow the host's tokens (React Flow's own are
+   white whatever the theme) and read as panels, not as part of the diagram. */
+.nf-root .react-flow {
+  --xy-minimap-background-color: var(--bg-elevated);
+  --xy-minimap-mask-background-color: color-mix(in srgb, var(--bg-base) 60%, transparent);
+  --xy-minimap-mask-stroke-color: var(--nf-accent);
+  --xy-minimap-node-background-color: color-mix(in srgb, var(--fg-base) 22%, transparent);
+  --xy-controls-button-background-color: var(--bg-elevated);
+  --xy-controls-button-background-color-hover: var(--bg-base);
+  --xy-controls-button-color: var(--fg-base);
+  --xy-controls-button-color-hover: var(--fg-base);
+  --xy-controls-button-border-color: var(--nf-border);
+  --xy-controls-box-shadow: none;
+  --xy-edge-label-background-color: var(--bg-base);
+  --xy-edge-label-color: var(--fg-base);
+}
+
+.nf-root .react-flow__minimap,
+.nf-root .react-flow__controls {
+  border: 1px solid var(--nf-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
 .nf-root .react-flow__handle {
   width: 8px;
   height: 8px;

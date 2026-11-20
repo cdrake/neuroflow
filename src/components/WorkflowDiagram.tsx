@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, type DragEvent, type ReactNode } from 
 import {
   Background,
   type Connection,
+  type FitViewOptions,
   Controls,
   Handle,
   MiniMap,
@@ -93,6 +94,14 @@ export function WorkflowDiagram({
   )
 }
 
+// The zoom controls (bottom left) and the minimap (bottom right) float over the
+// canvas, and fitView knows nothing of them, so it keeps the diagram out of
+// their corners: controls are 26px wide and the minimap 200px, each 15px in.
+const OVERLAY_GAP = '24px'
+function fitPadding(miniMap: boolean): FitViewOptions {
+  return { padding: { top: OVERLAY_GAP, bottom: OVERLAY_GAP, left: '60px', right: miniMap ? '232px' : OVERLAY_GAP } }
+}
+
 function WorkflowDiagramCanvas({
   nodes: graphNodes,
   edges,
@@ -115,6 +124,7 @@ function WorkflowDiagramCanvas({
   onAddTool: (toolId: string, blockId: string | undefined, position: XYPosition) => void
 }): React.JSX.Element {
   const [nodes, setNodes, onNodesChange] = useNodesState(graphNodes)
+  const fitViewOptions = useMemo(() => fitPadding(miniMap), [miniMap])
   const { screenToFlowPosition } = useReactFlow()
   const hasSteps = graphNodes.some((node) => node.type === 'step')
 
@@ -169,7 +179,7 @@ function WorkflowDiagramCanvas({
         onConnect={handleConnect}
         onNodeDragStop={(_, node: Node) => onMoveNode(node.id, node.position)}
         fitView
-        fitViewOptions={{ padding: 0.2 }}
+        fitViewOptions={fitViewOptions}
         minZoom={0.35}
         maxZoom={1.4}
         connectOnClick
@@ -179,7 +189,7 @@ function WorkflowDiagramCanvas({
       >
         <Background color="var(--nf-grid)" gap={18} />
         {miniMap && <MiniMap pannable zoomable nodeStrokeWidth={3} />}
-        <Controls showInteractive={false} />
+        <Controls showInteractive={false} fitViewOptions={fitViewOptions} />
       </ReactFlow>
     </div>
   )
