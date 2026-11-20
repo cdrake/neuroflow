@@ -17,7 +17,7 @@ import { idTail, shortType } from '../domain/neuroflow'
 import type { RunFinishedEvent, RunStepRecord } from '../domain/runTypes'
 import { isArtifactDescriptor } from '../domain/runTypes'
 import { buildPayload, isLocked, missingInputs, seedValues } from '../domain/runInputs'
-import { parseProgressMessage, type StepRunState, type StepRunStatus } from '../domain/progress'
+import { parseProgressMessage, stepOrder, type StepRunState, type StepRunStatus } from '../domain/progress'
 export type { StepRunState, StepRunStatus } from '../domain/progress'
 
 export type HostRunStatus = 'starting' | 'running' | 'completed' | 'failed' | 'cancelled' | 'rejected'
@@ -301,10 +301,14 @@ function OutputRow({ name, value, onOpen, openLabel }: { name: string; value: un
 export function stepRunStates(workflow: WorkflowDocument, run: HostRunState | null): Record<string, StepRunState> {
   if (!run) return {}
   const record = run.finished && run.finished.ok !== false && 'record' in run.finished ? run.finished.record : null
-  const stepIds = record?.steps ? Object.keys(record.steps) : Object.keys(workflow.steps)
-  const currentIndex = run.currentStep ? stepIds.indexOf(run.currentStep) : -1
+  // Run order, plus any step the record has that the document does not.
+  const ordered = stepOrder(workflow)
+  const stepIds = [...ordered, ...Object.keys(record?.steps ?? {}).filter((id) => !ordered.includes(id))]
   const active = run.status === 'starting' || run.status === 'running'
   const progress = parseProgressMessage(run.message)
+  // Hosts that only forward progress leave currentStep unset; the message names the step.
+  const current = run.currentStep ?? (active ? progress?.stepId ?? null : null)
+  const currentIndex = current ? stepIds.indexOf(current) : -1
   const states: Record<string, StepRunState> = {}
 
   stepIds.forEach((id, index) => {
@@ -469,7 +473,8 @@ function formatBytes(bytes: number): string {
 function formatDuration(start: string, end: string): string {
   const ms = Date.parse(end) - Date.parse(start)
   if (!Number.isFinite(ms) || ms < 0) return ''
-  if (ms < 1000) return `${ms} ms`
+  // run.json times are whole seconds: equal stamps mean "under a second", not "0 ms".
+  if (ms < 1000) return start.includes('.') || end.includes('.') ? `${ms} ms` : '< 1 s'
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)} s`
   return formatElapsed(ms)
 }
@@ -521,7 +526,8 @@ function useRunClock(run: HostRunState | null): RunClock {
   if (s.start === null || (active && s.end !== null) || (run.status === 'starting' && s.run?.status !== 'starting')) {
     s.start = t; s.sawActive = active; s.end = null; s.step = null; s.stepStart = null
   }
-  if (run.currentStep !== s.step) { s.step = run.currentStep; s.stepStart = t }
+  const step = run.currentStep ?? parseProgressMessage(run.message)?.stepId ?? null
+  if (step !== s.step) { s.step = step; s.stepStart = t }
   if (!active && s.end === null) s.end = t
   s.run = run
 
@@ -536,6 +542,6 @@ function useRunClock(run: HostRunState | null): RunClock {
   const stepStart = run.stepStartedAt ?? s.stepStart
   return {
     run: run.status === 'rejected' ? null : runMs,
-    step: active && run.currentStep && stepStart !== null ? Math.max(now, t) - stepStart : null
+    step: active && step && stepStart !== null ? Math.max(now, t) - stepStart : null
   }
 }

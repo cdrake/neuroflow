@@ -1036,6 +1036,14 @@
   align-items: start;
 }
 
+/* React Flow sizes itself height: 100% (inline), so it draws nothing unless
+   its box has a real height. Give the view's diagram one; hosts set
+   --nf-diagram-height to change it. */
+.nf-root.nf-pipeline-view .nf-flow,
+.nf-root .nf-pipeline-view .nf-flow {
+  height: var(--nf-diagram-height, 360px);
+}
+
 .nf-root .nf-pipeline-side {
   display: grid;
   gap: 12px;

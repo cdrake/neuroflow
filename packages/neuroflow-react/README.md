@@ -55,6 +55,8 @@ The host owns the process and keeps one `HostRunState` per run:
   the host's own run handle; the panel doesn't read it. Cancel is enabled while the run is `starting` or `running`;
   pass `canCancel={false}` until `onCancel` can act (the desktop app does this until its ticket arrives).
 - `running`: on each MCP progress notification set `progress`, `total`, `message`, and `currentStep`.
+- Diagram height: `PipelineView`'s diagram is `360px` tall by default (React Flow needs a sized box); set
+  `--nf-diagram-height` on a parent to change it.
 - Stages and the diagram: a progress `message` of `step i/n: <step> (<tool>): <stage>` puts the stage under the
   running step. `PipelineView` rings each diagram node by its state (running, finished, failed). If you draw
   `WorkflowDiagram` yourself, pass `runStates={stepRunStates(workflow, run)}`. Screenshots and the tool side:

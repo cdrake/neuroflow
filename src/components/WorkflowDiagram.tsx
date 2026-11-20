@@ -46,6 +46,8 @@ export interface WorkflowDiagramProps {
   toolStatuses?: Map<string, ToolStatus>
   /** Per-step state of the run being shown (see stepRunStates); marks the running, finished and failed steps. */
   runStates?: Record<string, StepRunState>
+  /** The overview map in the corner (default true); a small read-only view is better without it. */
+  miniMap?: boolean
   onSelectStep: (id: string) => void
   onBindInput: (stepId: string, inputName: string, ref: string) => void
   onMoveNode: (nodeId: string, position: XYPosition) => void
@@ -65,6 +67,7 @@ export function WorkflowDiagram({
   nodePositions,
   toolStatuses,
   runStates,
+  miniMap = true,
   onSelectStep,
   onBindInput,
   onMoveNode,
@@ -81,6 +84,7 @@ export function WorkflowDiagram({
         nodes={graph.nodes}
         edges={graph.edges}
         emptyAction={emptyAction}
+        miniMap={miniMap}
         onBindInput={onBindInput}
         onMoveNode={onMoveNode}
         onAddTool={onAddTool}
@@ -93,6 +97,7 @@ function WorkflowDiagramCanvas({
   nodes: graphNodes,
   edges,
   emptyAction,
+  miniMap,
   onBindInput,
   onMoveNode,
   onAddTool
@@ -104,6 +109,7 @@ function WorkflowDiagramCanvas({
     title: string
     detail: string
   }
+  miniMap: boolean
   onBindInput: (stepId: string, inputName: string, ref: string) => void
   onMoveNode: (nodeId: string, position: XYPosition) => void
   onAddTool: (toolId: string, blockId: string | undefined, position: XYPosition) => void
@@ -172,7 +178,7 @@ function WorkflowDiagramCanvas({
         proOptions={{ hideAttribution: true }}
       >
         <Background color="var(--nf-grid)" gap={18} />
-        <MiniMap pannable zoomable nodeStrokeWidth={3} />
+        {miniMap && <MiniMap pannable zoomable nodeStrokeWidth={3} />}
         <Controls showInteractive={false} />
       </ReactFlow>
     </div>
