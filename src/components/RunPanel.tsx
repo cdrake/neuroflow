@@ -1,5 +1,5 @@
 import type React from 'react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle,
   Ban,
@@ -31,6 +31,12 @@ export interface HostRunState {
   finished: RunFinishedEvent | null
   stderrTail: string | null
   error: string | null
+  /** Epoch ms the run started. Optional: without it the panel times the run from when it first sees it. */
+  startedAt?: number
+  /** Epoch ms `currentStep` started; same fallback. */
+  stepStartedAt?: number
+  /** Epoch ms the run ended; same fallback. */
+  endedAt?: number
 }
 
 export interface RunPanelProps {
@@ -97,7 +103,8 @@ export function RunPanel({ workflow, available, report, runnable, environmentChe
     onStart(buildPayload(workflow, values, lockedInputs), { rerun: true })
   }
 
-  const steps = run ? stepRows(workflow, run) : []
+  const clock = useRunClock(run)
+  const steps = run ? stepRows(workflow, run, clock) : []
   const finished = run?.finished && run.finished.ok !== false && 'record' in run.finished ? run.finished : null
   const outputs = finished ? Object.entries(finished.structured.outputs ?? {}) : []
 
@@ -176,6 +183,12 @@ export function RunPanel({ workflow, available, report, runnable, environmentChe
           <div className={`nf-run-state ${stateClass(run.status)}`}>
             {stateIcon(run.status)}
             <span>{stateLabel(run)}</span>
+            {clock.run !== null && !isReused(run) && (
+              <span className="nf-run-elapsed" title={isRunning ? 'Elapsed' : 'Duration'}>
+                <Clock3 size={13} />
+                {formatElapsed(clock.run)}
+              </span>
+            )}
             {run.status === 'completed' && isReused(run) && (
               <button className="nf-action" disabled={Boolean(blocker)} onClick={rerun} title="Run again even though the inputs are unchanged" type="button">
                 <CirclePlay size={15} />
@@ -283,7 +296,7 @@ interface StepRow {
   detail: string
 }
 
-function stepRows(workflow: WorkflowDocument, run: HostRunState): StepRow[] {
+function stepRows(workflow: WorkflowDocument, run: HostRunState, clock: RunClock): StepRow[] {
   const record = run.finished && run.finished.ok !== false && 'record' in run.finished ? run.finished.record : null
   const stepIds = record?.steps ? Object.keys(record.steps) : Object.keys(workflow.steps)
   const currentIndex = run.currentStep ? stepIds.indexOf(run.currentStep) : -1
@@ -305,7 +318,8 @@ function stepRows(workflow: WorkflowDocument, run: HostRunState): StepRow[] {
     if (run.status === 'rejected') return { id, status: 'skipped', detail: idTail(workflow.steps[id]?.tool ?? '') }
     if (currentIndex >= 0 && index < currentIndex) return { id, status: 'succeeded', detail: idTail(workflow.steps[id]?.tool ?? '') }
     if (index === currentIndex) {
-      return { id, status: run.status === 'failed' ? 'failed' : 'running', detail: idTail(workflow.steps[id]?.tool ?? '') }
+      const detail = [idTail(workflow.steps[id]?.tool ?? ''), clock.step !== null ? formatElapsed(clock.step) : ''].filter(Boolean).join(' · ')
+      return { id, status: run.status === 'failed' ? 'failed' : 'running', detail }
     }
     return { id, status: 'pending', detail: idTail(workflow.steps[id]?.tool ?? '') }
   })
@@ -418,5 +432,71 @@ function formatDuration(start: string, end: string): string {
   if (!Number.isFinite(ms) || ms < 0) return ''
   if (ms < 1000) return `${ms} ms`
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)} s`
-  return `${Math.floor(ms / 60_000)} min ${Math.round((ms % 60_000) / 1000)} s`
+  return formatElapsed(ms)
+}
+
+/** Whole seconds, minutes, or hours: "42 s", "12 min 03 s", "1 h 11 min". */
+export function formatElapsed(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000))
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  const sec = total % 60
+  if (h > 0) return `${h} h ${String(m).padStart(2, '0')} min`
+  if (m > 0) return `${m} min ${String(sec).padStart(2, '0')} s`
+  return `${sec} s`
+}
+
+interface RunClock {
+  /** ms the run has taken so far, or took; null when there is no run to time. */
+  run: number | null
+  /** ms the current step has been running; null when no step is running. */
+  step: number | null
+}
+
+/**
+ * Times the run and its current step, ticking each second while it is active.
+ * Host timestamps win; otherwise it uses when the panel first saw the run, the
+ * step change, and the end. A finished run with run.json times uses those.
+ */
+function useRunClock(run: HostRunState | null): RunClock {
+  const active = run?.status === 'starting' || run?.status === 'running'
+  const [now, setNow] = useState(() => Date.now())
+  const seen = useRef<{ run: HostRunState | null; start: number | null; sawActive: boolean; step: string | null; stepStart: number | null; end: number | null }>(
+    { run: null, start: null, sawActive: false, step: null, stepStart: null, end: null }
+  )
+
+  useEffect(() => {
+    if (!active) return
+    setNow(Date.now())
+    const timer = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(timer)
+  }, [active])
+
+  const s = seen.current
+  if (!run) {
+    seen.current = { run: null, start: null, sawActive: false, step: null, stepStart: null, end: null }
+    return { run: null, step: null }
+  }
+  const t = Date.now()
+  // A new run: none before, or the last one had ended and this one is active.
+  if (s.start === null || (active && s.end !== null) || (run.status === 'starting' && s.run?.status !== 'starting')) {
+    s.start = t; s.sawActive = active; s.end = null; s.step = null; s.stepStart = null
+  }
+  if (run.currentStep !== s.step) { s.step = run.currentStep; s.stepStart = t }
+  if (!active && s.end === null) s.end = t
+  s.run = run
+
+  const record = run.finished && 'record' in run.finished ? run.finished.record : null
+  const recordMs = record?.startedAt && record.endedAt ? Date.parse(record.endedAt) - Date.parse(record.startedAt) : NaN
+  const start = run.startedAt ?? s.start
+  const end = active ? Math.max(now, t) : run.endedAt ?? s.end ?? t
+  // A run first seen already over, with no times from the host or run.json, has no duration to show.
+  const runMs = !active && Number.isFinite(recordMs) && recordMs >= 0
+    ? recordMs
+    : run.startedAt !== undefined || s.sawActive ? end - start : null
+  const stepStart = run.stepStartedAt ?? s.stepStart
+  return {
+    run: run.status === 'rejected' ? null : runMs,
+    step: active && run.currentStep && stepStart !== null ? Math.max(now, t) - stepStart : null
+  }
 }

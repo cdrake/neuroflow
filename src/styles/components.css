@@ -564,6 +564,17 @@
   color: var(--nf-amber);
 }
 
+.nf-root .nf-run-elapsed {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  color: var(--nf-muted);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .nf-root .nf-run-state.is-failed,
 .nf-root .nf-run-state.is-blocked {
   color: var(--nf-red);

@@ -55,6 +55,10 @@ The host owns the process and keeps one `HostRunState` per run:
   the host's own run handle; the panel doesn't read it. Cancel is enabled while the run is `starting` or `running`;
   pass `canCancel={false}` until `onCancel` can act (the desktop app does this until its ticket arrives).
 - `running`: on each MCP progress notification set `progress`, `total`, `message`, and `currentStep`.
+- Elapsed time: the panel shows how long the run, and its current step, have been going, ticking each second. It
+  times both from when it first sees them, so set the optional `startedAt` (when you send `tools/call`),
+  `stepStartedAt` (when `currentStep` changes) and `endedAt` (on the result), all epoch ms, if the panel can remount
+  mid-run. A finished run's duration comes from `run.json`'s `startedAt`/`endedAt` when the record has them.
 - `completed`: on the result, set `finished` from `structuredContent`; add `sessionDir` and the `run.json` record
   (`record.steps` gives per-step status). Set `stderrTail` from `structured.logs?.stderr ?? null`.
 - Reused runs: `neuroflow-mcp` answers a repeat call with identical, unchanged inputs by returning the earlier
