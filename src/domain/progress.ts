@@ -31,3 +31,30 @@ export interface StepRunState {
   /** What a running step is doing now, when its tool reports stages (e.g. a recon-all stage). */
   stage?: string
 }
+
+/**
+ * The order the runtime runs steps in (neuroflow-core `step_order`): repeatedly
+ * the first step, in document order, whose `steps.<id>.outputs.*` inputs are
+ * all done. Hosts can receive `steps` with its keys re-sorted (a JSON layer
+ * without preserve-order), so the UI orders by dependency, not by key. A cycle
+ * (rejected by validation) leaves the rest in document order.
+ */
+export function stepOrder(workflow: { steps: Record<string, { inputs?: Record<string, unknown> }> }): string[] {
+  const ids = Object.keys(workflow.steps)
+  const deps = new Map(ids.map((id) => {
+    const set = new Set<string>()
+    for (const binding of Object.values(workflow.steps[id].inputs ?? {})) {
+      const ref = (binding as { ref?: unknown } | null)?.ref
+      const parts = typeof ref === 'string' ? ref.split('.') : []
+      if (parts.length === 4 && parts[0] === 'steps' && ids.includes(parts[1])) set.add(parts[1])
+    }
+    return [id, set]
+  }))
+  const done: string[] = []
+  while (done.length < ids.length) {
+    const next = ids.find((id) => !done.includes(id) && [...deps.get(id)!].every((d) => done.includes(d)))
+    if (!next) return [...done, ...ids.filter((id) => !done.includes(id))]
+    done.push(next)
+  }
+  return done
+}

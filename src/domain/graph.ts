@@ -1,6 +1,6 @@
 import type { Edge, Node, XYPosition } from '@xyflow/react'
 import type { BlockCategory, ToolDefinition, WorkflowDocument } from './neuroflow'
-import type { StepRunState } from './progress'
+import { stepOrder, type StepRunState } from './progress'
 import { isConstantBinding, isRefBinding, stableToolName } from './neuroflow'
 import { categoryColor, getToolBlocks, resolveToolDefinition } from './registry'
 import type { ToolStatus } from './runTypes'
@@ -74,7 +74,7 @@ export function buildWorkflowGraph(
   ]
 
   const edges: Edge[] = []
-  const stepEntries = Object.entries(workflow.steps)
+  const stepEntries = stepOrder(workflow).map((id) => [id, workflow.steps[id]] as const)
 
   stepEntries.forEach(([stepId, step], index) => {
     const tool = resolveToolDefinition(tools, step.tool)

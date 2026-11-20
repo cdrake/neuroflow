@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, type DragEvent, type ReactNode } from 
 import {
   Background,
   type Connection,
+  type FitViewOptions,
   Controls,
   Handle,
   MiniMap,
@@ -46,6 +47,8 @@ export interface WorkflowDiagramProps {
   toolStatuses?: Map<string, ToolStatus>
   /** Per-step state of the run being shown (see stepRunStates); marks the running, finished and failed steps. */
   runStates?: Record<string, StepRunState>
+  /** The overview map in the corner (default true); a small read-only view is better without it. */
+  miniMap?: boolean
   onSelectStep: (id: string) => void
   onBindInput: (stepId: string, inputName: string, ref: string) => void
   onMoveNode: (nodeId: string, position: XYPosition) => void
@@ -65,6 +68,7 @@ export function WorkflowDiagram({
   nodePositions,
   toolStatuses,
   runStates,
+  miniMap = true,
   onSelectStep,
   onBindInput,
   onMoveNode,
@@ -81,6 +85,7 @@ export function WorkflowDiagram({
         nodes={graph.nodes}
         edges={graph.edges}
         emptyAction={emptyAction}
+        miniMap={miniMap}
         onBindInput={onBindInput}
         onMoveNode={onMoveNode}
         onAddTool={onAddTool}
@@ -89,10 +94,19 @@ export function WorkflowDiagram({
   )
 }
 
+// The zoom controls (bottom left) and the minimap (bottom right) float over the
+// canvas, and fitView knows nothing of them, so it keeps the diagram out of
+// their corners: controls are 26px wide and the minimap 200px, each 15px in.
+const OVERLAY_GAP = '24px'
+function fitPadding(miniMap: boolean): FitViewOptions {
+  return { padding: { top: OVERLAY_GAP, bottom: OVERLAY_GAP, left: '60px', right: miniMap ? '232px' : OVERLAY_GAP } }
+}
+
 function WorkflowDiagramCanvas({
   nodes: graphNodes,
   edges,
   emptyAction,
+  miniMap,
   onBindInput,
   onMoveNode,
   onAddTool
@@ -104,11 +118,13 @@ function WorkflowDiagramCanvas({
     title: string
     detail: string
   }
+  miniMap: boolean
   onBindInput: (stepId: string, inputName: string, ref: string) => void
   onMoveNode: (nodeId: string, position: XYPosition) => void
   onAddTool: (toolId: string, blockId: string | undefined, position: XYPosition) => void
 }): React.JSX.Element {
   const [nodes, setNodes, onNodesChange] = useNodesState(graphNodes)
+  const fitViewOptions = useMemo(() => fitPadding(miniMap), [miniMap])
   const { screenToFlowPosition } = useReactFlow()
   const hasSteps = graphNodes.some((node) => node.type === 'step')
 
@@ -163,7 +179,7 @@ function WorkflowDiagramCanvas({
         onConnect={handleConnect}
         onNodeDragStop={(_, node: Node) => onMoveNode(node.id, node.position)}
         fitView
-        fitViewOptions={{ padding: 0.2 }}
+        fitViewOptions={fitViewOptions}
         minZoom={0.35}
         maxZoom={1.4}
         connectOnClick
@@ -172,8 +188,8 @@ function WorkflowDiagramCanvas({
         proOptions={{ hideAttribution: true }}
       >
         <Background color="var(--nf-grid)" gap={18} />
-        <MiniMap pannable zoomable nodeStrokeWidth={3} />
-        <Controls showInteractive={false} />
+        {miniMap && <MiniMap pannable zoomable nodeStrokeWidth={3} />}
+        <Controls showInteractive={false} fitViewOptions={fitViewOptions} />
       </ReactFlow>
     </div>
   )

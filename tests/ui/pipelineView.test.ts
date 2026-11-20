@@ -9,7 +9,7 @@ import { wrapToolAsWorkflow } from '../../src/domain/wrapTool'
 import { PipelineView, type PipelineViewProps } from '../../src/components/PipelineView'
 import { WorkflowLibrary } from '../../src/components/WorkflowLibrary'
 import { RunPanel, formatElapsed, stepRunStates, type HostRunState, type RunPanelProps } from '../../src/components/RunPanel'
-import { parseProgressMessage } from '../../src/domain/progress'
+import { parseProgressMessage, stepOrder } from '../../src/domain/progress'
 import { buildWorkflowGraph } from '../../src/domain/graph'
 import type { WorkflowDocument } from '../../src/domain/neuroflow'
 
@@ -271,4 +271,45 @@ test('the diagram graph carries each step\'s run state', () => {
   assert.deepEqual(data('aseg').run, { status: 'pending' })
   const idle = buildWorkflowGraph(twoSteps, new Map(), null, () => {})
   assert.equal((idle.nodes.find((n) => n.id === 'step:recon')?.data as { run?: unknown }).run, undefined)
+})
+
+// What NeuroVue sends: steps re-keyed alphabetically by its JSON layer, and only progress/message (no currentStep).
+const sortedKeys = {
+  ...wf,
+  steps: {
+    aseg: { tool: 'x/freesurfer-asegstats', inputs: { subjects_dir: { ref: 'steps.recon.outputs.subjects_dir' } } },
+    recon: { tool: 'x/freesurfer-recon-all', inputs: {} }
+  }
+} as unknown as WorkflowDocument
+
+test('stepOrder follows dependencies, not key order, and survives a cycle', () => {
+  assert.deepEqual(stepOrder(sortedKeys), ['recon', 'aseg'])
+  assert.deepEqual(stepOrder(twoSteps), ['recon', 'aseg'])
+  const cycle = { steps: { a: { inputs: { x: { ref: 'steps.b.outputs.o' } } }, b: { inputs: { y: { ref: 'steps.a.outputs.o' } } } } }
+  assert.deepEqual(stepOrder(cycle), ['a', 'b'])
+})
+
+test('without currentStep, the progress message names the running step, in run order', () => {
+  const run = runState({ status: 'running', progress: 0.38, total: 2, message: 'step 1/2: recon (x/freesurfer-recon-all): Tessellate lh' })
+  assert.deepEqual(Object.entries(stepRunStates(sortedKeys, run)), [
+    ['recon', { status: 'running', stage: 'Tessellate lh' }],
+    ['aseg', { status: 'pending' }]
+  ])
+  const html = panel(run, { workflow: sortedKeys })
+  assert.ok(html.indexOf('>recon<') < html.indexOf('>aseg<'), 'recon is listed first')
+  assert.match(html, /nf-run-stage" title="Current stage">Tessellate lh</)
+  const second = runState({ status: 'running', progress: 1, total: 2, message: 'step 2/2: aseg (x/freesurfer-asegstats)' })
+  assert.deepEqual(stepRunStates(sortedKeys, second), { recon: { status: 'succeeded' }, aseg: { status: 'running' } })
+  const graph = buildWorkflowGraph(sortedKeys, new Map(), null, () => {})
+  const index = (id: string) => (graph.nodes.find((n) => n.id === `step:${id}`)?.data as { index: number }).index
+  assert.deepEqual([index('recon'), index('aseg')], [0, 1], 'the diagram numbers steps in run order')
+})
+
+test('a step under a second in run.json (whole-second times) reads "< 1 s", not "0 ms"', () => {
+  const steps = { aseg: { tool: 'x/freesurfer-asegstats', status: 'completed', startedAt: '2026-11-20T21:55:52Z', endedAt: '2026-11-20T21:55:52Z' } }
+  const html = panel(runState({ status: 'completed', finished: done({}, { steps }) }))
+  assert.match(html, /freesurfer-asegstats · &lt; 1 s/)
+  assert.ok(!html.includes('0 ms'))
+  const precise = { aseg: { ...steps.aseg, startedAt: '2026-11-20T21:55:52.100Z', endedAt: '2026-11-20T21:55:52.350Z' } }
+  assert.match(panel(runState({ status: 'completed', finished: done({}, { steps: precise }) })), /· 250 ms/)
 })

@@ -57,6 +57,7 @@ export function PipelineView(props: PipelineViewProps): React.JSX.Element {
           selectedStep={selectedStep}
           nodePositions={positions}
           runStates={runStates}
+          miniMap={false}
           onSelectStep={setSelectedStep}
           onBindInput={noop}
           onMoveNode={(id, position) => setPositions((p) => ({ ...p, [id]: position }))}
