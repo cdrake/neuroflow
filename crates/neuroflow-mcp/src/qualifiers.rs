@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::Read;
 use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const AXES: &[&str] = &["formats", "space", "resolution", "density", "labelSystem"];
 
@@ -72,31 +73,67 @@ fn file_hash(path: &Path) -> Result<String, String> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
-/// The file's SHA-256, reusing this run's evidence while the stamp is unchanged.
-/// Without change time, a tool can preserve size and mtime after editing the
-/// bytes. Rehash on platforms without that signal or without an mtime.
-/// A prior run's record is always rehashed.
+/// How long after a file's last modification or change a hash must have been
+/// taken before an equal stamp may stand in for rehashing ("racy git"). File
+/// timestamps tick coarsely (one jiffy on Linux, 4 ms at HZ=250; seconds on some
+/// filesystems), so an edit within the same tick as the hash, with size and mtime
+/// restored, leaves every stamp field equal. Within this window the file is
+/// rehashed; the cost is at most one extra hash of a freshly written file.
+const RACY_WINDOW_NS: u128 = 2_000_000_000;
+
+fn now_ns() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0)
+}
+
+/// The later of a stamp's modification and change times, in ns since the epoch.
+fn stamp_latest_ns(stamp: &Value) -> Option<u128> {
+    let modified = u128::from(stamp["modified"].as_u64()?);
+    let changed = &stamp["unix"]["changed"];
+    let secs = u128::try_from(changed[0].as_i64()?).ok()?;
+    let nanos = u128::try_from(changed[1].as_i64()?).ok()?;
+    Some(modified.max(secs * 1_000_000_000 + nanos))
+}
+
+/// Whether remembered evidence was hashed clearly after its file last changed.
+fn hashed_after_settling(seen: &Value) -> bool {
+    match (seen["hashedAt"].as_u64(), stamp_latest_ns(&seen["stamp"])) {
+        (Some(hashed_at), Some(latest)) => latest + RACY_WINDOW_NS <= u128::from(hashed_at),
+        _ => false,
+    }
+}
+
+/// The file's SHA-256 and when it was taken (ns since the epoch), reusing this
+/// run's evidence while the stamp is unchanged and the earlier hash was taken
+/// outside the racy window. Without change time, a tool can preserve size and
+/// mtime after editing the bytes. Rehash on platforms without that signal or
+/// without an mtime. A prior run's record is always rehashed.
 fn stamped_hash(
     path: &Path,
     stamp: &Value,
     known: &HashMap<String, Value>,
-) -> Result<String, String> {
-    match known.get(path.to_string_lossy().as_ref()) {
-        Some(seen)
-            if stamp.get("unix").is_some()
-                && stamp["modified"].is_number()
-                && &seen["stamp"] == stamp
-                && seen["sha256"].is_string() =>
+) -> Result<(String, u128), String> {
+    if let Some(seen) = known.get(path.to_string_lossy().as_ref()) {
+        if stamp.get("unix").is_some()
+            && stamp["modified"].is_number()
+            && &seen["stamp"] == stamp
+            && hashed_after_settling(seen)
         {
-            Ok(seen["sha256"].as_str().unwrap_or_default().to_string())
+            if let (Some(hash), Some(at)) = (seen["sha256"].as_str(), seen["hashedAt"].as_u64()) {
+                return Ok((hash.to_string(), u128::from(at)));
+            }
         }
-        _ => file_hash(path),
     }
+    // Taken before reading, so an edit during the read lands inside the window.
+    let hashed_at = now_ns();
+    Ok((file_hash(path)?, hashed_at))
 }
 
 /// The SHA-256 of a regular file, for provenance checksums.
 pub fn content_hash(path: &Path, known: &HashMap<String, Value>) -> Result<String, String> {
-    stamped_hash(path, &file_stamp(path)?, known)
+    stamped_hash(path, &file_stamp(path)?, known).map(|(hash, _)| hash)
 }
 
 /// How `tree_hash` digests a directory, stated in provenance so a reader can recompute it.
@@ -170,7 +207,7 @@ pub fn inspect(
     }
     let key = path.to_string_lossy().into_owned();
     let stamp = file_stamp(path)?;
-    let hash = stamped_hash(path, &stamp, known)?;
+    let (hash, hashed_at) = stamped_hash(path, &stamp, known)?;
     // Missing provenance is not a failure by itself. The consumer's constrained
     // axes decide: without a trusted claim they remain unresolved and `enforce`
     // refuses the launch; an unconstrained consumer proceeds with a `reason`.
@@ -212,7 +249,8 @@ pub fn inspect(
         }
         identity = prior["spaceIdentity"].clone();
     }
-    let mut evidence = json!({ "path": path, "sha256": hash, "stamp": stamp, "declaration": decl,
+    let hashed_at = u64::try_from(hashed_at).unwrap_or(u64::MAX);
+    let mut evidence = json!({ "path": path, "sha256": hash, "stamp": stamp, "hashedAt": hashed_at, "declaration": decl,
         "spaceIdentity": identity, "inspection": inspection,
         "producer": prior.get("producer").cloned().unwrap_or(Value::Null) });
     if !provenance.is_null() {

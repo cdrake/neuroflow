@@ -1014,8 +1014,12 @@ fn hash_is_reused_within_a_run_and_recomputed_across_runs() {
     let mut known = HashMap::new();
     let first = crate::qualifiers::inspect(&f.cfg, &json!(file), &json!(file), &known).unwrap();
     crate::qualifiers::remember(&first, &mut known);
-    // Unix change metadata permits reuse; other platforms rehash every time.
-    known.get_mut(file.to_str().unwrap()).unwrap()["sha256"] = json!("cached");
+    // Unix change metadata permits reuse once the hash was taken well after the
+    // file settled (here: as if it were hashed a minute later); other platforms
+    // rehash every time.
+    let seen = known.get_mut(file.to_str().unwrap()).unwrap();
+    seen["sha256"] = json!("cached");
+    seen["hashedAt"] = json!(seen["hashedAt"].as_u64().unwrap() + 60_000_000_000);
     let again = crate::qualifiers::inspect(&f.cfg, &json!(file), &json!(file), &known);
     if cfg!(unix) {
         assert_eq!(again.unwrap()["sha256"], "cached");
@@ -1026,6 +1030,22 @@ fn hash_is_reused_within_a_run_and_recomputed_across_runs() {
         crate::qualifiers::inspect(&f.cfg, &json!(file), &json!(file), &HashMap::new()).unwrap();
     assert_eq!(fresh["sha256"], first["sha256"]);
     assert_ne!(fresh["sha256"], "cached");
+}
+
+#[test]
+fn hash_taken_while_the_file_was_still_changing_is_not_reused() {
+    // A file hashed in the same timestamp tick it was written in could be
+    // rewritten with size and mtime restored and keep an identical stamp, so a
+    // hash that close to the file's last change is never reused.
+    let f = Fixture::new();
+    let file = f.image("fresh.nii", false, 2, 1);
+    let mut known = HashMap::new();
+    let first = crate::qualifiers::inspect(&f.cfg, &json!(file), &json!(file), &known).unwrap();
+    assert!(first["hashedAt"].is_u64(), "{first}");
+    crate::qualifiers::remember(&first, &mut known);
+    known.get_mut(file.to_str().unwrap()).unwrap()["sha256"] = json!("cached");
+    let again = crate::qualifiers::inspect(&f.cfg, &json!(file), &json!(file), &known);
+    assert!(again.unwrap_err().contains("changed since"));
 }
 
 #[test]
