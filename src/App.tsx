@@ -23,7 +23,7 @@ import { RunTimeline } from './components/RunTimeline'
 import { EnvironmentPanel } from './components/EnvironmentPanel'
 import { RegistrySources } from './components/RegistrySources'
 import type { RegistryLoadError } from './components/RegistrySources'
-import { RunPanel } from './components/RunPanel'
+import { RunPanel, stepRunStates } from './components/RunPanel'
 import type { HostRunState } from './components/RunPanel'
 import { library as galleryLibrary, libraryItemFromWorkflow, tools as galleryTools, workflowTitle } from './data/gallery'
 import {
@@ -133,6 +133,10 @@ export function App(): JSX.Element {
   const toolMap = useMemo(() => buildToolMap(tools), [tools])
   const registry = useMemo(() => buildToolRegistry(tools), [tools])
   const toolStatuses = useMemo(() => toolStatusMap(environment), [environment])
+  const diagramRunStates = useMemo(
+    () => (hostRun && hostRun.workflowId === activeWorkflow.id ? stepRunStates(activeWorkflow, hostRun) : undefined),
+    [hostRun, activeWorkflow]
+  )
 
   // Runnability of the active workflow on this host, from the environment check.
   const runnable = useMemo<string | null | undefined>(() => {
@@ -797,6 +801,7 @@ export function App(): JSX.Element {
             }
             nodePositions={nodePositions}
             toolStatuses={toolStatuses}
+            runStates={diagramRunStates}
             onSelectStep={setSelectedStep}
             onBindInput={bindInputRef}
             onMoveNode={moveNode}

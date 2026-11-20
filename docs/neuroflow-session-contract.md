@@ -19,6 +19,7 @@ A launched tool receives:
 | `NEUROFLOW_OUTPUT_DIR` | Absolute path where this step writes its declared outputs. Conventionally `<session>/outputs/<step>`. |
 | `NEUROFLOW_WORK_DIR` | Absolute path for scratch/intermediate files. |
 | `NEUROFLOW_STEP` | The workflow step id being executed. |
+| `NEUROFLOW_PROGRESS_FILE` | Optional to use. A file the step MAY append stage reports to while it runs, one JSON object per line: `{"stage": "<what it is doing>", "fraction": <0..1 of the step>}` (`fraction` optional). The runtime forwards each change as progress within the step; see [run monitoring](run-monitoring.md). |
 | `NEUROFLOW_INTERPRETER_<NAME>` | Optional. Absolute path of an interpreter the runtime knows (`PYTHON3`, `PYTHON`, `NODE`, `RSCRIPT`): one per configured interpreter, plus the one this step launched with. An adapter that starts a second interpreter reads these before searching `PATH`. |
 
 A tool that sees `NEUROFLOW_SESSION` set is running under NeuroFlow and SHOULD

@@ -392,6 +392,47 @@
   outline: 2px solid var(--nf-accent);
 }
 
+/* Run state: the running step is ringed amber, finished green, failed red; steps not reached are dimmed. */
+.nf-root .nf-step-node.is-run-running {
+  box-shadow: 0 0 0 2px var(--nf-amber);
+}
+
+.nf-root .nf-step-node.is-run-succeeded {
+  box-shadow: 0 0 0 2px var(--nf-green);
+}
+
+.nf-root .nf-step-node.is-run-failed {
+  box-shadow: 0 0 0 2px var(--nf-red);
+}
+
+.nf-root .nf-step-node.is-run-pending,
+.nf-root .nf-step-node.is-run-skipped {
+  opacity: 0.6;
+}
+
+.nf-root .nf-node-run-icon {
+  flex: none;
+}
+
+.nf-root .nf-step-node.is-run-succeeded .nf-node-run-icon {
+  color: var(--nf-green);
+}
+
+.nf-root .nf-step-node.is-run-failed .nf-node-run-icon {
+  color: var(--nf-red);
+}
+
+.nf-root .nf-step-node footer.nf-node-run {
+  color: var(--nf-amber);
+  font-weight: 700;
+}
+
+.nf-root .nf-step-node footer.nf-node-run span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .nf-root .nf-step-node header {
   padding: 10px;
   border-bottom: 1px solid var(--border-subtle);
@@ -562,6 +603,11 @@
 
 .nf-root .nf-run-state.is-active {
   color: var(--nf-amber);
+}
+
+.nf-root .nf-run-step .nf-run-stage {
+  color: var(--nf-amber);
+  font-weight: 700;
 }
 
 .nf-root .nf-run-elapsed {

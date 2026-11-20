@@ -1,5 +1,6 @@
 import type { Edge, Node, XYPosition } from '@xyflow/react'
 import type { BlockCategory, ToolDefinition, WorkflowDocument } from './neuroflow'
+import type { StepRunState } from './progress'
 import { isConstantBinding, isRefBinding, stableToolName } from './neuroflow'
 import { categoryColor, getToolBlocks, resolveToolDefinition } from './registry'
 import type { ToolStatus } from './runTypes'
@@ -25,6 +26,8 @@ export interface StepNodeData extends Record<string, unknown> {
   mappings: Record<string, string>
   selected: boolean
   onSelect: (id: string) => void
+  /** The step's state in the run being shown, if any. */
+  run?: StepRunState
 }
 
 export type NeuroflowNode = Node<SourceNodeData | StepNodeData>
@@ -41,7 +44,8 @@ export function buildWorkflowGraph(
   selectedStep: string | null,
   onSelectStep: (id: string) => void,
   positions: NodePositionMap = {},
-  toolStatuses: Map<string, ToolStatus> = new Map()
+  toolStatuses: Map<string, ToolStatus> = new Map(),
+  runStates: Record<string, StepRunState> = {}
 ): { nodes: NeuroflowNode[]; edges: Edge[] } {
   const nodes: NeuroflowNode[] = [
     {
@@ -94,6 +98,7 @@ export function buildWorkflowGraph(
         readiness: tool ? toolStatuses.get(tool.id) : undefined,
         index,
         selected: selectedStep === stepId,
+        run: runStates[stepId],
         inputs: Object.entries(inputDefs).map(([name, def]) => {
           const binding = step.inputs[name]
           return {

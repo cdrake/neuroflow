@@ -134,12 +134,7 @@ export function onRunFinished(handler: (event: RunFinishedEvent) => void): Promi
   return listen<RunFinishedEvent>('neuroflow:run-finished', (event) => handler(event.payload))
 }
 
-/** Progress messages are "step i/n: <stepId> (<toolId>)" or "done". */
-export function parseProgressMessage(message: string): { index: number; total: number; stepId: string } | null {
-  const match = /^step (\d+)\/(\d+): (\S+)/.exec(message)
-  if (!match) return null
-  return { index: Number(match[1]), total: Number(match[2]), stepId: match[3] }
-}
+export { parseProgressMessage } from './progress'
 
 export function toolStatusMap(report: EnvironmentReport | null): Map<string, ToolStatus> {
   const map = new Map<string, ToolStatus>()
