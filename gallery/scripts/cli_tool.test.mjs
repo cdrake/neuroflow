@@ -162,6 +162,26 @@ test('labelTable writes a NiiVue colour table beside the label map', () => {
     { R: [0, 220], G: [0, 216], B: [0, 20], A: [0, 255], I: [0, 17], labels: ['Unknown', 'Left-Hippocampus'] });
 });
 
+test('inputEnv sets a variable from an input, and leaves the ambient value when the input is unset', () => {
+  const previous = process.env.FAKECLI_LIC;
+  process.env.FAKECLI_LIC = '/ambient/license.txt';
+  try {
+    const lic = join(root, 'license.txt');
+    writeFileSync(lic, 'license');
+    const tool = { ...baseTool, inputs: { lic: { type: 'core:file', optional: true } } };
+    const cli = { inputEnv: { FAKECLI_LIC: 'lic' }, args: ['--env', 'FAKECLI_LIC', '{{outputDir}}/result.txt'], outputs: { result: 'result.txt' } };
+    const set = run(cli, { lic }, { tool });
+    assert.equal(set.status, 0, set.stderr);
+    assert.equal(readFileSync(join(set.outputDir, 'result.txt'), 'utf8'), lic);
+    const unset = run(cli, { lic: null }, { tool });
+    assert.equal(unset.status, 0, unset.stderr);
+    assert.equal(readFileSync(join(unset.outputDir, 'result.txt'), 'utf8'), '/ambient/license.txt');
+  } finally {
+    if (previous === undefined) delete process.env.FAKECLI_LIC;
+    else process.env.FAKECLI_LIC = previous;
+  }
+});
+
 test('accepts a probe that prints a matching banner but exits non-zero (dcm2niix -v returns 3)', () => {
   const previous = process.env.FAKECLI_VERSION_STATUS;
   process.env.FAKECLI_VERSION_STATUS = '3';

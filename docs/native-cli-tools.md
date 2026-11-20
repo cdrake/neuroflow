@@ -18,12 +18,15 @@ conversion, brain extraction and registration:
 | `gallery/tools/mindgrab.tool.json` | `brainchop --skull-strip` | `t1`, `border` | `brain`, `brain_mask` |
 | `gallery/tools/niimath-allineate.tool.json` | `niimath -allineate` | `moving`, `template`, `cost`, `interpolation`, optional `weight` | `registered`, `transform` (`neuro:transform`) |
 
-Two more wrap a local FreeSurfer (7.3 or newer; neither needs a license):
+Four more wrap a local FreeSurfer (7.3 or newer). SynthStrip and SynthSeg need no
+license; recon-all does (see `inputEnv` below):
 
 | Document | Command | Inputs | Outputs |
 | --- | --- | --- | --- |
 | `gallery/tools/freesurfer-synthstrip.tool.json` | `mri_synthstrip` | `t1`, `border`, `no_csf`, optional `threads` | `brain`, `brain_mask` |
 | `gallery/tools/freesurfer-synthseg.tool.json` | `mri_synthseg` | `t1`, `parc`, `robust`, `threads` | `labels` (`neuro:label-map`), `volumes` (`core:tabular`) |
+| `gallery/tools/freesurfer-recon-all.tool.json` | `recon-all -all -parallel` | `t1`, `subject`, `threads`, optional `license` | `subjects_dir` (`core:directory`) |
+| `gallery/tools/freesurfer-asegstats.tool.json` | `asegstats2table` | `subjects_dir`, `subject` | `aseg` (`core:tabular`) |
 
 Together with the Neurodesk SynthSeg tool and `label-volumes`, they make up
 `gallery/workflows/dicom-t1-mni-volumes.neuroflow.json`: DICOM series → NIfTI →
@@ -80,6 +83,9 @@ SynthSeg itself.
   variable the command needs pointing at its install root (FreeSurfer's
   wrappers refuse to run without `FREESURFER_HOME`); when it is unset, the
   adapter sets it to the parent of the executable's directory.
+  `inputEnv` maps a variable to an input: `"FS_LICENSE": "license"` sets
+  `FS_LICENSE` from recon-all's optional `license` input (made absolute), and
+  leaves the ambient variable in place when that input has no value.
 - **Label tables.** `labelTable: { "output": "labels", "lut": "FreeSurferColorLUT.txt" }`
   writes `<stem>.json` beside that output from a FreeSurfer-format LUT (relative
   paths resolve against the install root), in NiiVue's label-map form
