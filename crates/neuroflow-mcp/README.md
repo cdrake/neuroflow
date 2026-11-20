@@ -252,8 +252,13 @@ readers and provenance checks:
 
 Each file's evidence includes its SHA-256. On Unix, the executor reuses a hash
 within a run while the path, size, modification time, device, inode, and change
-time match the cached file. Replacing a file or restoring its modification time
-invalidates that cache. On other platforms, or when modification time is
+time match the cached file, and only if that hash was taken at least 2 seconds
+after the file's last modification or change (`hashedAt` in the evidence). File
+timestamps tick coarsely (4 ms on a Linux kernel with `HZ=250`), so an edit in
+the same tick as the hash could otherwise keep every stamp field equal; a file
+inside that window is rehashed, as git does for "racy" index entries. Replacing
+a file or restoring its modification time invalidates that cache. On other
+platforms, or when modification time is
 unavailable, each inspection rehashes the file. Evidence from an earlier run is
 always rehashed. A new file gets a content-scoped
 frame identity; separate acquisitions are not equated because their geometry
