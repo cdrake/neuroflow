@@ -27,6 +27,20 @@ Failed at step 2, with the error and the step's stderr tail:
 
 ![the run failed at the aseg step](images/run-monitor-failed.jpg)
 
+## In NeuroVue
+
+NeuroVue (0.2.12, with `@medview/neuroflow-react` 0.3.0) shows the same run in its
+Pipelines tab, next to the viewer. It forwards only the progress messages, not the
+current step, and the package derives each step's state from those messages.
+Here is the same workflow run from NeuroVue's own run form, 19 minutes into
+recon-all, at the `EM Registration` stage:
+
+![NeuroVue running recon-all, with the viewer beside the Pipelines tab](images/neurovue-run-window.jpg)
+
+The Pipelines tab shows the diagram, the run's target volume and the run panel:
+
+![NeuroVue's Pipelines tab during the recon step](images/neurovue-run-pane.jpg)
+
 ## Where the stage comes from
 
 1. **The tool reports stages.** Each step gets `NEUROFLOW_PROGRESS_FILE` (see the
