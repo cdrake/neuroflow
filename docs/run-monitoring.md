@@ -41,6 +41,10 @@ The Pipelines tab shows the diagram, the run's target volume and the run panel:
 
 ![NeuroVue's Pipelines tab during the recon step](images/neurovue-run-pane.jpg)
 
+Completed after 69 minutes, with both nodes ringed green and each step's duration:
+
+![NeuroVue's Pipelines tab after the run completed](images/neurovue-run-completed.jpg)
+
 ## Where the stage comes from
 
 1. **The tool reports stages.** Each step gets `NEUROFLOW_PROGRESS_FILE` (see the
